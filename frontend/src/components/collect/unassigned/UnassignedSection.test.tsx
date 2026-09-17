@@ -144,6 +144,20 @@ describe('UnassignedSection', () => {
     expect(within(row).getByText('订单 · 2026-06-28 · US$20.00 · Apple / Claude Pro - Monthly · 订单号 …QX1234')).toBeInTheDocument();
   });
 
+  test('attachment already assigned elsewhere shows it was handled instead of an error', async () => {
+    const user = userEvent.setup();
+    setup({
+      'GET /api/attachments/12/candidates': () => ({ status: 409, error: '附件已归属到记录 #43' }),
+    });
+    await renderSection();
+
+    await user.click(within(screen.getByTestId('suggestion-12')).getByRole('button', { name: '查看建议' }));
+
+    const suggestion = screen.getByTestId('suggestion-12');
+    expect(await within(suggestion).findByText('已挂到记录 #43（列表刷新中）')).toBeInTheDocument();
+    expect(within(suggestion).queryByText('建议加载失败')).not.toBeInTheDocument();
+  });
+
   test('suggestions load lazily on click and can be adopted', async () => {
     const user = userEvent.setup();
     const { calls } = setup({

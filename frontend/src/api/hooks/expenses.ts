@@ -34,6 +34,7 @@ export function useExpenseList(query: ExpenseQuery) {
     queryKey: queryKeys.expenseList(query),
     queryFn: () => expensesApi.list(query),
     placeholderData: keepPreviousData,
+    refetchOnWindowFocus: true,
   });
 }
 

@@ -32,8 +32,16 @@ export const attachmentsApi = {
     api.patch<ExpenseDetail>(`/checklist-items/${id}`, reason === undefined ? { state } : { state, reason }),
 };
 
+const UNASSIGNED_REFRESH_MS = 30_000;
+
 export function useUnassignedAttachments() {
-  return useQuery({ queryKey: queryKeys.unassigned, queryFn: attachmentsApi.unassigned });
+  return useQuery({
+    queryKey: queryKeys.unassigned,
+    queryFn: attachmentsApi.unassigned,
+    // 收件箱会在后台自动处理文件：切回页面时与定时刷新，减少“数据已变更”
+    refetchOnWindowFocus: true,
+    refetchInterval: UNASSIGNED_REFRESH_MS,
+  });
 }
 
 /** 待归属附件的候选记录；enabled 为 false 时不请求（懒加载）。 */
