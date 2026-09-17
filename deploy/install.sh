@@ -19,7 +19,9 @@
 #   FRONTEND_BUILD  prebuilt（默认：下载 CI 预构建前端，失败再本地构建）| local（服务器上构建）
 #   INSTALL_DIR     程序目录，默认 /opt/invoice-sorting
 #   DATA_DIR        数据目录，默认 /var/lib/invoice-sorting
-set -euo pipefail
+set -Eeuo pipefail
+# 任何命令意外失败都打印位置，避免静默退出
+trap 'printf "\033[1;31m[错误]\033[0m 安装中断：第 %s 行命令失败：%s\n" "$LINENO" "$BASH_COMMAND" >&2' ERR
 
 APP_NAME="invoice-sorting"
 REPO_URL="${REPO_URL:-https://github.com/lsgoodlionel/Invoice-sorting.git}"
@@ -225,7 +227,8 @@ write_htpasswd() {
 
 # 输出监听指定 TCP 端口的进程名（无人监听时为空）
 port_owner() {
-  ss -ltnpH "sport = :$1" 2>/dev/null | grep -o 'users:(("[^"]*"' | head -n1 | cut -d'"' -f2
+  # 无人监听时 grep 无匹配返回 1，在 pipefail 下不能当作错误
+  ss -ltnpH "sport = :$1" 2>/dev/null | grep -o 'users:(("[^"]*"' | head -n1 | cut -d'"' -f2 || true
 }
 
 check_ports() {
