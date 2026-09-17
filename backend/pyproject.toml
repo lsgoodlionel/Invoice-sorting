@@ -45,12 +45,6 @@ dev = [
     "ruff>=0.16.8",
 ]
 
-# 默认使用清华 PyPI 镜像（国内下载快）；海外可设置 UV_DEFAULT_INDEX=https://pypi.org/simple 覆盖
-[[tool.uv.index]]
-name = "tuna"
-url = "https://pypi.tuna.tsinghua.edu.cn/simple"
-default = true
-
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]

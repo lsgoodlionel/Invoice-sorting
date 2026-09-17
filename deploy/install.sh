@@ -14,6 +14,8 @@
 #   APP_PORT        应用内部端口（仅本机），默认 8765
 #   BRANCH          Git 分支，默认 main
 #   REPO_URL        仓库地址
+#   MIRROR          下载源：auto（默认，测速选择官方源或国内镜像）| cn | global
+#   NO_OCR          设为 1 时不安装截图文字识别（OCR）
 #   INSTALL_DIR     程序目录，默认 /opt/invoice-sorting
 #   DATA_DIR        数据目录，默认 /var/lib/invoice-sorting
 set -euo pipefail
@@ -61,9 +63,15 @@ install_packages() {
   log "安装系统依赖"
   export DEBIAN_FRONTEND=noninteractive
   apt-get update -qq
-  apt-get install -y -qq git curl ca-certificates gnupg nginx apache2-utils sqlite3 >/dev/null
-  install_node
-  install_uv
+  # libgl1、libglib2.0-0 为 OCR（opencv）运行所需；python3-venv 用于从 PyPI 镜像安装 uv
+  apt-get install -y -qq git curl ca-certificates xz-utils nginx apache2-utils sqlite3 \
+    libgl1 libglib2.0-0 python3-venv >/dev/null
+}
+
+load_mirrors() {
+  # shellcheck source=/dev/null
+  . "${APP_DIR}/scripts/lib/mirrors.sh"
+  select_mirrors
 }
 
 install_node() {
@@ -72,18 +80,33 @@ install_node() {
     current="$(node -p 'process.versions.node.split(".")[0]')"
   fi
   if [ "$current" -lt 20 ]; then
-    log "安装 Node.js ${NODE_MAJOR}"
-    curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash - >/dev/null
-    apt-get install -y -qq nodejs >/dev/null
+    install_node_binary
   fi
-  corepack enable >/dev/null 2>&1 || npm install -g pnpm >/dev/null
+  corepack enable >/dev/null 2>&1 || npm install -g pnpm --registry "$NPM_REGISTRY" >/dev/null
+}
+
+install_node_binary() {
+  local arch tarball
+  case "$(uname -m)" in
+    x86_64) arch="x64" ;;
+    aarch64 | arm64) arch="arm64" ;;
+    *) die "不支持的 CPU 架构：$(uname -m)" ;;
+  esac
+  tarball="$(curl -fsSL "${NODE_DIST}/latest-v${NODE_MAJOR}.x/SHASUMS256.txt" |
+    grep -o "node-v[0-9.]*-linux-${arch}.tar.xz" | head -n1)"
+  [ -n "$tarball" ] || die "无法获取 Node.js ${NODE_MAJOR} 版本信息（${NODE_DIST}）"
+  log "安装 Node.js（${tarball}，来源 ${NODE_DIST}）"
+  curl -fsSL "${NODE_DIST}/latest-v${NODE_MAJOR}.x/${tarball}" |
+    tar -xJ -C /usr/local --strip-components=1 --exclude='*.md' --exclude=LICENSE
 }
 
 install_uv() {
-  if ! command -v uv >/dev/null 2>&1; then
-    log "安装 uv"
-    curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin UV_NO_MODIFY_PATH=1 sh >/dev/null
-  fi
+  command -v uv >/dev/null 2>&1 && return 0
+  log "安装 uv（来源 ${PYPI_INDEX}）"
+  # 从选中的 PyPI 源安装 uv，避免国内访问 GitHub Releases 过慢
+  python3 -m venv "${INSTALL_DIR}/tools"
+  "${INSTALL_DIR}/tools/bin/pip" install --quiet --index-url "$PYPI_INDEX" uv
+  ln -sf "${INSTALL_DIR}/tools/bin/uv" /usr/local/bin/uv
 }
 
 prepare_user_and_dirs() {
@@ -125,12 +148,11 @@ fetch_source() {
 }
 
 build_app() {
-  log "安装后端依赖（Python 3.12）"
-  as_app env UV_PYTHON_INSTALL_DIR="${INSTALL_DIR}/python" UV_CACHE_DIR="${INSTALL_DIR}/.cache/uv" \
-    uv sync --project "${APP_DIR}/backend" --frozen --no-dev --quiet
-  log "构建前端"
-  as_app env COREPACK_ENABLE_DOWNLOAD_PROMPT=0 pnpm --dir "${APP_DIR}/frontend" install --frozen-lockfile --silent
-  as_app env COREPACK_ENABLE_DOWNLOAD_PROMPT=0 pnpm --dir "${APP_DIR}/frontend" build >/dev/null
+  as_app env MIRROR="$MIRROR" NO_OCR="${NO_OCR:-0}" \
+    PYPI_INDEX="$PYPI_INDEX" NPM_REGISTRY="$NPM_REGISTRY" NODE_DIST="$NODE_DIST" \
+    PYTHON_MIRROR="$PYTHON_MIRROR" \
+    UV_PYTHON_INSTALL_DIR="${INSTALL_DIR}/python" UV_CACHE_DIR="${INSTALL_DIR}/.cache/uv" \
+    bash "${APP_DIR}/scripts/setup.sh"
 }
 
 write_service() {
@@ -290,6 +312,9 @@ main() {
   prepare_user_and_dirs
   backup_database
   fetch_source
+  load_mirrors
+  install_node
+  install_uv
   build_app
   write_service
   write_nginx
