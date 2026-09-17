@@ -74,12 +74,12 @@ type ExportRecord = { id: number; layout: ExportLayout; file_name: string; url: 
 
 | 方法 | 路径 | 请求 | 返回 data |
 | --- | --- | --- | --- |
-| GET | `/api/expenses` | query: `start`,`end`(含),`date_basis`(默认 spent),`category_id`,`project_id`,`status`(可多个，逗号分隔),`q`(商家/摘要/发票号),`batch_id`,`unbatched`(bool),`page`(1),`page_size`(默认 50, 最大 500) | `{ items: ExpenseSummary[], total: number, total_cents: number, status_counts: { [status]: { count, amount_cents } } }` |
+| GET | `/api/expenses` | query: `start`,`end`(含),`date_basis`(默认 spent),`category_id`,`project_id`,`status`(可多个，逗号分隔),`q`(商家/摘要/发票号),`batch_id`,`unbatched`(bool),`missing`(bool，仅含必需缺项),`page`(1),`page_size`(默认 50, 最大 500) | `{ items: ExpenseSummary[], total: number, total_cents: number, status_counts: { [status]: { count, amount_cents } } }` |
 | POST | `/api/expenses` | `{ spent_on, amount_cents, merchant, summary?, category_id?, project_id?, pay_method?, is_online?, note? }` | `ExpenseDetail` |
 | GET | `/api/expenses/{id}` | — | `ExpenseDetail` |
 | PATCH | `/api/expenses/{id}` | 上述任意字段 | `ExpenseDetail`（自动重算清单、状态、文件夹名） |
-| DELETE | `/api/expenses/{id}` | — | `null`（软删除，文件移到回收站） |
-| POST | `/api/expenses/{id}/status` | `{ status, note? }`；`void` 必须带 note；`{ status: null }` 表示取消手动、恢复自动 | `ExpenseDetail` |
+| DELETE | `/api/expenses/{id}` | — | `null`（软删除：移出草稿批次，文件移到回收站并删除附件记录；所在批次已外发时 409） |
+| POST | `/api/expenses/{id}/status` | `{ status, note? }`；`void` 必须带 note，并自动移出草稿批次（批次已外发时 409）；`{ status: null }` 表示取消手动、恢复自动 | `ExpenseDetail` |
 | POST | `/api/expenses/{id}/attachments` | multipart：`files`(多个)，`kind`(可选，不传则自动判断) | `ExpenseDetail` |
 
 ### 附件与清单
@@ -98,7 +98,7 @@ type ExportRecord = { id: number; layout: ExportLayout; file_name: string; url: 
 | 方法 | 路径 | 请求 | 返回 data |
 | --- | --- | --- | --- |
 | POST | `/api/imports` | multipart：`files` | `ImportSession` |
-| POST | `/api/imports/{session_id}/confirm` | `{ rows: [{ row_id, action: "create" \| "attach" \| "skip", expense_id?, spent_on, amount_cents, merchant, summary, category_id, project_id? }] }` | `{ created: number[], attached: number[], skipped: number }`（expense id 列表） |
+| POST | `/api/imports/{session_id}/confirm`（action=skip 时其余字段忽略；会话过期 404） | `{ rows: [{ row_id, action: "create" \| "attach" \| "skip", expense_id?, spent_on, amount_cents, merchant, summary, category_id, project_id? }] }` | `{ created: number[], attached: number[], skipped: number }`（expense id 列表） |
 
 ```ts
 type ImportRow = {
@@ -112,7 +112,8 @@ type ImportSession = {
   session_id: string; rows: ImportRow[];               // 发票行
   attachments: Attachment[];                           // 非发票文件 → 待归属
   duplicates: { original_name: string; existing_expense_id: number | null; reason: string }[];
-  errors: { original_name: string; error: string }[]
+  errors: { original_name: string; error: string }[];     // 未能导入
+  notices: { original_name: string; message: string }[]   // 已导入但需提醒（如无法识别发票内容，已作为附件导入）
 }
 ```
 
@@ -129,7 +130,8 @@ type ImportSession = {
 | POST | `/api/batches/{id}/export` | `{ layout: "by_expense" \| "by_kind" }` | `ExportRecord` |
 | GET | `/api/exports/{id}/file` | — | ZIP 文件流 |
 | POST | `/api/batches/{id}/sent` | `{ sent_on, sent_via?, receiver?, external_no? }` | `BatchDetail` |
-| POST | `/api/batches/{id}/received` | `{ received_on, expense_ids?: number[] }`（不传=全部） | `BatchDetail` |
+| POST | `/api/batches/{id}/received` | `{ received_on, expense_ids?: number[] }`（不传=全部）；草稿或已全部到账时 409 | `BatchDetail` |
+| POST | `/api/batches/{id}/reopen` | — 回到草稿，清空外发/到账信息并重算记录状态；草稿批次 409 | `BatchDetail` |
 
 ### 统计（stats 模块）
 
@@ -145,6 +147,8 @@ type Stats = {
 }
 ```
 
+- rows.key：category/project 为 id 字符串，merchant 为商家名，month 为 `YYYY-MM`，空值为 `none`。区间超过 240 个月返回 400。
+
 `GET /api/stats/export?...同上` → XLSX 文件流。
 `GET /api/dashboard` → `{ missing: ExpenseSummary[] (有必需缺项，最多 20), overdue: Batch[] (已外发超过 overdue_days 未到账), spent_without_invoice: ExpenseSummary[] (已支出超过 14 天仍无发票), unassigned_count: number, month_totals: Stats["totals"] }`
 
@@ -157,7 +161,7 @@ type Stats = {
 | GET/POST | `/api/categories` | POST `{ name, color?, keywords?, route_hint? }` | `Category[]` / `Category` |
 | PATCH/DELETE | `/api/categories/{id}` | DELETE 为归档 | `Category` / `null` |
 | GET/POST | `/api/projects` | POST `{ code?, name, owner? }` | `Project[]` / `Project` |
-| PATCH/DELETE | `/api/projects/{id}` | DELETE 为停用 | `Project` / `null` |
+| PATCH/DELETE | `/api/projects/{id}` | PATCH `{ code?, name?, owner?, active? }`；DELETE 为停用 | `Project` / `null` |
 | GET/POST | `/api/checklist-rules` | POST `{ category_id|null, attachment_kind, level, condition, hint }` | `ChecklistRule[]` / `ChecklistRule` |
 | PATCH/DELETE | `/api/checklist-rules/{id}` | | `ChecklistRule` / `null` |
 | POST | `/api/backup` | — | `{ file: string }` |
