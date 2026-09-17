@@ -22,6 +22,11 @@ AMOUNT = r"-?\d[\d,]*\.\d{1,2}"
 CHINESE_WORD = r"[一-鿿][一-鿿A-Za-z0-9()·]*"
 
 
+def to_halfwidth(text: str) -> str:
+    """全角标点转半角（逐字符替换，长度不变）。"""
+    return text.translate(_TRANSLATION)
+
+
 def normalize_text(text: str) -> str:
     """全角标点转半角、统一人民币符号，逐行去掉首尾空白。"""
     lines = (line.strip() for line in text.translate(_TRANSLATION).splitlines())
@@ -96,6 +101,15 @@ def find_invoice_code(text: str) -> str | None:
     return search_group(labeled("发票代码") + r"(\d{10,12})", text)
 
 
+ORDER_NO_RE = re.compile(r"订\s*单\s*(?:编\s*)?号\s*[:：]\s*([0-9A-Za-z-]+)")
+
+
+def find_order_no(text: str) -> str:
+    """提取备注中的电商订单号（“订单号:xxx”或“订单编号：xxx”），无则 ""。"""
+    match = ORDER_NO_RE.search(text)
+    return match.group(1) if match else ""
+
+
 def find_labeled_name(labels: tuple[str, ...], text: str) -> str:
     for label in labels:
         value = search_group(labeled(label) + r"(" + CHINESE_WORD + r")", text)
@@ -118,12 +132,3 @@ def split_item_name(raw_name: str) -> tuple[str, str]:
     if not match:
         return "", raw_name.strip()
     return match.group(1).strip(), match.group(2).strip()
-
-
-def summarize_items(names: list[str]) -> tuple[str, str]:
-    """返回 (item_summary, tax_category)。多于一项时追加“等N项”。"""
-    if not names:
-        return "", ""
-    category, first = split_item_name(names[0])
-    summary = first if len(names) == 1 else f"{first}等{len(names)}项"
-    return summary, category

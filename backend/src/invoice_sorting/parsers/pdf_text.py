@@ -2,10 +2,11 @@
 
 import logging
 import time
-from dataclasses import dataclass
 from pathlib import Path
 
 import pdfplumber
+
+from invoice_sorting.parsers.layout import PageWords, Word
 
 logger = logging.getLogger(__name__)
 
@@ -13,14 +14,6 @@ MAX_PAGES = 10
 MAX_FILE_BYTES = 30 * 1024 * 1024
 TIME_BUDGET_SECONDS = 10.0
 PDF_MAGIC = b"%PDF"
-
-
-@dataclass(frozen=True)
-class PdfColumns:
-    """首页按页面中线拆分后的左右两栏文本（左栏为购买方，右栏为销售方）。"""
-
-    left: str
-    right: str
 
 
 def _is_readable_pdf(path: Path) -> bool:
@@ -55,12 +48,18 @@ def extract_pdf_text(path: Path, max_pages: int = MAX_PAGES) -> str | None:
     return text or None
 
 
-def _char_center(obj: dict) -> float:
-    return (float(obj["x0"]) + float(obj["x1"])) / 2
+WORD_X_TOLERANCE = 1.5
+WORD_Y_TOLERANCE = 2.0
 
 
-def extract_pdf_columns(path: Path) -> PdfColumns | None:
-    """按字符坐标把首页拆成左右两栏，用于区分并排的购买方/销售方信息。"""
+def _to_word(raw: dict) -> Word:
+    return Word(
+        float(raw["x0"]), float(raw["x1"]), float(raw["top"]), float(raw["bottom"]), raw["text"]
+    )
+
+
+def extract_page_words(path: Path) -> PageWords | None:
+    """提取首页所有词及坐标，供购销方分栏与项目名称列定位；失败返回 None。"""
     if not _is_readable_pdf(path):
         return None
     try:
@@ -68,20 +67,14 @@ def extract_pdf_columns(path: Path) -> PdfColumns | None:
             if not pdf.pages:
                 return None
             page = pdf.pages[0]
-            middle = float(page.width) / 2
-
-            def is_left(obj: dict) -> bool:
-                return obj.get("object_type") != "char" or _char_center(obj) < middle
-
-            def is_right(obj: dict) -> bool:
-                return obj.get("object_type") != "char" or _char_center(obj) >= middle
-
-            left = page.filter(is_left).extract_text() or ""
-            right = page.filter(is_right).extract_text() or ""
-    except Exception as exc:
-        logger.debug("PDF 分栏提取失败 %s：%r", path, exc)
+            raw_words = page.extract_words(
+                x_tolerance=WORD_X_TOLERANCE, y_tolerance=WORD_Y_TOLERANCE
+            )
+            width = float(page.width)
+    except Exception as exc:  # pdfminer 可能抛出任意异常
+        logger.debug("PDF 坐标提取失败 %s：%r", path, exc)
         return None
-    return PdfColumns(left=left, right=right)
+    return PageWords(width=width, words=tuple(_to_word(raw) for raw in raw_words))
 
 
 def pdf_text_for_detection(path: Path, text: str | None) -> str | None:

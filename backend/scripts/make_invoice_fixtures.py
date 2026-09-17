@@ -10,6 +10,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 
 import pdfplumber
+from invoice_fixture_layouts import discount_lines, jd_spaced_labels_lines, write_sized_pdf
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.pdfencrypt import StandardEncryption
 from reportlab.pdfbase import pdfmetrics
@@ -192,9 +193,20 @@ def vat_normal_lines() -> list[Line]:
         (45, 688, "开户行及账号："),
     ]
     lines += [(330, 730 - 14 * row, password) for row in range(4)]
+    header = (
+        "货物或应税劳务、服务名称",
+        "规格型号",
+        "单位",
+        "数量",
+        "单价",
+        "金额",
+        "税率",
+        "税额",
+    )
+    row = ("*餐饮服务*餐费", "", "次", "1", "283.02", "283.02", "6%", "16.98")
+    lines += [(x, 650, text) for x, text in zip(ITEM_COLUMNS, header, strict=True)]
+    lines += [(x, 635, text) for x, text in zip(ITEM_COLUMNS, row, strict=True) if text]
     lines += [
-        (30, 650, "货物或应税劳务、服务名称 规格型号 单位 数量 单价 金额 税率 税额"),
-        (30, 635, "*餐饮服务*餐费 次 1 283.02 283.02 6% 16.98"),
         (60, 600, "合 计"),
         (360, 600, "¥283.02"),
         (500, 600, "¥16.98"),
@@ -349,6 +361,9 @@ def main() -> None:
     write_pdf("digital_multiline.pdf", digital_lines(digital_multiline()), font)
     write_pdf("digital_upper_mismatch.pdf", digital_lines(digital_upper_mismatch()), font)
     write_pdf("vat_electronic_normal.pdf", vat_normal_lines(), font)
+    buyer = (BUYER, BUYER_ID)
+    write_sized_pdf(OUT_DIR / "jd_spaced_labels.pdf", jd_spaced_labels_lines(buyer), font)
+    write_sized_pdf(OUT_DIR / "discount_lines.pdf", discount_lines(buyer), font)
     write_pdf("rail_ticket.pdf", rail_lines(), font)
     write_pdf("air_itinerary.pdf", air_lines(), font)
     write_pdf("not_invoice.pdf", not_invoice_lines(), font)

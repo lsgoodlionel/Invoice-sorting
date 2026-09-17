@@ -8,7 +8,9 @@ from pathlib import Path
 from invoice_sorting.parsers.base import InvoiceParseError, ParsedInvoice
 from invoice_sorting.parsers.cn_amount import cn_upper_to_cents
 from invoice_sorting.parsers.invoice_text import amount_warnings
-from invoice_sorting.parsers.text_utils import parse_date, summarize_items, to_cents
+from invoice_sorting.parsers.items import summarize_items
+from invoice_sorting.parsers.regions import region_from_invoice
+from invoice_sorting.parsers.text_utils import find_order_no, parse_date, to_cents
 
 logger = logging.getLogger(__name__)
 
@@ -89,6 +91,8 @@ def _build_invoice(root: ET.Element, raw_text: str, parser_name: str) -> ParsedI
     tax = to_cents(_first_text(root, TAX_TAGS))
     upper = cn_upper_to_cents(_first_text(root, UPPER_TOTAL_TAGS))
     summary, category = summarize_items(_all_texts(root, ITEM_NAME_TAGS))
+    seller_tax_id = _first_text(root, SELLER_ID_TAGS)
+    region_code, region_name = region_from_invoice(invoice_no, seller_tax_id)
     return ParsedInvoice(
         invoice_no=invoice_no,
         issued_on=parse_date(_first_text(root, ISSUED_TAGS)),
@@ -96,7 +100,7 @@ def _build_invoice(root: ET.Element, raw_text: str, parser_name: str) -> ParsedI
         tax_cents=tax,
         amount_cents=amount,
         seller_name=_first_text(root, SELLER_NAME_TAGS),
-        seller_tax_id=_first_text(root, SELLER_ID_TAGS),
+        seller_tax_id=seller_tax_id,
         buyer_name=_first_text(root, BUYER_NAME_TAGS),
         buyer_tax_id=_first_text(root, BUYER_ID_TAGS),
         item_summary=summary,
@@ -105,6 +109,9 @@ def _build_invoice(root: ET.Element, raw_text: str, parser_name: str) -> ParsedI
         parser=parser_name,
         warnings=tuple(amount_warnings(total, amount, tax, upper)),
         raw_text=raw_text,
+        region_code=region_code,
+        region_name=region_name,
+        order_no=find_order_no(raw_text),
     )
 
 

@@ -14,9 +14,10 @@ from invoice_sorting.parsers import (
 )
 from invoice_sorting.parsers.digital_pdf import DigitalPdfParser
 from invoice_sorting.parsers.invoice_text import extract_parties, parse_invoice_text
+from invoice_sorting.parsers.items import summarize_items
+from invoice_sorting.parsers.layout import PageWords, Word
 from invoice_sorting.parsers.ofd_invoice import OfdInvoiceParser
-from invoice_sorting.parsers.pdf_text import PdfColumns
-from invoice_sorting.parsers.text_utils import parse_date, split_item_name, summarize_items
+from invoice_sorting.parsers.text_utils import parse_date, split_item_name
 from invoice_sorting.parsers.xml_invoice import XmlInvoiceParser, parse_xml_bytes
 
 INVOICES = Path(__file__).resolve().parents[1] / "fixtures" / "invoices"
@@ -81,22 +82,27 @@ def test_text_fallback_keeps_empty_buyer_slot_for_individuals():
     )
 
 
-def test_columns_take_priority_over_reading_order():
+def test_page_coordinates_take_priority_over_reading_order():
     text = "名称：乙公司\n名称：甲大学"
-    columns = PdfColumns(
-        left="名称：甲大学\n纳税人识别号：12310000EXAMPLE001", right="名称：乙公司"
+    page = PageWords(
+        600,
+        (
+            Word(40, 120, 100, 109, "名称：甲大学"),
+            Word(40, 250, 115, 124, "纳税人识别号：12310000EXAMPLE001"),
+            Word(320, 400, 100, 109, "名称：乙公司"),
+        ),
     )
 
-    parties = extract_parties(text, columns)
+    parties = extract_parties(text, page)
 
     assert (parties.buyer_name, parties.seller_name) == ("甲大学", "乙公司")
     assert parties.buyer_tax_id == "12310000EXAMPLE001"
 
 
-def test_columns_without_seller_fall_back_to_text():
-    columns = PdfColumns(left="名称：甲大学", right="")
+def test_page_without_seller_falls_back_to_text():
+    page = PageWords(600, (Word(40, 120, 100, 109, "名称：甲大学"),))
 
-    parties = extract_parties("名称：甲大学 名称：乙公司", columns)
+    parties = extract_parties("名称：甲大学 名称：乙公司", page)
 
     assert (parties.buyer_name, parties.seller_name) == ("甲大学", "乙公司")
 
@@ -245,11 +251,11 @@ def test_pdf_guards_reject_oversized_and_stop_on_time_budget(monkeypatch):
 
     monkeypatch.setattr(pdf_text, "MAX_FILE_BYTES", 10)
     assert pdf_text.extract_pdf_text(sample) is None
-    assert pdf_text.extract_pdf_columns(sample) is None
+    assert pdf_text.extract_page_words(sample) is None
 
 
-def test_pdf_columns_return_none_on_corrupt_pdf():
-    assert pdf_text.extract_pdf_columns(INVOICES / "corrupt.pdf") is None
+def test_page_words_return_none_on_corrupt_pdf():
+    assert pdf_text.extract_page_words(INVOICES / "corrupt.pdf") is None
 
 
 def test_digital_parser_raises_when_pdf_has_no_text():

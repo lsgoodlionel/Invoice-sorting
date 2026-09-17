@@ -5,7 +5,7 @@ from pathlib import Path
 from invoice_sorting.parsers.base import InvoiceParseError, ParsedInvoice
 from invoice_sorting.parsers.invoice_text import looks_like_vat_invoice, parse_invoice_text
 from invoice_sorting.parsers.pdf_text import (
-    extract_pdf_columns,
+    extract_page_words,
     extract_pdf_text,
     pdf_text_for_detection,
 )
@@ -22,5 +22,4 @@ class DigitalPdfParser:
         content = text if text is not None else extract_pdf_text(path)
         if not content:
             raise InvoiceParseError(f"PDF 无可用文本：{path}")
-        columns = extract_pdf_columns(path)
-        return parse_invoice_text(content, self.name, columns)
+        return parse_invoice_text(content, self.name, extract_page_words(path))
