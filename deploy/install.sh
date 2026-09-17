@@ -67,7 +67,8 @@ check_environment() {
 install_packages() {
   log "安装系统依赖"
   export DEBIAN_FRONTEND=noninteractive
-  apt-get update -qq
+  # 过滤 apt 的重复源等警告（W:），保留错误输出
+  apt-get update -qq 2>&1 | grep -v '^W: ' || true
   # libgl1、libglib2.0-0 为 OCR（opencv）运行所需；python3-venv 用于从 PyPI 镜像安装 uv
   apt-get install -y -qq git curl ca-certificates xz-utils nginx apache2-utils sqlite3 \
     libgl1 libglib2.0-0 python3-venv >/dev/null
@@ -153,7 +154,8 @@ fetch_source() {
 }
 
 build_app() {
-  as_app env MIRROR="$MIRROR" NO_OCR="${NO_OCR:-0}" \
+  # UV_NO_CONFIG：不读取任何 uv.toml，避免受调用者目录或用户配置影响
+  as_app env MIRROR="$MIRROR" NO_OCR="${NO_OCR:-0}" UV_NO_CONFIG=1 \
     PYPI_INDEX="$PYPI_INDEX" NPM_REGISTRY="$NPM_REGISTRY" NODE_DIST="$NODE_DIST" \
     PYTHON_MIRROR="$PYTHON_MIRROR" \
     UV_PYTHON_INSTALL_DIR="${INSTALL_DIR}/python" UV_CACHE_DIR="${INSTALL_DIR}/.cache/uv" \
@@ -315,6 +317,9 @@ main() {
   check_environment
   install_packages
   prepare_user_and_dirs
+  # 切到程序目录：调用者的当前目录（如 /home/xxx）对系统用户 invoice 不可读，
+  # uv/pnpm 会在当前目录查找配置文件而报 Permission denied
+  cd "$INSTALL_DIR"
   backup_database
   fetch_source
   load_mirrors

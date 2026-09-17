@@ -9,6 +9,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"  # 在仓库目录内运行，避免读取调用者目录中的 uv.toml / .npmrc
 # shellcheck source=lib/mirrors.sh
 . "$ROOT/scripts/lib/mirrors.sh"
 
