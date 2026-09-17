@@ -115,6 +115,9 @@ type ExportRecord = { id: number; layout: ExportLayout; file_name: string; url: 
 | 方法 | 路径 | 请求 | 返回 data |
 | --- | --- | --- | --- |
 | POST | `/api/imports` | multipart：`files` | `ImportSession` |
+| POST | `/api/imports/start` | — 开始分文件导入（带进度的上传流程） | `{ session_id: string }` |
+| POST | `/api/imports/{session_id}/files` | multipart：`file`（单个文件）；上传后立即入库并识别，响应即表示“处理完成” | `ImportFileResult` |
+| POST | `/api/imports/{session_id}/finish` | — 对会话内全部已导入文件统一分组、匹配 | `ImportSession`（duplicates/errors/notices 为会话内累计） |
 | POST | `/api/imports/{session_id}/confirm` | `{ groups: ConfirmGroup[] }` | `{ created: number[], attached: number[], skipped: number }`（expense id 列表；skipped 为留在待归属的文件数） |
 | GET | `/api/attachments/{id}/candidates` | — 待归属附件的候选记录（同 5.2 匹配与评分）；强匹配（如有）排第一，其余最多 5 个按分数降序；附件已归属时 409，不存在 404 | `MatchCandidate[]` |
 
@@ -168,6 +171,15 @@ type ImportSession = {
   duplicates: { original_name: string; existing_expense_id: number | null; reason: string }[];
   errors: { original_name: string; error: string }[];
   notices: { original_name: string; message: string }[]
+}
+
+type ImportFileResult = {
+  original_name: string;
+  status: "imported" | "duplicate" | "error";
+  attachment: Attachment | null;      // imported 时为已入库附件（含 invoice / evidence 识别结果）
+  recognized_as: string;              // 中文识别结论，如“发票”“订单明细（京东订单）”“支付记录（银行交易）”“未识别”
+  message: string;                    // duplicate/error 的原因；imported 时可为提醒（如“无法识别发票内容，已作为附件导入”）或 ""
+  existing_expense_id: number | null  // duplicate 时已存在的记录
 }
 
 type ConfirmGroup = {
