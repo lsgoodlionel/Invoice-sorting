@@ -1,15 +1,14 @@
 #!/usr/bin/env bash
 # 发票账本 · Ubuntu 一键安装 / 升级脚本
 #
-# 首次安装与升级使用同一条命令（重复执行即升级，数据与登录密码保留）：
+# 首次安装与升级使用同一条命令（重复执行即升级，数据与登录密码保留）。
+# 安装完成后打开网页设置初始登录密码（应用内认证，终端不生成密码）：
 #   curl -fsSL https://raw.githubusercontent.com/lsgoodlionel/Invoice-sorting/main/deploy/install.sh | sudo bash
 #
 # 可选环境变量（写在 sudo 之后，例如 `| sudo DOMAIN=invoice.example.com bash`）：
 #   DOMAIN          访问域名，默认 _（任意域名/IP）
 #   ENABLE_HTTPS    true 时用 Let's Encrypt 申请证书（需 DOMAIN 与 EMAIL，且域名已解析到本机）
 #   EMAIL           证书通知邮箱
-#   AUTH_USER       网页登录用户名，默认 admin
-#   AUTH_PASSWORD   网页登录密码；首次安装未提供时自动生成并打印；再次提供则重置
 #   HTTP_PORT       对外访问端口（Nginx），默认 8765；启用 HTTPS 时默认 80（证书验证需要）
 #   APP_PORT        应用内部端口（仅本机），默认 18765
 #   BRANCH          Git 分支，默认 main
@@ -39,11 +38,9 @@ fi
 DOMAIN="${DOMAIN:-_}"
 ENABLE_HTTPS="${ENABLE_HTTPS:-false}"
 EMAIL="${EMAIL:-}"
-AUTH_USER="${AUTH_USER:-admin}"
-AUTH_PASSWORD="${AUTH_PASSWORD:-}"
 NODE_MAJOR=22
 MAX_UPLOAD_MB=100
-HTPASSWD_FILE="/etc/nginx/${APP_NAME}.htpasswd"
+LEGACY_HTPASSWD_FILE="/etc/nginx/${APP_NAME}.htpasswd"  # 旧版 Nginx 登录弹窗，升级时删除
 NGINX_SITE="/etc/nginx/sites-available/${APP_NAME}"
 SERVICE_FILE="/etc/systemd/system/${APP_NAME}.service"
 BACKUP_KEEP=10
@@ -73,7 +70,7 @@ install_packages() {
   # 过滤 apt 的重复源等警告（W:），保留错误输出
   apt-get update -qq 2>&1 | grep -v '^W: ' || true
   # libgl1、libglib2.0-0 为 OCR（opencv）运行所需；python3-venv 用于从 PyPI 镜像安装 uv
-  apt-get install -y -qq git curl ca-certificates xz-utils nginx apache2-utils sqlite3 \
+  apt-get install -y -qq git curl ca-certificates xz-utils nginx sqlite3 \
     libgl1 libglib2.0-0 python3-venv >/dev/null
 }
 
@@ -213,18 +210,6 @@ WantedBy=multi-user.target
 EOF
 }
 
-write_htpasswd() {
-  if [ -n "$AUTH_PASSWORD" ]; then
-    htpasswd -bcB "$HTPASSWD_FILE" "$AUTH_USER" "$AUTH_PASSWORD" >/dev/null 2>&1
-    GENERATED_PASSWORD="$AUTH_PASSWORD"
-  elif [ ! -s "$HTPASSWD_FILE" ]; then
-    GENERATED_PASSWORD="$(head -c 18 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 16)"
-    htpasswd -bcB "$HTPASSWD_FILE" "$AUTH_USER" "$GENERATED_PASSWORD" >/dev/null 2>&1
-  fi
-  chown root:www-data "$HTPASSWD_FILE"
-  chmod 640 "$HTPASSWD_FILE"
-}
-
 # 输出监听指定 TCP 端口的进程名（无人监听时为空）
 port_owner() {
   # 无人监听时 grep 无匹配返回 1，在 pipefail 下不能当作错误
@@ -263,8 +248,8 @@ ipv6_listen_line() {
 }
 
 write_nginx() {
-  log "配置 Nginx（带登录密码保护）"
-  write_htpasswd
+  log "配置 Nginx 反向代理"
+  rm -f "$LEGACY_HTPASSWD_FILE"
   check_ports
   cat >"$NGINX_SITE" <<EOF
 server {
@@ -273,9 +258,6 @@ $(ipv6_listen_line)
     server_name ${DOMAIN};
 
     client_max_body_size ${MAX_UPLOAD_MB}m;
-
-    auth_basic "发票账本";
-    auth_basic_user_file ${HTPASSWD_FILE};
 
     location / {
         proxy_pass http://127.0.0.1:${APP_PORT};
@@ -345,6 +327,10 @@ wait_until_healthy() {
   die "服务未能在 30 秒内启动（尝试 ${attempt} 次），请查看上方日志"
 }
 
+password_is_set() {
+  curl -fsS "http://127.0.0.1:${APP_PORT}/api/auth/status" 2>/dev/null | grep -q '"password_set":true'
+}
+
 print_summary() {
   local scheme="http" host="$DOMAIN" port_suffix=""
   [ "$ENABLE_HTTPS" = "true" ] && scheme="https"
@@ -358,14 +344,15 @@ print_summary() {
 ────────────────────────────────────────────────
  发票账本已就绪
  访问地址：${scheme}://${host}${port_suffix}
- 登录用户：${AUTH_USER}
 EOF
-  if [ -n "${GENERATED_PASSWORD:-}" ]; then
-    echo " 登录密码：${GENERATED_PASSWORD}   ← 请妥善保存，仅显示这一次"
+  if password_is_set; then
+    echo " 登录密码：沿用网页中已设置的密码"
   else
-    echo " 登录密码：沿用之前设置（重置：AUTH_PASSWORD=新密码 重新执行本脚本）"
+    echo " 登录密码：尚未设置 ← 请立即打开上面的访问地址，在网页中设置初始密码"
+    echo "          （设置前任何能访问该地址的人都可以设置，请尽快完成）"
   fi
   cat <<EOF
+ 忘记密码：sudo -u ${APP_USER} env INVOICE_SORTING_DATA_DIR=${DATA_DIR} ${APP_DIR}/backend/.venv/bin/invoice-sorting reset-password
  数据目录：${DATA_DIR}（收件箱：${DATA_DIR}/收件箱）
  升级命令：重新执行安装命令即可
  查看日志：journalctl -u ${APP_NAME} -f

@@ -24,6 +24,7 @@
   - [开票地区与订单凭证](#开票地区与订单凭证)
   - [批次：打包外送](#批次打包外送)
   - [统计](#统计)
+  - [登录与密码](#登录与密码)
   - [设置](#设置)
 - [核心概念](#核心概念)
 - [数据与备份](#数据与备份)
@@ -156,6 +157,7 @@ cd backend && uv export --quiet --frozen --no-dev --no-emit-project --extra ocr 
 | `INVOICE_SORTING_OPEN_BROWSER` | `true` | 启动时是否打开浏览器 |
 | `INVOICE_SORTING_WATCH_INBOX` | `true` | 是否监听收件箱文件夹 |
 | `INVOICE_SORTING_FRONTEND_DIST` | `frontend/dist` | 前端构建目录 |
+| `INVOICE_SORTING_AUTH_ENABLED` | `true` | 登录认证；仅本机单人使用时可设为 `false` 关闭 |
 
 ---
 
@@ -169,7 +171,7 @@ cd backend && uv export --quiet --frozen --no-dev --no-emit-project --extra ocr 
 curl -fsSL https://raw.githubusercontent.com/lsgoodlionel/Invoice-sorting/main/deploy/install.sh | sudo bash
 ```
 
-完成后通过 `http://服务器IP:8765` 访问（云服务器需在安全组放行 8765 端口）。终端会打印访问地址、登录用户名和**自动生成的登录密码（只显示一次，请保存）**。
+完成后通过 `http://服务器IP:8765` 访问（云服务器需在安全组放行 8765 端口）。**首次打开网页会要求设置初始登录密码**，设置前无法使用任何功能；安装完成后请尽快打开页面完成设置（设置前任何能访问该地址的人都可以设置）。
 
 ### 使用域名并启用 HTTPS
 
@@ -179,10 +181,12 @@ curl -fsSL https://raw.githubusercontent.com/lsgoodlionel/Invoice-sorting/main/d
 curl -fsSL https://raw.githubusercontent.com/lsgoodlionel/Invoice-sorting/main/deploy/install.sh | sudo DOMAIN=invoice.example.com ENABLE_HTTPS=true EMAIL=you@example.com bash
 ```
 
-### 自定义登录密码 / 重置密码
+### 忘记登录密码
+
+在服务器上执行以下命令清除密码，然后重新打开网页设置新的初始密码（已登录的设备会全部退出）：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/lsgoodlionel/Invoice-sorting/main/deploy/install.sh | sudo AUTH_USER=lionel AUTH_PASSWORD='你的密码' bash
+sudo -u invoice env INVOICE_SORTING_DATA_DIR=/var/lib/invoice-sorting /opt/invoice-sorting/app/backend/.venv/bin/invoice-sorting reset-password
 ```
 
 ### 部署选项
@@ -192,8 +196,6 @@ curl -fsSL https://raw.githubusercontent.com/lsgoodlionel/Invoice-sorting/main/d
 | `DOMAIN` | `_`（任意域名 / IP） | Nginx `server_name` |
 | `ENABLE_HTTPS` | `false` | `true` 时通过 Let's Encrypt 申请证书并强制跳转 HTTPS（需 `DOMAIN`、`EMAIL`） |
 | `EMAIL` | — | 证书通知邮箱 |
-| `AUTH_USER` | `admin` | 网页登录用户名 |
-| `AUTH_PASSWORD` | 首次自动生成 | 提供则设置/重置密码 |
 | `HTTP_PORT` | `8765`（启用 HTTPS 时 `80`） | 对外访问端口（Nginx） |
 | `APP_PORT` | `18765` | 应用内部端口（仅本机，不对外） |
 | `BRANCH` | `main` | 部署的 Git 分支 |
@@ -210,11 +212,11 @@ curl -fsSL https://raw.githubusercontent.com/lsgoodlionel/Invoice-sorting/main/d
 3. 若已有数据库，升级前备份到 `数据目录/备份/upgrade_时间.db`（保留最近 10 份）
 4. 拉取代码（已安装则更新到最新提交），安装后端依赖；前端直接下载 CI 预构建版本（约 300KB，校验与代码版本一致），下载失败或版本不一致时才安装 Node.js 22 在服务器上构建
 5. 注册 systemd 服务 `invoice-sorting`（开机自启、异常自动重启，仅监听 127.0.0.1:18765）
-6. 配置 Nginx 反向代理（对外 8765 端口）+ 登录密码（HTTP Basic Auth），上传上限 100 MB
+6. 配置 Nginx 反向代理（对外 8765 端口），上传上限 100 MB；登录由应用自身负责（首次打开网页设置初始密码）
 7. 防火墙 ufw 已启用时放行端口；按需申请 HTTPS 证书
 8. 健康检查通过后打印访问信息
 
-> 应用本身没有账号体系，公网部署务必保留 Nginx 登录密码，建议启用 HTTPS。
+> 公网部署建议启用 HTTPS，避免登录密码与会话在网络中明文传输。
 
 ### 运维命令
 
@@ -360,6 +362,14 @@ scp *.pdf user@server:/tmp/ && ssh user@server 'sudo install -o invoice -g invoi
 - 交叉表：按分类 / 经费项目 / 商家 / 月份分组 × 状态，点击金额跳转到对应明细；统计数字与清单页同条件合计保持一致。
 - 按月趋势柱状图；「导出 Excel」输出汇总与明细。
 
+### 登录与密码
+
+- **首次打开**：显示“设置初始密码”页（8–128 个字符，输入两次），设置完成后自动登录。设置前所有数据都无法访问。
+- **之后访问**：未登录时显示登录页；登录状态保存 30 天（每次使用自动续期）。
+- **修改密码 / 退出登录**：「设置 → 登录与安全」。修改密码后，其他设备需要重新登录。
+- **安全措施**：密码加盐哈希存储；同一 IP 15 分钟内输错 5 次锁定 15 分钟；会话 Cookie 不可被网页脚本读取。
+- **忘记密码**：见[常见问题](#常见问题)中的重置命令。
+
 ### 设置
 
 | 设置项 | 说明 |
@@ -466,7 +476,10 @@ scp *.pdf user@server:/tmp/ && ssh user@server 'sudo install -o invoice -g invoi
 导入确认表中可以直接修改；确认后在记录详情里也能修改。识别不出的发票会作为附件导入，手工填写即可。建议把识别有误的发票版式反馈到 Issues。
 
 **可以多人使用吗？**
-当前版本为个人使用设计，没有账号与权限体系。服务器部署时通过 Nginx 登录密码保护访问。
+当前版本为个人使用设计，只有一个登录密码，没有多账号与权限体系。
+
+**忘记登录密码怎么办？**
+服务器：`sudo -u invoice env INVOICE_SORTING_DATA_DIR=/var/lib/invoice-sorting /opt/invoice-sorting/app/backend/.venv/bin/invoice-sorting reset-password`；本机：`backend/.venv/bin/invoice-sorting reset-password`。执行后重新打开网页设置初始密码。
 
 **如何迁移到另一台电脑或服务器？**
 停止应用后复制整个数据目录到新位置（服务器上注意 `chown -R invoice:invoice /var/lib/invoice-sorting`），再启动即可。
