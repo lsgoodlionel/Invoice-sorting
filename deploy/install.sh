@@ -111,7 +111,8 @@ install_uv() {
   log "安装 uv（来源 ${PYPI_INDEX}）"
   # 从选中的 PyPI 源安装 uv，避免国内访问 GitHub Releases 过慢
   python3 -m venv "${INSTALL_DIR}/tools"
-  "${INSTALL_DIR}/tools/bin/pip" install --quiet --index-url "$PYPI_INDEX" uv
+  "${INSTALL_DIR}/tools/bin/pip" install --quiet --timeout 120 --retries 10 \
+    --index-url "$PYPI_INDEX" uv
   ln -sf "${INSTALL_DIR}/tools/bin/uv" /usr/local/bin/uv
 }
 

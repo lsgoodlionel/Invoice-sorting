@@ -10,6 +10,8 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"  # 在仓库目录内运行，避免读取调用者目录中的 uv.toml / .npmrc
+# 慢速网络下放宽下载超时（uv 默认 30 秒）
+export UV_HTTP_TIMEOUT="${UV_HTTP_TIMEOUT:-300}" UV_HTTP_RETRIES="${UV_HTTP_RETRIES:-5}"
 # shellcheck source=lib/mirrors.sh
 . "$ROOT/scripts/lib/mirrors.sh"
 

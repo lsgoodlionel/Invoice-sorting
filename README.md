@@ -108,6 +108,12 @@ cd backend && uv export --quiet --frozen --no-dev --no-emit-project --extra ocr 
 
 **Ubuntu 服务器**（一键部署安装的实例）：
 
+> 前提：一键安装已经成功完成（终端最后打印了“发票账本已就绪”）。可用下面的命令确认后端运行环境存在，输出 `环境正常` 才继续；若提示不存在，请先重新执行一键安装命令（可加 `NO_OCR=1` 先快速装好）：
+>
+> ```bash
+> test -x /opt/invoice-sorting/app/backend/.venv/bin/python && echo 环境正常 || echo 后端环境不存在，请先完成一键安装
+> ```
+
 1. 安装 OCR 运行所需的系统库：
 
    ```bash
@@ -119,13 +125,13 @@ cd backend && uv export --quiet --frozen --no-dev --no-emit-project --extra ocr 
    官方源：
 
    ```bash
-   cd /opt/invoice-sorting/app/backend && sudo -u invoice env HOME=/opt/invoice-sorting UV_NO_CONFIG=1 UV_CACHE_DIR=/opt/invoice-sorting/.cache/uv sh -c 'uv export --quiet --frozen --no-dev --no-emit-project --extra ocr --format requirements-txt -o /opt/invoice-sorting/.cache/ocr-req.txt && uv pip install --python .venv/bin/python --index-url https://pypi.org/simple -r /opt/invoice-sorting/.cache/ocr-req.txt'
+   cd /opt/invoice-sorting/app/backend && sudo -u invoice env HOME=/opt/invoice-sorting UV_NO_CONFIG=1 UV_HTTP_TIMEOUT=300 UV_CACHE_DIR=/opt/invoice-sorting/.cache/uv sh -c 'uv export --quiet --frozen --no-dev --no-emit-project --extra ocr --format requirements-txt -o /opt/invoice-sorting/.cache/ocr-req.txt && uv pip install --python .venv/bin/python --index-url https://pypi.org/simple -r /opt/invoice-sorting/.cache/ocr-req.txt'
    ```
 
    阿里云镜像：
 
    ```bash
-   cd /opt/invoice-sorting/app/backend && sudo -u invoice env HOME=/opt/invoice-sorting UV_NO_CONFIG=1 UV_CACHE_DIR=/opt/invoice-sorting/.cache/uv sh -c 'uv export --quiet --frozen --no-dev --no-emit-project --extra ocr --format requirements-txt -o /opt/invoice-sorting/.cache/ocr-req.txt && uv pip install --python .venv/bin/python --index-url https://mirrors.aliyun.com/pypi/simple -r /opt/invoice-sorting/.cache/ocr-req.txt'
+   cd /opt/invoice-sorting/app/backend && sudo -u invoice env HOME=/opt/invoice-sorting UV_NO_CONFIG=1 UV_HTTP_TIMEOUT=300 UV_CACHE_DIR=/opt/invoice-sorting/.cache/uv sh -c 'uv export --quiet --frozen --no-dev --no-emit-project --extra ocr --format requirements-txt -o /opt/invoice-sorting/.cache/ocr-req.txt && uv pip install --python .venv/bin/python --index-url https://mirrors.aliyun.com/pypi/simple -r /opt/invoice-sorting/.cache/ocr-req.txt'
    ```
 
 3. 预先下载识别模型（约 30MB，首次识别时也会自动下载）并确认可用，然后重启服务：
