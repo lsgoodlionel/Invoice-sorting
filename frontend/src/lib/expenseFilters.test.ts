@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { decodeExpenseFilters, encodeExpenseFilters, expensesLink, filtersToQuery } from './expenseFilters';
+import { decodeExpenseFilters, encodeExpenseFilters, expenseDetailLink, expensesLink, filtersToQuery, parseOpenExpenseId } from './expenseFilters';
 
 const NOW = new Date('2026-09-17T02:00:00Z');
 
@@ -56,5 +56,12 @@ describe('expense filters', () => {
   test('expensesLink starts from all-time filters', () => {
     expect(expensesLink({ missingOnly: true })).toBe('/expenses?period=all&missing=true');
     expect(expensesLink({ statuses: ['spent'] })).toBe('/expenses?period=all&status=spent');
+  });
+
+  test('expenseDetailLink opens a record drawer via the open param', () => {
+    expect(expenseDetailLink(12)).toBe('/expenses?period=all&open=12');
+    expect(parseOpenExpenseId(new URLSearchParams('open=12'))).toBe(12);
+    expect(parseOpenExpenseId(new URLSearchParams('open=abc'))).toBeNull();
+    expect(parseOpenExpenseId(new URLSearchParams(''))).toBeNull();
   });
 });

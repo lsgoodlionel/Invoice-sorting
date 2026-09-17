@@ -37,8 +37,20 @@ function isEnvelope(value: unknown): value is ApiEnvelope<unknown> {
 const GENERIC_ERROR = '请求失败';
 const NETWORK_ERROR = '无法连接本地服务，请确认后端已启动';
 
-async function readJson(response: Response): Promise<unknown> {
-  const text = await response.text();
+/** 从已解析的响应体取信封数据：ok=false 或非 2xx 时抛出 ApiError（优先使用后端中文 error）。 */
+export function unwrapEnvelope<T>(body: unknown, status: number): T {
+  const isHttpOk = status >= 200 && status < 300;
+  if (!isEnvelope(body)) {
+    throw new ApiError(`${GENERIC_ERROR}（HTTP ${status}）`, status);
+  }
+  if (!body.ok || !isHttpOk) {
+    throw new ApiError(body.error || `${GENERIC_ERROR}（HTTP ${status}）`, status);
+  }
+  return body.data as T;
+}
+
+/** 把响应文本解析为 JSON；空串或非法 JSON 返回 null。 */
+export function parseJsonText(text: string): unknown {
   if (!text) return null;
   try {
     return JSON.parse(text) as unknown;
@@ -47,16 +59,9 @@ async function readJson(response: Response): Promise<unknown> {
   }
 }
 
-/** 解析信封：ok=false 或非 2xx 时抛出 ApiError（优先使用后端中文 error）。 */
+/** 解析 fetch 响应的信封。 */
 export async function parseEnvelope<T>(response: Response): Promise<T> {
-  const body = await readJson(response);
-  if (!isEnvelope(body)) {
-    throw new ApiError(`${GENERIC_ERROR}（HTTP ${response.status}）`, response.status);
-  }
-  if (!body.ok || !response.ok) {
-    throw new ApiError(body.error || `${GENERIC_ERROR}（HTTP ${response.status}）`, response.status);
-  }
-  return body.data as T;
+  return unwrapEnvelope<T>(parseJsonText(await response.text()), response.status);
 }
 
 export interface RequestOptions {

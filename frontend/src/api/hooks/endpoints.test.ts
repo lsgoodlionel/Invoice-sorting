@@ -16,7 +16,7 @@ function allRoutes() {
     'POST /api/expenses/1/status', 'POST /api/expenses/1/attachments',
     'GET /api/attachments/unassigned', 'PATCH /api/attachments/2', 'DELETE /api/attachments/2', 'PATCH /api/checklist-items/3',
     'POST /api/attachments/bulk-delete', 'POST /api/attachments/bulk-assign', 'POST /api/attachments/create-expenses', 'POST /api/attachments/reparse', 'GET /api/attachments/2/candidates',
-    'POST /api/imports', 'POST /api/imports/s%201/confirm',
+    'POST /api/imports/start', 'POST /api/imports/s%201/finish', 'POST /api/imports/s%201/confirm',
     'GET /api/batches', 'POST /api/batches', 'GET /api/batches/4', 'PATCH /api/batches/4', 'DELETE /api/batches/4',
     'POST /api/batches/4/items', 'POST /api/batches/4/export', 'POST /api/batches/4/sent', 'POST /api/batches/4/received', 'POST /api/batches/4/reopen', 'DELETE /api/exports/8',
     'GET /api/stats', 'GET /api/dashboard',
@@ -73,9 +73,12 @@ describe('endpoint functions follow the contract', () => {
 
   test('imports', async () => {
     const { calls } = mockFetch(allRoutes());
-    await importsApi.upload([new File(['a'], 'a.pdf')]);
+    await importsApi.start();
+    await importsApi.finish('s 1');
     await importsApi.confirm('s 1', { groups: [{ group_id: 'g1', attachment_ids: [1], action: 'skip' }] });
-    expect(calls[1]).toMatchObject({
+    expect(calls[0]).toMatchObject({ method: 'POST', url: '/api/imports/start' });
+    expect(calls[1]).toMatchObject({ method: 'POST', url: '/api/imports/s%201/finish' });
+    expect(calls[2]).toMatchObject({
       method: 'POST',
       url: '/api/imports/s%201/confirm',
       body: { groups: [{ group_id: 'g1', attachment_ids: [1], action: 'skip' }] },

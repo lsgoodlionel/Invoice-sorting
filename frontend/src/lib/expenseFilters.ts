@@ -88,3 +88,14 @@ export function expensesLink(partial: Partial<ExpenseFilters>): string {
   };
   return `/expenses?${encodeExpenseFilters({ ...base, ...partial }).toString()}`;
 }
+
+const OPEN_PARAM = 'open';
+
+/** 跳转清单页并打开指定记录详情。 */
+export function expenseDetailLink(expenseId: number): string {
+  return `${expensesLink({})}&${OPEN_PARAM}=${expenseId}`;
+}
+
+export function parseOpenExpenseId(params: URLSearchParams): number | null {
+  return parseId(params.get(OPEN_PARAM));
+}

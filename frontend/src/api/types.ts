@@ -352,6 +352,25 @@ export interface ImportSession {
   notices: ImportNotice[];
 }
 
+export type ImportFileStatus = 'imported' | 'duplicate' | 'error';
+
+/** 分文件导入：单个文件上传并处理完成后的结果。 */
+export interface ImportFileResult {
+  original_name: string;
+  status: ImportFileStatus;
+  /** imported 时为已入库附件 */
+  attachment: Attachment | null;
+  /** 中文识别结论，如“发票”“订单明细（京东订单）” */
+  recognized_as: string;
+  /** duplicate/error 的原因；imported 时可为提醒或空串 */
+  message: string;
+  existing_expense_id: number | null;
+}
+
+export interface ImportStartResult {
+  session_id: string;
+}
+
 export interface ConfirmGroup {
   group_id: string;
   /** 以前端当前分组为准 */

@@ -125,4 +125,11 @@ describe('ExpensesPage', () => {
     fireEvent.dragEnter(row, { dataTransfer: { types: ['text/plain'], files: [] } });
     expect(row).not.toHaveAttribute('data-drop-over');
   });
+
+  test('opens the record drawer from the open URL param', async () => {
+    const { calls } = setupRoutes(list, { 'GET /api/expenses/2': makeDetail({ id: 2, merchant: '腾讯云详情' }) });
+    renderWithProviders(<ExpensesPage />, { route: '/expenses?period=all&open=2' });
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    await waitFor(() => expect(calls.some((call) => call.url === '/api/expenses/2')).toBe(true));
+  });
 });

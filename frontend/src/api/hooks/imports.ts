@@ -1,21 +1,19 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../client';
-import type { ImportConfirmInput, ImportConfirmResult, ImportSession } from '../types';
+import type { ImportConfirmInput, ImportConfirmResult, ImportSession, ImportStartResult } from '../types';
+import { uploadImportFile } from '../upload';
 import { invalidateWorkflow } from './invalidate';
 
-export const importsApi = {
-  upload: (files: readonly File[]) => api.upload<ImportSession>('/imports', files),
-  confirm: (sessionId: string, input: ImportConfirmInput) =>
-    api.post<ImportConfirmResult>(`/imports/${encodeURIComponent(sessionId)}/confirm`, input),
-};
+const sessionPath = (sessionId: string) => `/imports/${encodeURIComponent(sessionId)}`;
 
-export function useImportFiles() {
-  const client = useQueryClient();
-  return useMutation({
-    mutationFn: (files: readonly File[]) => importsApi.upload(files),
-    onSuccess: () => invalidateWorkflow(client),
-  });
-}
+/** 分文件导入：start → 逐个上传文件（带进度）→ finish 分组 → confirm。 */
+export const importsApi = {
+  start: () => api.post<ImportStartResult>('/imports/start'),
+  uploadFile: uploadImportFile,
+  finish: (sessionId: string) => api.post<ImportSession>(`${sessionPath(sessionId)}/finish`),
+  confirm: (sessionId: string, input: ImportConfirmInput) =>
+    api.post<ImportConfirmResult>(`${sessionPath(sessionId)}/confirm`, input),
+};
 
 export function useConfirmImport() {
   const client = useQueryClient();

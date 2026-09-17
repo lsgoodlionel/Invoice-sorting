@@ -5,15 +5,13 @@ import { ACCEPTED_FILE_TYPES } from '../UploadDrop';
 
 interface ImportDropzoneProps {
   onFiles: (files: File[]) => void;
-  isLoading: boolean;
   inboxDir?: string;
 }
 
-export function ImportDropzone({ onFiles, isLoading, inboxDir }: ImportDropzoneProps) {
+export function ImportDropzone({ onFiles, inboxDir }: ImportDropzoneProps) {
   return (
     <Dropzone
       onDrop={onFiles}
-      loading={isLoading}
       multiple
       accept={ACCEPTED_FILE_TYPES}
       className="import-dropzone"

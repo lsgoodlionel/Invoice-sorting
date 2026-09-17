@@ -1,7 +1,8 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, test } from 'vitest';
-import type { ImportConfirmInput, ImportSession } from '../api/types';
+import type { ImportConfirmInput, ImportFileResult, ImportSession } from '../api/types';
+import { FakeXhr, installFakeXhr } from '../test/fakeXhr';
 import { mockFetch, type RecordedCall } from '../test/fetchMock';
 import { makeAttachment, makeCandidate, makeEvidence, makeGroup, makeInvoice, makeSession } from '../test/fixtures';
 import { renderWithProviders } from '../test/render';
@@ -30,9 +31,13 @@ const session: ImportSession = makeSession({
     }),
     makeGroup({ group_id: 'g3', attachments: [otherInvoice], suggested_action: 'skip', warnings: ['可能重复：同订单发票已在 #7'] }),
   ],
-  duplicates: [{ original_name: 'dup.pdf', existing_expense_id: 7, reason: '发票号码重复' }],
-  errors: [{ original_name: 'bad.ofd', error: '无法解析' }],
 });
+
+const importedResult = (name: string, overrides: Partial<ImportFileResult> = {}): ImportFileResult => ({
+  original_name: name, status: 'imported', attachment: invoice, recognized_as: '发票', message: '', existing_expense_id: null, ...overrides,
+});
+
+const envelope = (data: unknown) => ({ ok: true, data, error: null });
 
 function setupRoutes() {
   return mockFetch({
@@ -44,16 +49,26 @@ function setupRoutes() {
     'GET /api/projects': [],
     'GET /api/expenses': { items: [], total: 0, total_cents: 0, status_counts: {} },
     'GET /api/attachments/unassigned': [],
-    'POST /api/imports': session,
+    'POST /api/imports/start': { session_id: 'sess-1' },
+    'POST /api/imports/sess-1/finish': session,
     'POST /api/imports/sess-1/confirm': { created: [100], attached: [12], skipped: 1 },
   });
 }
 
+async function dropFiles(user: ReturnType<typeof userEvent.setup>, names: string[]) {
+  const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+  await user.upload(input, names.map((name) => new File(['%PDF'], name, { type: 'application/pdf' })));
+}
+
+const xhrFor = (index: number) => FakeXhr.instances[index];
+
 async function uploadSession(user: ReturnType<typeof userEvent.setup>) {
+  installFakeXhr();
   renderWithProviders(<CollectPage />, { route: '/collect' });
   expect(await screen.findByText(/\/d\/收件箱/)).toBeInTheDocument();
-  const input = document.querySelector('input[type="file"]') as HTMLInputElement;
-  await user.upload(input, [new File(['%PDF'], 'a.pdf', { type: 'application/pdf' })]);
+  await dropFiles(user, ['a.pdf']);
+  await waitFor(() => expect(FakeXhr.instances).toHaveLength(1));
+  xhrFor(0).respond(200, envelope(importedResult('a.pdf')));
   return screen.findByTestId('import-group-g1');
 }
 
@@ -66,14 +81,65 @@ async function pickOption(user: ReturnType<typeof userEvent.setup>, input: HTMLI
   await user.click(await screen.findByRole('option', { name }));
 }
 
+describe('CollectPage upload progress', () => {
+  test('shows per-file progress and only shows the confirm table after every file settles', async () => {
+    const user = userEvent.setup();
+    const { calls } = setupRoutes();
+    installFakeXhr();
+    renderWithProviders(<CollectPage />, { route: '/collect' });
+    expect(await screen.findByText(/\/d\/收件箱/)).toBeInTheDocument();
+
+    await dropFiles(user, ['发票1.pdf', '订单2.pdf']);
+    await waitFor(() => expect(FakeXhr.instances).toHaveLength(2));
+    expect(xhrFor(0).url).toBe('/api/imports/sess-1/files');
+    expect(screen.getByText('正在导入 2 个文件 · 已完成 0 · 重复 0 · 失败 0')).toBeInTheDocument();
+
+    act(() => xhrFor(0).emitProgress(30, 100));
+    const first = screen.getByRole('listitem', { name: '发票1.pdf' });
+    expect(within(first).getByText('上传中 30%')).toBeInTheDocument();
+    act(() => xhrFor(0).emitProgress(100, 100));
+    expect(within(first).getByText('识别中…')).toBeInTheDocument();
+
+    act(() => xhrFor(0).respond(200, envelope(importedResult('发票1.pdf', { recognized_as: '发票' }))));
+    expect(await within(first).findByText('识别为：发票')).toBeInTheDocument();
+    expect(screen.getByText('等待全部文件处理完成后再确认分组…')).toBeInTheDocument();
+    expect(screen.queryByTestId('import-group-g1')).not.toBeInTheDocument();
+    expect(calls.some((call) => call.url === '/api/imports/sess-1/finish')).toBe(false);
+
+    act(() => xhrFor(1).respond(200, envelope(importedResult('订单2.pdf', { status: 'duplicate', attachment: null, message: '订单号重复', existing_expense_id: 9 }))));
+    expect(await screen.findByTestId('import-group-g1')).toBeInTheDocument();
+    expect(screen.getByText('导入完成：新增 1 · 重复 1 · 失败 0')).toBeInTheDocument();
+    expect(within(screen.getByRole('listitem', { name: '订单2.pdf' })).getByRole('link', { name: '查看 #9' })).toBeInTheDocument();
+    expect(calls.filter((call) => call.url === '/api/imports/start')).toHaveLength(1);
+  });
+
+  test('failed file can be retried and clearing the list removes the panel', async () => {
+    const user = userEvent.setup();
+    setupRoutes();
+    installFakeXhr();
+    renderWithProviders(<CollectPage />, { route: '/collect' });
+    expect(await screen.findByText(/\/d\/收件箱/)).toBeInTheDocument();
+    await dropFiles(user, ['坏.pdf']);
+    await waitFor(() => expect(FakeXhr.instances).toHaveLength(1));
+    act(() => xhrFor(0).failNetwork());
+    expect(await screen.findByText('失败：网络错误，上传失败')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '重试 坏.pdf' }));
+    await waitFor(() => expect(FakeXhr.instances).toHaveLength(2));
+    act(() => xhrFor(1).respond(200, envelope(importedResult('坏.pdf'))));
+    await screen.findByTestId('import-group-g1');
+    await user.click(screen.getByRole('button', { name: '清空列表' }));
+    expect(screen.queryByRole('list', { name: '导入文件列表' })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('import-group-g1')).not.toBeInTheDocument();
+  });
+});
+
 describe('CollectPage grouped confirm', () => {
   test('renders groups with files, link reasons, warnings, currency and tally', async () => {
     const user = userEvent.setup();
     setupRoutes();
     const g1 = await uploadSession(user);
     expect(screen.getByText(/本次导入：3 组 · 4 个文件/)).toBeInTheDocument();
-    expect(screen.getByText('dup.pdf')).toBeInTheDocument();
-    expect(screen.getByText('bad.ofd')).toBeInTheDocument();
     expect(within(g1).getByTestId('group-file-10')).toBeInTheDocument();
     expect(within(g1).getByTestId('link-reasons')).toHaveTextContent('订单号一致');
     expect(within(g1).queryByLabelText('原币金额')).not.toBeInTheDocument();
@@ -116,6 +182,7 @@ describe('CollectPage grouped confirm', () => {
     });
     expect(await screen.findByText(/新建 1 条，挂到已有 1 条，1 个文件留在待归属/)).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByTestId('import-group-g1')).not.toBeInTheDocument());
+    expect(screen.queryByRole('list', { name: '导入文件列表' })).not.toBeInTheDocument();
   });
 
   test('moving a second invoice into a group marks it red and disables confirm; splitting restores', async () => {

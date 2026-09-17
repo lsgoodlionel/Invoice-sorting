@@ -14,7 +14,7 @@ import {
   useCreateExpense, useDeleteExpense, useExpense, useExpenseList, useExpenseSearch,
   useSetExpenseStatus, useUpdateExpense, useUploadExpenseAttachments, useUploadToExpense,
 } from './expenses';
-import { useConfirmImport, useImportFiles } from './imports';
+import { useConfirmImport } from './imports';
 import { queryKeys } from './keys';
 import {
   useArchiveCategory, useBackup, useCategories, useChecklistRules, useDeactivateProject, useProjects,
@@ -90,7 +90,6 @@ describe('mutation hooks', () => {
       'PATCH /api/checklist-items/5': detail,
       'PATCH /api/attachments/9': {},
       'DELETE /api/attachments/9': null,
-      'POST /api/imports': { session_id: 's' },
       'POST /api/imports/s/confirm': { created: [], attached: [], skipped: 0 },
     });
     const { client, wrapper } = setup();
@@ -99,7 +98,7 @@ describe('mutation hooks', () => {
         create: useCreateExpense(), update: useUpdateExpense(1), status: useSetExpenseStatus(1),
         upload: useUploadExpenseAttachments(1), uploadTo: useUploadToExpense(), remove: useDeleteExpense(), checklist: useSetChecklistState(),
         updateAttachment: useUpdateAttachment(), deleteAttachment: useDeleteAttachment(),
-        importFiles: useImportFiles(), confirm: useConfirmImport(),
+        confirm: useConfirmImport(),
       }),
       { wrapper },
     );
@@ -113,7 +112,6 @@ describe('mutation hooks', () => {
       await result.current.checklist.mutateAsync({ id: 5, state: 'not_needed' });
       await result.current.updateAttachment.mutateAsync({ id: 9, patch: { kind: 'order' } });
       await result.current.deleteAttachment.mutateAsync(9);
-      await result.current.importFiles.mutateAsync([new File(['a'], 'a.pdf')]);
       await result.current.confirm.mutateAsync({ sessionId: 's', input: { groups: [] } });
     });
     expect(client.getQueryData(queryKeys.expense(1))).toEqual(detail);

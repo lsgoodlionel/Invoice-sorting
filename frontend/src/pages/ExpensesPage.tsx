@@ -2,7 +2,7 @@ import { Button, Group, Loader, Stack, Text, Title } from '@mantine/core';
 import { useHotkeys } from '@mantine/hooks';
 import { IconPlus } from '@tabler/icons-react';
 import { useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router';
+import { Link, useSearchParams } from 'react-router';
 import { useExpenseList } from '../api/hooks/expenses';
 import { EmptyHint } from '../components/EmptyHint';
 import { ExpenseDrawer } from '../components/ExpenseDrawer/ExpenseDrawer';
@@ -15,7 +15,7 @@ import { useExpenseFilters } from '../components/expenses/useExpenseFilters';
 import { usePreventFileDrop } from '../components/expenses/useFileDropTarget';
 import { useRowUpload } from '../components/expenses/useRowUpload';
 import { useQuickAdd } from '../components/QuickAddContext';
-import { filtersToQuery } from '../lib/expenseFilters';
+import { filtersToQuery, parseOpenExpenseId } from '../lib/expenseFilters';
 import { formatCents, sumCents } from '../lib/money';
 import { toggleStatus } from '../lib/status';
 
@@ -29,7 +29,8 @@ export function ExpensesPage() {
   const { data, isLoading } = useExpenseList(query);
   const { openQuickAdd } = useQuickAdd();
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
-  const [openId, setOpenId] = useState<number | null>(null);
+  const [searchParams] = useSearchParams();
+  const [openId, setOpenId] = useState<number | null>(() => parseOpenExpenseId(searchParams));
   const [isBatchOpen, setBatchOpen] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const uploadToRow = useRowUpload();
