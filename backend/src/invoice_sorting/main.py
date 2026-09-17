@@ -44,8 +44,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 from invoice_sorting.importer.watcher import start_inbox_watcher
 
                 watcher = start_inbox_watcher(app)
-            except (ImportError, NotImplementedError):
-                logger.info("收件箱监听未启用")
+            except Exception:
+                logger.exception("收件箱监听启动失败，已跳过")
         yield
         if watcher is not None:
             watcher.stop()

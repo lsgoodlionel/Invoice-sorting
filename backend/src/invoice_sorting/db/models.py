@@ -73,6 +73,7 @@ class Batch(Base):
     note: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
+    project: Mapped[Project | None] = relationship()
     expenses: Mapped[list["Expense"]] = relationship(back_populates="batch")
     exports: Mapped[list["ExportRecord"]] = relationship(
         back_populates="batch", cascade="all, delete-orphan"

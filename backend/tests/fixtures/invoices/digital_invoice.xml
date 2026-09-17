@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<EInvoice xmlns="urn:example:einvoice">
+  <Header>
+    <EIid>26312000000011112222</EIid>
+    <InherentLabel><GeneralOrSpecialVAT>
+      <LabelCode>02</LabelCode><LabelName>普通发票</LabelName>
+    </GeneralOrSpecialVAT></InherentLabel>
+  </Header>
+  <EInvoiceData>
+    <SellerInformation><SellerIdNum>91310000MA1EXAMPLE</SellerIdNum><SellerName>上海示例科技有限公司</SellerName>
+    </SellerInformation>
+    <BuyerInformation><BuyerIdNum>12310000EXAMPLE001</BuyerIdNum><BuyerName>华东师范大学</BuyerName>
+    </BuyerInformation>
+    <BasicInformation>
+      <TotalAmWithoutTax>849.56</TotalAmWithoutTax>
+      <TotalTaxAm>110.44</TotalTaxAm>
+      <TotalTax-includedAmount>960.00</TotalTax-includedAmount>
+      <TotalTax-includedAmountInChinese>玖佰陆拾圆整</TotalTax-includedAmountInChinese>
+      <RequestTime>2026-09-15 10:20:30</RequestTime>
+    </BasicInformation>
+    <IssuItemInformation><ItemName>*计算机配套产品*鼠标</ItemName><Amount>800.00</Amount>
+    </IssuItemInformation>
+    <IssuItemInformation><ItemName>*计算机配套产品*鼠标垫</ItemName><Amount>49.56</Amount>
+    </IssuItemInformation>
+  </EInvoiceData>
+  <TaxSupervisionInfo>
+    <InvoiceNumber>26312000000011112222</InvoiceNumber><IssueTime>2026-09-15</IssueTime>
+  </TaxSupervisionInfo>
+</EInvoice>

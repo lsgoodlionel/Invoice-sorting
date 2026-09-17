@@ -1,0 +1,104 @@
+"""凭证清单：按分类模板与条件计算清单项，并与附件同步（蓝图 4.2 / 11）。"""
+
+from typing import Any
+
+from sqlalchemy import or_, select
+from sqlalchemy.orm import Session
+
+from invoice_sorting.common.constants import ChecklistLevel, ChecklistState
+from invoice_sorting.db.models import Attachment, ChecklistItem, ChecklistRule, Expense
+
+HINT_SEPARATOR = "；"
+LEVEL_STRENGTH = {ChecklistLevel.REQUIRED: 2, ChecklistLevel.SUGGESTED: 1}
+
+
+def condition_matches(condition: dict[str, Any] | None, expense: Expense) -> bool:
+    """condition 中所有键都满足才触发；空条件总是触发。"""
+    condition = condition or {}
+    if "amount_gte" in condition and expense.amount_cents < int(condition["amount_gte"]):
+        return False
+    if "amount_lt" in condition and expense.amount_cents >= int(condition["amount_lt"]):
+        return False
+    if "is_online" in condition and bool(expense.is_online) != bool(condition["is_online"]):
+        return False
+    return True
+
+
+def _merge(first: ChecklistRule, second: ChecklistRule) -> ChecklistRule:
+    strength = LEVEL_STRENGTH.get
+    level = max(first.level, second.level, key=lambda value: strength(value, 0))
+    hints = [hint for hint in first.hint.split(HINT_SEPARATOR) if hint]
+    if second.hint and second.hint not in hints:
+        hints.append(second.hint)
+    return ChecklistRule(
+        id=first.id,
+        category_id=first.category_id,
+        attachment_kind=first.attachment_kind,
+        level=level,
+        condition={},
+        hint=HINT_SEPARATOR.join(hints),
+    )
+
+
+def evaluate_rules(session: Session, expense: Expense) -> list[ChecklistRule]:
+    """返回触发的规则（每种附件类型一条，取最严级别并合并提示）。
+
+    多条规则合并时返回未入库的临时对象，调用方不应把它加入会话。
+    """
+    category_filter = ChecklistRule.category_id.is_(None)
+    if expense.category_id is not None:
+        category_filter = or_(category_filter, ChecklistRule.category_id == expense.category_id)
+    rules = session.scalars(select(ChecklistRule).where(category_filter).order_by(ChecklistRule.id))
+    merged: dict[str, ChecklistRule] = {}
+    for rule in rules:
+        if not condition_matches(rule.condition, expense):
+            continue
+        kind = rule.attachment_kind
+        merged[kind] = _merge(merged[kind], rule) if kind in merged else rule
+    return list(merged.values())
+
+
+def _attachment_kinds(session: Session, expense: Expense) -> set[str]:
+    session.flush()
+    query = select(Attachment.kind).where(Attachment.expense_id == expense.id)
+    return set(session.scalars(query))
+
+
+def _state_for(item: ChecklistItem, present_kinds: set[str]) -> str:
+    if item.state == ChecklistState.NOT_NEEDED:
+        return ChecklistState.NOT_NEEDED
+    if item.attachment_kind in present_kinds:
+        return ChecklistState.PRESENT
+    return ChecklistState.MISSING
+
+
+def compute_checklist(session: Session, expense: Expense) -> None:
+    """同步清单项：保留“不需要”，新增触发项，删除不再触发且仍缺少的项。"""
+    present_kinds = _attachment_kinds(session, expense)
+    triggered = {rule.attachment_kind: rule for rule in evaluate_rules(session, expense)}
+    existing: dict[str, ChecklistItem] = {}
+    for item in list(expense.checklist_items):
+        if item.attachment_kind in existing:
+            expense.checklist_items.remove(item)  # 清理重复项
+            continue
+        existing[item.attachment_kind] = item
+    for kind, rule in triggered.items():
+        item = existing.get(kind)
+        if item is None:
+            item = ChecklistItem(attachment_kind=kind, state=ChecklistState.MISSING)
+            expense.checklist_items.append(item)
+        item.level = rule.level
+        item.hint = rule.hint
+    for item in list(expense.checklist_items):
+        item.state = _state_for(item, present_kinds)
+        if item.attachment_kind not in triggered and item.state == ChecklistState.MISSING:
+            expense.checklist_items.remove(item)
+    session.flush()
+
+
+def required_missing_count(expense: Expense) -> int:
+    return sum(
+        1
+        for item in expense.checklist_items
+        if item.level == ChecklistLevel.REQUIRED and item.state == ChecklistState.MISSING
+    )
