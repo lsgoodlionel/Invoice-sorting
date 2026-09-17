@@ -45,7 +45,7 @@ DETAIL_KEYS = {
     "is_online", "note", "void_reason", "sent_on", "reimbursed_on", "reimbursed_cents",
     "folder_path", "route_hint", "attachments", "checklist", "timeline", "created_at",
     "updated_at", "region_name", "is_nonlocal", "invoice_exempt", "currency",
-    "original_amount_cents",
+    "original_amount_cents", "created_by",
 }  # fmt: skip
 
 

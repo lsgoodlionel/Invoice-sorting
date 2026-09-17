@@ -4,7 +4,14 @@ from fastapi.testclient import TestClient
 
 from invoice_sorting import main
 from invoice_sorting.config import Settings
-from tests.auth_helpers import COOKIE, PASSWORD, auth_rows, set_cookie_headers, setup_password
+from tests.auth_helpers import (
+    COOKIE,
+    PASSWORD,
+    auth_rows,
+    login,
+    set_cookie_headers,
+    setup_password,
+)
 
 NEW_PASSWORD = "brand-new-pass-456"
 
@@ -48,7 +55,7 @@ def test_change_password_requires_login(auth_client):
 def test_change_password_revokes_other_sessions(auth_app, auth_client):
     setup_password(auth_client)
     other = TestClient(auth_app)
-    assert other.post("/api/auth/login", json={"password": PASSWORD}).status_code == 200
+    assert login(other).status_code == 200
     assert len(auth_rows(auth_app)) == 2
 
     body = {"current_password": PASSWORD, "new_password": NEW_PASSWORD}
@@ -60,8 +67,8 @@ def test_change_password_revokes_other_sessions(auth_app, auth_client):
     assert other.get("/api/expenses").status_code == 401
     assert len(auth_rows(auth_app)) == 1
     anon = TestClient(auth_app)
-    assert anon.post("/api/auth/login", json={"password": PASSWORD}).status_code == 401
-    assert anon.post("/api/auth/login", json={"password": NEW_PASSWORD}).status_code == 200
+    assert login(anon).status_code == 401
+    assert login(anon, NEW_PASSWORD).status_code == 200
 
 
 def test_auth_disabled_allows_everything(client):
@@ -70,6 +77,7 @@ def test_auth_disabled_allows_everything(client):
         "auth_enabled": False,
         "password_set": False,
         "authenticated": True,
+        "user": None,
     }
     client.cookies.set(COOKIE, "forged")
     assert client.get("/api/settings").status_code == 200
@@ -88,10 +96,15 @@ def test_reset_password_command(auth_app, auth_client, auth_settings, monkeypatc
 
     main.run(["reset-password"])
 
-    assert "已清除登录密码，请打开网页重新设置初始密码" in capsys.readouterr().out
+    assert "已清除 admin 登录密码，请打开网页重新设置初始密码" in capsys.readouterr().out
     assert auth_rows(auth_app) == []
     status = auth_client.get("/api/auth/status").json()["data"]
-    assert status == {"auth_enabled": True, "password_set": False, "authenticated": False}
+    assert status == {
+        "auth_enabled": True,
+        "password_set": False,
+        "authenticated": False,
+        "user": None,
+    }
     assert auth_client.get("/api/expenses").json()["error"] == "请先设置初始密码"
     assert auth_client.post("/api/auth/setup", json={"password": NEW_PASSWORD}).status_code == 200
 

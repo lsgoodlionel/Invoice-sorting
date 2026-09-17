@@ -11,8 +11,8 @@ from invoice_sorting.attachments.storage import store_file
 from invoice_sorting.common.constants import AttachmentKind
 from tests.auth_helpers import (
     COOKIE,
-    PASSWORD,
     auth_rows,
+    login,
     session_cookie_header,
     set_cookie_headers,
     setup_password,
@@ -28,14 +28,10 @@ def ready(auth_client):
     return auth_client
 
 
-def login(client, password: str = PASSWORD):
-    return client.post("/api/auth/login", json={"password": password})
-
-
 def test_wrong_password_rejected(ready):
     response = login(ready, "wrong-password")
     assert response.status_code == 401
-    assert response.json() == {"ok": False, "data": None, "error": "密码错误"}
+    assert response.json() == {"ok": False, "data": None, "error": "用户名或密码错误"}
     assert "set-cookie" not in response.headers
     assert ready.get("/api/expenses").json()["error"] == "请先登录"
 
@@ -48,7 +44,8 @@ def test_login_rejects_short_or_oversized_input(ready):
 def test_login_grants_access(ready):
     response = login(ready)
     assert response.status_code == 200
-    assert response.json()["data"] == {"authenticated": True}
+    user = {"id": 1, "username": "admin", "display_name": "管理员", "role": "admin"}
+    assert response.json()["data"] == {"authenticated": True, "user": user}
     session_cookie_header(response)
     assert ready.get("/api/expenses").status_code == 200
     assert ready.get("/api/auth/status").json()["data"]["authenticated"] is True

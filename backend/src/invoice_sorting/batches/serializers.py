@@ -12,6 +12,7 @@ from invoice_sorting.common.constants import BATCH_STATUS_LABELS, BatchStatus
 from invoice_sorting.db.models import Batch, Expense, ExportRecord
 from invoice_sorting.expenses.serializers import serialize_expense_summary
 from invoice_sorting.settings.service import region_policy
+from invoice_sorting.users.refs import user_ref
 
 
 def active_expenses(batch: Batch) -> list[Expense]:
@@ -45,6 +46,7 @@ def serialize_batch(batch: Batch) -> dict[str, Any]:
         "received_cents": batch.received_cents or 0,
         "note": batch.note or "",
         "created_at": iso_datetime(batch.created_at),
+        "created_by": user_ref(batch.created_by),
         "item_count": len(items),
         "total_cents": sum(expense.amount_cents for expense in items),
         "missing_item_count": sum(1 for expense in items if required_missing_count(expense) > 0),
@@ -61,6 +63,7 @@ def serialize_export_record(record: ExportRecord) -> dict[str, Any]:
         "item_count": record.item_count,
         "total_cents": record.total_cents,
         "created_at": iso_datetime(record.created_at),
+        "created_by": user_ref(record.created_by),
     }
 
 

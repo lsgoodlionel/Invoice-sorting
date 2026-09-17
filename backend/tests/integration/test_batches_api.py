@@ -13,7 +13,7 @@ from tests.integration.test_batches_helpers import (
 BATCH_KEYS = {
     "id", "name", "project_id", "project_name", "status", "status_label", "sent_on", "sent_via",
     "receiver", "external_no", "received_on", "received_cents", "note", "created_at",
-    "item_count", "total_cents", "missing_item_count",
+    "created_by", "item_count", "total_cents", "missing_item_count",
 }  # fmt: skip
 
 

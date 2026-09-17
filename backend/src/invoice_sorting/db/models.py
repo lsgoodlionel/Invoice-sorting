@@ -7,6 +7,8 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import JSON, Boolean, Date, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
+from invoice_sorting.auth.context import current_user_id
+
 TZ = ZoneInfo("Asia/Shanghai")
 
 
@@ -16,6 +18,33 @@ def now() -> datetime:
 
 class Base(DeclarativeBase):
     pass
+
+
+USER_FK = "app_user.id"
+
+
+def actor_column() -> Mapped[int | None]:
+    """上传人/操作人外键：默认取当前请求的登录用户（未认证、关闭认证、收件箱为空）。"""
+    return mapped_column(ForeignKey(USER_FK), nullable=True, default=current_user_id)
+
+
+def actor_relationship(column: str) -> Any:
+    return relationship(foreign_keys=column, lazy="selectin")
+
+
+class User(Base):
+    """用户。用户名存储为小写且唯一；用户不物理删除，停用后历史记录仍显示姓名。"""
+
+    __tablename__ = "app_user"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    username: Mapped[str] = mapped_column(String(32), unique=True)
+    display_name: Mapped[str] = mapped_column(String(32))
+    role: Mapped[str] = mapped_column(String(20), default="member")
+    password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class Category(Base):
@@ -74,8 +103,10 @@ class Batch(Base):
     received_cents: Mapped[int] = mapped_column(Integer, default=0)
     note: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    created_by_id: Mapped[int | None] = actor_column()
 
     project: Mapped[Project | None] = relationship()
+    created_by: Mapped[User | None] = actor_relationship("Batch.created_by_id")
     expenses: Mapped[list["Expense"]] = relationship(back_populates="batch")
     exports: Mapped[list["ExportRecord"]] = relationship(
         back_populates="batch", cascade="all, delete-orphan"
@@ -109,9 +140,11 @@ class Expense(Base):
     deleted: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
+    created_by_id: Mapped[int | None] = actor_column()
 
     category: Mapped[Category | None] = relationship()
     project: Mapped[Project | None] = relationship()
+    created_by: Mapped[User | None] = actor_relationship("Expense.created_by_id")
     batch: Mapped[Batch | None] = relationship(back_populates="expenses")
     attachments: Mapped[list["Attachment"]] = relationship(back_populates="expense")
     checklist_items: Mapped[list["ChecklistItem"]] = relationship(
@@ -137,8 +170,10 @@ class Attachment(Base):
     size: Mapped[int] = mapped_column(Integer, default=0)
     file_key: Mapped[str] = mapped_column(String(200), default="")  # 文件名键（设计 3.3）
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    uploaded_by_id: Mapped[int | None] = actor_column()
 
     expense: Mapped[Expense | None] = relationship(back_populates="attachments")
+    uploaded_by: Mapped[User | None] = actor_relationship("Attachment.uploaded_by_id")
     invoice_data: Mapped["InvoiceData | None"] = relationship(
         back_populates="attachment", cascade="all, delete-orphan", uselist=False
     )
@@ -219,8 +254,10 @@ class StatusEvent(Base):
     is_manual: Mapped[bool] = mapped_column(Boolean, default=False)
     note: Mapped[str] = mapped_column(Text, default="")
     at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    actor_id: Mapped[int | None] = actor_column()
 
     expense: Mapped[Expense] = relationship(back_populates="status_events")
+    actor: Mapped[User | None] = actor_relationship("StatusEvent.actor_id")
 
 
 class ExportRecord(Base):
@@ -234,8 +271,10 @@ class ExportRecord(Base):
     item_count: Mapped[int] = mapped_column(Integer)
     total_cents: Mapped[int] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    created_by_id: Mapped[int | None] = actor_column()
 
     batch: Mapped[Batch] = relationship(back_populates="exports")
+    created_by: Mapped[User | None] = actor_relationship("ExportRecord.created_by_id")
 
 
 class MerchantMemory(Base):
@@ -273,6 +312,8 @@ class AuthSession(Base):
     __tablename__ = "auth_session"
 
     token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    # 旧库补列时无法追加 NOT NULL，启动迁移会删除 user_id 为空的旧会话
+    user_id: Mapped[int] = mapped_column(ForeignKey(USER_FK), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)

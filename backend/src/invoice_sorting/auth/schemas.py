@@ -1,4 +1,4 @@
-"""认证请求体。密码 8–128 个字符；登录/当前密码只限制上限，错误统一按“密码错误”处理。"""
+"""认证请求体。密码 8–128 个字符；登录/当前密码只限制上限，错误统一按“用户名或密码错误”处理。"""
 
 from typing import Annotated
 
@@ -19,7 +19,7 @@ def _check_new_password(value: str) -> str:
 
 
 NewPassword = Annotated[StrictStr, AfterValidator(_check_new_password)]
-SubmittedPassword = Annotated[StrictStr, Field(max_length=SUBMITTED_MAX)]
+SubmittedText = Annotated[StrictStr, Field(max_length=SUBMITTED_MAX)]
 
 
 class SetupBody(BaseModel):
@@ -27,9 +27,10 @@ class SetupBody(BaseModel):
 
 
 class LoginBody(BaseModel):
-    password: SubmittedPassword
+    username: SubmittedText
+    password: SubmittedText
 
 
 class ChangePasswordBody(BaseModel):
-    current_password: SubmittedPassword
+    current_password: SubmittedText
     new_password: NewPassword

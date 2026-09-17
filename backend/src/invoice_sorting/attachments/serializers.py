@@ -13,6 +13,7 @@ from invoice_sorting.checklist.regions import (
 )
 from invoice_sorting.common.constants import AttachmentKind
 from invoice_sorting.db.models import TZ, Attachment, EvidenceData, InvoiceData
+from invoice_sorting.users.refs import user_ref
 
 WHITESPACE = re.compile(r"\s+")
 FULLWIDTH_PARENS = str.maketrans({"（": "(", "）": ")"})
@@ -113,6 +114,7 @@ def serialize_attachment(
         "mime": attachment.mime,
         "size": attachment.size,
         "created_at": iso_datetime(attachment.created_at),
+        "uploaded_by": user_ref(attachment.uploaded_by),
         "url": f"/api/attachments/{attachment.id}/file",
         "file_key": attachment.file_key or "",
         "invoice": serialize_invoice(invoice, buyer, policy) if invoice is not None else None,

@@ -15,6 +15,7 @@ from invoice_sorting.checklist.service import required_missing_count
 from invoice_sorting.common.constants import AttachmentKind, ExpenseStatus
 from invoice_sorting.db.models import ChecklistItem, Expense, StatusEvent
 from invoice_sorting.settings.service import buyer_identity, region_policy
+from invoice_sorting.users.refs import user_ref
 
 
 def status_label(status: str) -> str:
@@ -70,6 +71,7 @@ def serialize_expense_summary(
         "invoice_exempt": bool(expense.invoice_exempt),
         "currency": expense.currency or "CNY",
         "original_amount_cents": expense.original_amount_cents,
+        "created_by": user_ref(expense.created_by),
     }
 
 
@@ -93,6 +95,7 @@ def serialize_status_event(event: StatusEvent) -> dict[str, Any]:
         "is_manual": bool(event.is_manual),
         "note": event.note or "",
         "at": iso_datetime(event.at),
+        "actor": user_ref(event.actor),
     }
 
 

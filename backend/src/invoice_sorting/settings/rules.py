@@ -6,6 +6,7 @@ from fastapi import APIRouter
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from invoice_sorting.auth.deps import ADMIN_ONLY
 from invoice_sorting.common.errors import NotFoundError, ok
 from invoice_sorting.db.models import Category, ChecklistRule
 from invoice_sorting.settings.deps import SessionDep
@@ -37,7 +38,7 @@ def list_rules(session: SessionDep) -> dict[str, Any]:
     return ok([serialize_rule(row) for row in rows])
 
 
-@router.post("/checklist-rules")
+@router.post("/checklist-rules", dependencies=ADMIN_ONLY)
 def create_rule(body: ChecklistRuleCreate, session: SessionDep) -> dict[str, Any]:
     _ensure_category(session, body.category_id)
     rule = ChecklistRule(
@@ -52,7 +53,7 @@ def create_rule(body: ChecklistRuleCreate, session: SessionDep) -> dict[str, Any
     return ok(serialize_rule(rule))
 
 
-@router.patch("/checklist-rules/{rule_id}")
+@router.patch("/checklist-rules/{rule_id}", dependencies=ADMIN_ONLY)
 def update_rule(rule_id: int, body: ChecklistRuleUpdate, session: SessionDep) -> dict[str, Any]:
     rule = _rule_or_404(session, rule_id)
     values = present_values(body, nullable=("category_id",))
@@ -71,7 +72,7 @@ def update_rule(rule_id: int, body: ChecklistRuleUpdate, session: SessionDep) ->
     return ok(serialize_rule(rule))
 
 
-@router.delete("/checklist-rules/{rule_id}")
+@router.delete("/checklist-rules/{rule_id}", dependencies=ADMIN_ONLY)
 def delete_rule(rule_id: int, session: SessionDep) -> dict[str, Any]:
     session.delete(_rule_or_404(session, rule_id))
     session.commit()

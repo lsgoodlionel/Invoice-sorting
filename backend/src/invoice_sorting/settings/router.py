@@ -4,6 +4,7 @@ from typing import Any
 
 from fastapi import APIRouter, Request
 
+from invoice_sorting.auth.deps import ADMIN_ONLY
 from invoice_sorting.common.errors import ok
 from invoice_sorting.config import Settings
 from invoice_sorting.expenses.recompute import refresh_open_expenses
@@ -31,7 +32,7 @@ def read_settings(session: SessionDep, config: ConfigDep) -> dict[str, Any]:
     return ok(_with_paths(get_app_settings(session), config))
 
 
-@router.put("/settings")
+@router.put("/settings", dependencies=ADMIN_ONLY)
 def write_settings(
     body: AppSettingsUpdate, session: SessionDep, config: ConfigDep
 ) -> dict[str, Any]:
@@ -43,7 +44,7 @@ def write_settings(
     return ok(_with_paths(values, config))
 
 
-@router.post("/backup")
+@router.post("/backup", dependencies=ADMIN_ONLY)
 def backup(request: Request, config: ConfigDep) -> dict[str, Any]:
     path = backup_database(config, request.app.state.engine)
     return ok({"file": str(path)})

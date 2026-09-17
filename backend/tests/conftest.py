@@ -62,6 +62,15 @@ def auth_client(auth_app) -> Iterator[TestClient]:
         yield test_client
 
 
+@pytest.fixture
+def admin_client(auth_client) -> TestClient:
+    """已为 admin 设置初始密码并以 admin 登录的客户端。"""
+    from tests.auth_helpers import setup_password
+
+    setup_password(auth_client)
+    return auth_client
+
+
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
 

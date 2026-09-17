@@ -28,6 +28,7 @@ EXPORT_KEYS = {
     "item_count",
     "total_cents",
     "created_at",
+    "created_by",
 }
 
 

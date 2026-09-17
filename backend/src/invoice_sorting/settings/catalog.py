@@ -6,6 +6,7 @@ from fastapi import APIRouter
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from invoice_sorting.auth.deps import ADMIN_ONLY
 from invoice_sorting.common.errors import ConflictError, NotFoundError, ok
 from invoice_sorting.db.models import Category, Project
 from invoice_sorting.settings.deps import SessionDep
@@ -49,7 +50,7 @@ def list_categories(session: SessionDep) -> dict[str, Any]:
     return ok([serialize_category(row) for row in rows])
 
 
-@router.post("/categories")
+@router.post("/categories", dependencies=ADMIN_ONLY)
 def create_category(body: CategoryCreate, session: SessionDep) -> dict[str, Any]:
     _ensure_unique_name(session, body.name)
     next_sort = (session.scalar(select(func.max(Category.sort))) or 0) + 1
@@ -59,7 +60,7 @@ def create_category(body: CategoryCreate, session: SessionDep) -> dict[str, Any]
     return ok(serialize_category(category))
 
 
-@router.patch("/categories/{category_id}")
+@router.patch("/categories/{category_id}", dependencies=ADMIN_ONLY)
 def update_category(category_id: int, body: CategoryUpdate, session: SessionDep) -> dict[str, Any]:
     category = _category_or_404(session, category_id)
     values = present_values(body)
@@ -71,7 +72,7 @@ def update_category(category_id: int, body: CategoryUpdate, session: SessionDep)
     return ok(serialize_category(category))
 
 
-@router.delete("/categories/{category_id}")
+@router.delete("/categories/{category_id}", dependencies=ADMIN_ONLY)
 def archive_category(category_id: int, session: SessionDep) -> dict[str, Any]:
     _category_or_404(session, category_id).archived = True
     session.commit()

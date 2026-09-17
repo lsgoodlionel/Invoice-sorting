@@ -16,6 +16,7 @@ from invoice_sorting.attachments.file_keys import backfill_file_keys
 from invoice_sorting.attachments.router import router as attachments_router
 from invoice_sorting.auth.cli import reset_password
 from invoice_sorting.auth.middleware import AuthMiddleware
+from invoice_sorting.auth.migrate import migrate_users
 from invoice_sorting.auth.ratelimit import LoginRateLimiter
 from invoice_sorting.auth.router import router as auth_router
 from invoice_sorting.batches.router import router as batches_router
@@ -28,6 +29,7 @@ from invoice_sorting.expenses.router import router as expenses_router
 from invoice_sorting.importer.router import router as importer_router
 from invoice_sorting.settings.router import router as settings_router
 from invoice_sorting.stats.router import router as stats_router
+from invoice_sorting.users.router import router as users_router
 
 logger = logging.getLogger("invoice_sorting")
 
@@ -45,6 +47,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         sync_default_keywords(session)
         sync_default_rules(session)
         backfill_file_keys(session)
+        migrate_users(session)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -78,6 +81,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         batches_router,
         stats_router,
         settings_router,
+        users_router,
     ):
         app.include_router(router)
 
@@ -106,14 +110,17 @@ def _mount_frontend(app: FastAPI, dist: Path) -> None:
 def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="invoice-sorting", description="个人发票报销管理工具")
     commands = parser.add_subparsers(dest="command")
-    commands.add_parser("reset-password", help="清除登录密码与全部会话，之后在网页重新设置")
+    reset = commands.add_parser(
+        "reset-password", help="清除 admin（或指定用户）的密码与其全部会话，之后在网页重新设置"
+    )
+    reset.add_argument("--user", metavar="用户名", help="要清除密码的用户，默认 admin")
     return parser.parse_args(argv)
 
 
 def run(argv: Sequence[str] | None = None) -> None:
     args = _parse_args(argv)
     if args.command == "reset-password":
-        reset_password(Settings())
+        reset_password(Settings(), args.user)
         return
     logging.basicConfig(level=logging.INFO)
     settings = Settings()

@@ -1,5 +1,6 @@
 """认证中间件（纯 ASGI）：保护 /api/*（公开白名单除外），会话续期时追加 Set-Cookie。
 
+校验通过后把当前用户写入 scope["state"]，并设置操作人上下文（见 auth/context.py）。
 非 /api 路径（前端静态文件、SPA 回退）不拦截；settings.auth_enabled=False 时全部放行。
 """
 
@@ -11,6 +12,8 @@ from starlette.requests import HTTPConnection
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from invoice_sorting.auth.context import AuthUser, reset_current_user, set_current_user
+from invoice_sorting.auth.deps import STATE_USER_KEY
 from invoice_sorting.auth.http import is_secure_request, read_session_token, session_cookie_header
 from invoice_sorting.auth.service import MSG_LOGIN_REQUIRED, MSG_NEED_SETUP, is_password_set
 from invoice_sorting.auth.sessions import validate_session
@@ -23,6 +26,7 @@ PUBLIC_PATHS = frozenset({"/api/health", "/api/auth/status", "/api/auth/setup", 
 class AccessDecision:
     error: str | None
     is_renewed: bool = False
+    user: AuthUser | None = None
 
 
 def is_protected_path(path: str) -> bool:
@@ -38,7 +42,7 @@ def decide_access(factory: sessionmaker[Session], token: str | None) -> AccessDe
         db.commit()
     if not check.is_valid:
         return AccessDecision(error=MSG_LOGIN_REQUIRED)
-    return AccessDecision(error=None, is_renewed=check.is_renewed)
+    return AccessDecision(error=None, is_renewed=check.is_renewed, user=check.user)
 
 
 def _append_header(send: Send, name: bytes, value: bytes) -> Send:
@@ -66,11 +70,19 @@ class AuthMiddleware:
         conn = HTTPConnection(scope)
         token = read_session_token(conn)
         decision = await run_in_threadpool(decide_access, state.session_factory, token)
-        if decision.error is not None:
-            body = {"ok": False, "data": None, "error": decision.error}
+        if decision.error is not None or decision.user is None:
+            body = {"ok": False, "data": None, "error": decision.error or MSG_LOGIN_REQUIRED}
             await JSONResponse(body, status_code=401)(scope, receive, send)
             return
         if decision.is_renewed and token:
             cookie = session_cookie_header(token, is_secure_request(conn))
             send = _append_header(send, b"set-cookie", cookie)
-        await self.app(scope, receive, send)
+        await self._call_as(decision.user, scope, receive, send)
+
+    async def _call_as(self, user: AuthUser, scope: Scope, receive: Receive, send: Send) -> None:
+        scope.setdefault("state", {})[STATE_USER_KEY] = user
+        context_token = set_current_user(user.id)
+        try:
+            await self.app(scope, receive, send)
+        finally:
+            reset_current_user(context_token)

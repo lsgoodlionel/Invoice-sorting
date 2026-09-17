@@ -6,8 +6,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 from invoice_sorting.main import create_app
-from tests.auth_helpers import PASSWORD, auth_rows, session_cookie_header, setup_password
+from tests.auth_helpers import PASSWORD, auth_rows, login, session_cookie_header, setup_password
 from tests.conftest import make_settings
+
+ADMIN_USER = {"id": 1, "username": "admin", "display_name": "管理员", "role": "admin"}
 
 
 def test_status_before_setup(auth_client):
@@ -17,6 +19,7 @@ def test_status_before_setup(auth_client):
         "auth_enabled": True,
         "password_set": False,
         "authenticated": False,
+        "user": None,
     }
 
 
@@ -31,7 +34,7 @@ def test_protected_endpoints_require_setup(auth_client, method, path):
 
 
 def test_login_before_setup_conflicts(auth_client):
-    response = auth_client.post("/api/auth/login", json={"password": PASSWORD})
+    response = auth_client.post("/api/auth/login", json={"username": "admin", "password": PASSWORD})
     assert response.status_code == 409
     assert response.json()["error"] == "请先设置初始密码"
 
@@ -71,7 +74,8 @@ def test_setup_accepts_boundary_lengths(auth_client, tmp_path):
 
 def test_setup_sets_session_cookie(auth_app, auth_client):
     response = setup_password(auth_client)
-    assert response.json() == {"ok": True, "data": {"authenticated": True}, "error": None}
+    data = {"authenticated": True, "user": ADMIN_USER}
+    assert response.json() == {"ok": True, "data": data, "error": None}
     header = session_cookie_header(response)
     parts = [part.strip().lower() for part in header.split(";")]
     assert "httponly" in parts
@@ -87,6 +91,7 @@ def test_setup_sets_session_cookie(auth_app, auth_client):
         "auth_enabled": True,
         "password_set": True,
         "authenticated": True,
+        "user": ADMIN_USER,
     }
     assert auth_client.get("/api/expenses").status_code == 200
 
@@ -117,7 +122,7 @@ def test_second_setup_conflicts(auth_client):
     assert response.status_code == 409
     assert response.json()["error"] == "已设置过初始密码，请直接登录"
     assert "set-cookie" not in response.headers
-    assert auth_client.post("/api/auth/login", json={"password": PASSWORD}).status_code == 200
+    assert login(auth_client).status_code == 200
 
 
 def test_concurrent_setup_only_one_succeeds(auth_app):
@@ -140,17 +145,21 @@ def test_concurrent_setup_only_one_succeeds(auth_app):
 
 
 def test_setup_conflict_from_other_process_maps_to_409(auth_app, auth_client, monkeypatch):
+    from sqlalchemy import update
+
     from invoice_sorting.auth import service
-    from invoice_sorting.db.models import AppSetting
+    from invoice_sorting.db.models import User
 
-    def racing_store(db, encoded):
+    original_hash = service.hash_password
+
+    def racing_hash(password):
         with auth_app.state.session_factory() as other:
-            other.add(AppSetting(key=service.PASSWORD_KEY, value="scrypt$other"))
+            other.execute(update(User).values(password_hash="scrypt$other"))
             other.commit()
-        db.add(AppSetting(key=service.PASSWORD_KEY, value=encoded))
-        db.flush()
+        return original_hash(password)
 
-    monkeypatch.setattr(service, "_store_hash", racing_store)
+    monkeypatch.setattr(service, "hash_password", racing_hash)
     response = auth_client.post("/api/auth/setup", json={"password": PASSWORD})
     assert response.status_code == 409
     assert response.json()["error"] == "已设置过初始密码，请直接登录"
+    assert auth_rows(auth_app) == []
