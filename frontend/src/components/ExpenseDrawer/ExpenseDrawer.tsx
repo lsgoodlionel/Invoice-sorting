@@ -8,6 +8,7 @@ import { ChecklistPanel } from '../ChecklistPanel';
 import { AttachmentList } from './AttachmentList';
 import { DangerZone } from './DangerZone';
 import { ExpenseFields } from './ExpenseFields';
+import { InvoiceMeta } from './InvoiceMeta';
 import { RouteHint } from './RouteHint';
 import { StatusSection } from './StatusSection';
 import { TimelineSection } from './TimelineSection';
@@ -47,6 +48,7 @@ function DrawerBody({ expense, onClose }: { expense: ExpenseDetail; onClose: () 
     <Stack gap="lg" pb="xl">
       <StatusSection expense={expense} />
       <ExpenseFields expense={expense} />
+      <InvoiceMeta expense={expense} />
       <Section label="凭证清单">
         <ChecklistPanel
           items={expense.checklist}

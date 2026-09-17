@@ -1,6 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../client';
-import type { Attachment, AttachmentKind, ChecklistState, ExpenseDetail } from '../types';
+import type {
+  Attachment,
+  AttachmentBulkAssign,
+  AttachmentKind,
+  ChecklistState,
+  CreateExpensesResult,
+  ExpenseDetail,
+} from '../types';
 import { invalidateWorkflow } from './invalidate';
 import { queryKeys } from './keys';
 
@@ -13,6 +20,10 @@ export const attachmentsApi = {
   unassigned: () => api.get<Attachment[]>('/attachments/unassigned'),
   update: (id: number, patch: AttachmentPatch) => api.patch<Attachment>(`/attachments/${id}`, patch),
   remove: (id: number) => api.del<null>(`/attachments/${id}`),
+  bulkDelete: (ids: readonly number[]) => api.post<{ deleted: number }>('/attachments/bulk-delete', { ids }),
+  bulkAssign: (input: AttachmentBulkAssign) => api.post<Attachment[]>('/attachments/bulk-assign', input),
+  createExpenses: (ids: readonly number[]) => api.post<CreateExpensesResult>('/attachments/create-expenses', { ids }),
+  reparse: (ids: readonly number[]) => api.post<Attachment[]>('/attachments/reparse', { ids }),
   thumbnailUrl: (id: number) => `/api/attachments/${id}/thumbnail`,
   fileUrl: (id: number) => `/api/attachments/${id}/file`,
   setChecklistState: (id: number, state: Exclude<ChecklistState, 'present'>, reason?: string) =>
@@ -35,6 +46,38 @@ export function useDeleteAttachment() {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (id: number) => attachmentsApi.remove(id),
+    onSuccess: () => invalidateWorkflow(client),
+  });
+}
+
+export function useBulkDeleteAttachments() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (ids: readonly number[]) => attachmentsApi.bulkDelete(ids),
+    onSuccess: () => invalidateWorkflow(client),
+  });
+}
+
+export function useBulkAssignAttachments() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: AttachmentBulkAssign) => attachmentsApi.bulkAssign(input),
+    onSuccess: () => invalidateWorkflow(client),
+  });
+}
+
+export function useCreateExpensesFromAttachments() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (ids: readonly number[]) => attachmentsApi.createExpenses(ids),
+    onSuccess: () => invalidateWorkflow(client),
+  });
+}
+
+export function useReparseAttachments() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (ids: readonly number[]) => attachmentsApi.reparse(ids),
     onSuccess: () => invalidateWorkflow(client),
   });
 }

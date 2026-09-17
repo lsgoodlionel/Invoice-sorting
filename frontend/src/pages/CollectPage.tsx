@@ -8,7 +8,7 @@ import type { ImportSession } from '../api/types';
 import { ImportConfirmTable } from '../components/collect/ImportConfirmTable';
 import { ImportDropzone } from '../components/collect/ImportDropzone';
 import { ImportIssues } from '../components/collect/ImportIssues';
-import { UnassignedList } from '../components/collect/UnassignedList';
+import { UnassignedSection } from '../components/collect/unassigned/UnassignedSection';
 import { useQuickAdd } from '../components/QuickAddContext';
 import { draftsFromSession, toConfirmRow, updateDraft, type ImportDraft } from '../lib/importRows';
 
@@ -26,6 +26,7 @@ export function CollectPage() {
   const confirm = useConfirmImport();
   const [session, setSession] = useState<ImportSession | null>(null);
   const [drafts, setDrafts] = useState<ImportDraft[]>([]);
+  const hasConfirmTable = session !== null && session.rows.length > 0;
 
   const handleFiles = (files: File[]) => {
     if (files.length === 0) return;
@@ -66,7 +67,7 @@ export function CollectPage() {
         <Stack gap="sm">
           <Text className="section-label">本次导入：{sessionSummary(session)}</Text>
           <ImportIssues duplicates={session.duplicates} errors={session.errors} notices={session.notices} />
-          {session.rows.length > 0 ? (
+          {hasConfirmTable ? (
             <ImportConfirmTable
               rows={session.rows}
               drafts={drafts}
@@ -79,7 +80,7 @@ export function CollectPage() {
           )}
         </Stack>
       )}
-      <UnassignedList />
+      <UnassignedSection hasOtherPrimary={hasConfirmTable} />
     </Stack>
   );
 }

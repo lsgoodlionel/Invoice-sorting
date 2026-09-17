@@ -1,4 +1,4 @@
-import type { Attachment, BatchDetail, ChecklistItem, ExpenseDetail, ExpenseSummary, ImportRow, Project } from '../api/types';
+import type { Attachment, InvoiceData, BatchDetail, ChecklistItem, ExpenseDetail, ExpenseSummary, ImportRow, Project } from '../api/types';
 
 export function makeExpense(overrides: Partial<ExpenseSummary> = {}): ExpenseSummary {
   return {
@@ -20,6 +20,8 @@ export function makeExpense(overrides: Partial<ExpenseSummary> = {}): ExpenseSum
     batch_name: null,
     attachment_count: 1,
     invoice_no: null,
+    region_name: '',
+    is_nonlocal: false,
     ...overrides,
   };
 }
@@ -37,6 +39,30 @@ export function makeAttachment(overrides: Partial<Attachment> = {}): Attachment 
     created_at: '2026-09-15T10:00:00+08:00',
     url: '/api/attachments/10/file',
     invoice: null,
+    ...overrides,
+  };
+}
+
+export function makeInvoice(overrides: Partial<InvoiceData> = {}): InvoiceData {
+  return {
+    invoice_no: '26312000000123456789',
+    issued_on: '2026-09-15',
+    total_cents: 96000,
+    tax_cents: 11044,
+    seller_name: '京东某店',
+    seller_tax_id: '91110000000000000X',
+    buyer_name: '某大学',
+    buyer_tax_id: '12310000000000000Y',
+    item_summary: '鼠标',
+    invoice_type: '电子发票（普通发票）',
+    parser: 'pdf',
+    confirmed: false,
+    tax_category: '计算机配套产品',
+    region_name: '上海',
+    is_nonlocal: false,
+    order_no: '',
+    detail_platform: false,
+    buyer_mismatch: false,
     ...overrides,
   };
 }
@@ -80,7 +106,7 @@ export function makeImportRow(overrides: Partial<ImportRow> = {}): ImportRow {
     row_id: 'r1',
     attachment: makeAttachment({ expense_id: null }),
     is_invoice: true,
-    suggested: { spent_on: '2026-09-15', amount_cents: 96000, merchant: '京东某店', summary: '鼠标', category_id: 1 },
+    suggested: { spent_on: '2026-09-15', amount_cents: 96000, merchant: '京东某店', summary: '鼠标', category_id: 1, is_online: false },
     match: null,
     warnings: [],
     ...overrides,

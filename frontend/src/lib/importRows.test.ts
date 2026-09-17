@@ -36,6 +36,16 @@ describe('import drafts', () => {
     expect(skipped).not.toHaveProperty('expense_id');
   });
 
+  test('isOnline defaults from suggestion and is sent only for create rows', () => {
+    const online = draftFromRow(makeImportRow({ suggested: { ...makeImportRow().suggested, is_online: true } }));
+    expect(online.isOnline).toBe(true);
+    expect(toConfirmRow(online)).toMatchObject({ action: 'create', is_online: true });
+    expect(toConfirmRow({ ...online, isOnline: false })).toMatchObject({ is_online: false });
+    expect(toConfirmRow({ ...online, action: 'skip' })).not.toHaveProperty('is_online');
+    const matched = draftFromRow(makeImportRow({ match: { expense_id: 5, merchant: 'x', amount_cents: 1, spent_on: '2026-09-01' } }));
+    expect(toConfirmRow(matched)).not.toHaveProperty('is_online');
+  });
+
   test('tallyDrafts counts actions and invalid rows', () => {
     const base = draftFromRow(makeImportRow());
     expect(tallyDrafts([base, { ...base, action: 'skip' }, { ...base, merchant: '' }])).toEqual({ create: 2, attach: 0, skip: 1, invalid: 1 });

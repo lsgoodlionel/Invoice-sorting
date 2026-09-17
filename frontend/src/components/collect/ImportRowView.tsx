@@ -1,4 +1,4 @@
-import { Image, Select, Stack, Table, Text, TextInput, Tooltip } from '@mantine/core';
+import { Image, Select, Stack, Switch, Table, Text, TextInput, Tooltip } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
 import { IconAlertTriangle } from '@tabler/icons-react';
 import { attachmentsApi } from '../../api/hooks/attachments';
@@ -7,6 +7,7 @@ import { draftProblems, type ImportDraft } from '../../lib/importRows';
 import { formatCents } from '../../lib/money';
 import { CategorySelect } from '../CategorySelect';
 import { MoneyInput } from '../MoneyInput';
+import { RegionBadge } from '../RegionBadge';
 
 interface ImportRowViewProps {
   row: ImportRow;
@@ -15,6 +16,7 @@ interface ImportRowViewProps {
 }
 
 const THUMB_SIZE = 44;
+const MERCHANT_WIDTH = 220;
 
 function actionOptions(row: ImportRow) {
   const base = [
@@ -42,8 +44,18 @@ export function ImportRowView({ row, draft, onChange }: ImportRowViewProps) {
       </Table.Td>
       <Table.Td>
         <Stack gap={2}>
-          <TextInput size="xs" aria-label="销售方" value={draft.merchant} onChange={(e) => onChange({ merchant: e.currentTarget.value })} disabled={isSkipped} />
-          <Text size="xs" c="dimmed" truncate maw={220} title={row.attachment.original_name}>{draft.summary || row.attachment.original_name}</Text>
+          <TextInput
+            size="xs"
+            w={MERCHANT_WIDTH}
+            aria-label="销售方"
+            placeholder="未识别，请填写"
+            className={draft.merchant.trim() ? undefined : 'merchant-missing'}
+            error={!isSkipped && !draft.merchant.trim()}
+            value={draft.merchant}
+            onChange={(e) => onChange({ merchant: e.currentTarget.value })}
+            disabled={isSkipped}
+          />
+          <Text size="xs" c="dimmed" truncate maw={MERCHANT_WIDTH} title={row.attachment.original_name}>{draft.summary || row.attachment.original_name}</Text>
         </Stack>
       </Table.Td>
       <Table.Td>
@@ -51,6 +63,12 @@ export function ImportRowView({ row, draft, onChange }: ImportRowViewProps) {
       </Table.Td>
       <Table.Td>
         <CategorySelect size="xs" w={120} aria-label="分类" value={draft.categoryId} onChange={(categoryId) => onChange({ categoryId })} disabled={isSkipped} />
+      </Table.Td>
+      <Table.Td>
+        <RegionBadge regionName={row.attachment.invoice?.region_name ?? ''} isNonlocal={row.attachment.invoice?.is_nonlocal ?? false} />
+      </Table.Td>
+      <Table.Td>
+        <Switch size="xs" aria-label="网购" checked={draft.isOnline} onChange={(e) => onChange({ isOnline: e.currentTarget.checked })} disabled={draft.action !== 'create'} />
       </Table.Td>
       <Table.Td>
         <Select

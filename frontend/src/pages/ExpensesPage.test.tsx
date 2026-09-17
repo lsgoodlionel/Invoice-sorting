@@ -9,7 +9,7 @@ import { ExpensesPage } from './ExpensesPage';
 
 const list: ExpenseListResult = {
   items: [
-    makeExpense({ id: 1, merchant: '京东某店', amount_cents: 96000, missing_count: 2 }),
+    makeExpense({ id: 1, merchant: '京东某店', amount_cents: 96000, missing_count: 2, region_name: '北京', is_nonlocal: true }),
     makeExpense({ id: 2, merchant: '腾讯云', amount_cents: 29800, status: 'complete', batch_name: '9月第1批' }),
   ],
   total: 2,
@@ -37,6 +37,7 @@ describe('ExpensesPage', () => {
     expect(screen.getByText('腾讯云')).toBeInTheDocument();
     expect(screen.getAllByText('¥960.00').length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText('缺 2 项')).toBeInTheDocument();
+    expect(screen.getAllByText('外地')).toHaveLength(1);
     expect(screen.getByText('9月第1批')).toBeInTheDocument();
     expect(screen.getByTestId('status-count-invoiced')).toHaveTextContent('1');
     expect(screen.getByTestId('status-count-complete')).toHaveTextContent('1');

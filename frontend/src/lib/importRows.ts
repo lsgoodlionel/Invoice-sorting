@@ -11,6 +11,7 @@ export interface ImportDraft {
   summary: string;
   categoryId: number | null;
   projectId: number | null;
+  isOnline: boolean;
 }
 
 export function draftFromRow(row: ImportRow): ImportDraft {
@@ -24,6 +25,7 @@ export function draftFromRow(row: ImportRow): ImportDraft {
     summary: row.suggested.summary,
     categoryId: row.suggested.category_id,
     projectId: null,
+    isOnline: row.suggested.is_online,
   };
 }
 
@@ -57,6 +59,7 @@ export function toConfirmRow(draft: ImportDraft): ImportConfirmRow {
     summary: draft.summary.trim(),
     category_id: draft.categoryId,
     ...(draft.projectId !== null ? { project_id: draft.projectId } : {}),
+    ...(draft.action === 'create' ? { is_online: draft.isOnline } : {}),
   };
 }
 

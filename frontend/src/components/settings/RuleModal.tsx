@@ -1,18 +1,17 @@
-import { Button, Checkbox, Group, Modal, SegmentedControl, Select, SimpleGrid, Stack, Textarea } from '@mantine/core';
+import { Button, Checkbox, Group, Modal, SegmentedControl, Select, SimpleGrid, Stack, Switch, Text, Textarea } from '@mantine/core';
 import { useEffect, useState } from 'react';
 import { useCategories, useSaveRule } from '../../api/hooks/settings';
 import type { AttachmentKind, ChecklistLevel, ChecklistRule } from '../../api/types';
-import { buildCondition } from '../../lib/rules';
+import { buildCondition, conditionSwitches, type ConditionSwitches } from '../../lib/rules';
 import { ATTACHMENT_KIND_OPTIONS } from '../../lib/status';
 import { MoneyInput } from '../MoneyInput';
 
-interface RuleDraft {
+interface RuleDraft extends ConditionSwitches {
   categoryId: string;
   kind: AttachmentKind;
   level: ChecklistLevel;
   amountGte: number | null;
   amountLt: number | null;
-  isOnlineOnly: boolean;
   hint: string;
 }
 
@@ -25,7 +24,7 @@ function draftFrom(rule: ChecklistRule | null): RuleDraft {
     level: rule?.level ?? 'required',
     amountGte: rule?.condition.amount_gte ?? null,
     amountLt: rule?.condition.amount_lt ?? null,
-    isOnlineOnly: rule?.condition.is_online ?? false,
+    ...conditionSwitches(rule?.condition ?? {}),
     hint: rule?.hint ?? '',
   };
 }
@@ -73,6 +72,11 @@ export function RuleModal({ editing, onClose }: { editing: ChecklistRule | 'new'
           <MoneyInput label="金额 <（元）" cents={draft.amountLt} onCentsChange={(amountLt) => patch({ amountLt })} />
           <Checkbox mt={30} label="仅网购" checked={draft.isOnlineOnly} onChange={(e) => patch({ isOnlineOnly: e.currentTarget.checked })} />
         </SimpleGrid>
+        <Group gap="lg">
+          <Switch label="仅外地发票" checked={draft.isNonlocalOnly} onChange={(e) => patch({ isNonlocalOnly: e.currentTarget.checked })} />
+          <Switch label="排除已带明细平台" checked={draft.excludeDetailPlatform} onChange={(e) => patch({ excludeDetailPlatform: e.currentTarget.checked })} />
+        </Group>
+        <Text size="xs" c="dimmed">外地：开票地区不等于设置中的本地地区；已带明细平台见“通用设置”。</Text>
         <Textarea label="提示文字" autosize minRows={2} value={draft.hint} onChange={(e) => patch({ hint: e.currentTarget.value })} />
         <Group justify="flex-end">
           <Button variant="subtle" onClick={onClose}>取消</Button>

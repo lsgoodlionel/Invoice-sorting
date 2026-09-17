@@ -6,11 +6,23 @@ import { useDeleteAttachment, useUpdateAttachment } from '../../api/hooks/attach
 import type { Attachment, AttachmentKind } from '../../api/types';
 import { ATTACHMENT_KIND_OPTIONS } from '../../lib/status';
 import { AttachmentPreview } from '../AttachmentPreview';
+import { RegionBadge } from '../RegionBadge';
 
 const KB = 1024;
 
 function formatSize(bytes: number): string {
   return bytes >= KB * KB ? `${(bytes / KB / KB).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / KB))} KB`;
+}
+
+function InvoiceLine({ attachment }: { attachment: Attachment }) {
+  const invoice = attachment.invoice;
+  if (!invoice || (!invoice.region_name && !invoice.order_no)) return null;
+  return (
+    <Group gap="xs" wrap="nowrap">
+      <RegionBadge regionName={invoice.region_name} isNonlocal={invoice.is_nonlocal} showUnknown={false} />
+      {invoice.order_no && <Text size="xs" c="dimmed" className="num">订单号 {invoice.order_no}</Text>}
+    </Group>
+  );
 }
 
 function AttachmentRow({ attachment }: { attachment: Attachment }) {
@@ -53,6 +65,7 @@ function AttachmentRow({ attachment }: { attachment: Attachment }) {
           <ActionIcon variant="subtle" color="red" aria-label="删除附件" onClick={confirmDelete}><IconTrash size={16} /></ActionIcon>
         </Tooltip>
       </Group>
+      <InvoiceLine attachment={attachment} />
       <Collapse expanded={isPreviewOpen}>{isPreviewOpen && <AttachmentPreview attachment={attachment} />}</Collapse>
     </Stack>
   );

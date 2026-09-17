@@ -1,4 +1,4 @@
-import { Badge, Checkbox, Table, Text } from '@mantine/core';
+import { Badge, Checkbox, Group, Table, Text } from '@mantine/core';
 import type { ExpenseSummary } from '../../api/types';
 import { formatCents } from '../../lib/money';
 import { CategoryDot } from '../CategoryDot';
@@ -38,7 +38,12 @@ function ExpenseRow({
       </Table.Td>
       <Table.Td className="num" w={96}>{expense.spent_on}</Table.Td>
       <Table.Td style={{ maxWidth: 320 }}>
-        <Text size="sm" fw={500} truncate>{expense.merchant}</Text>
+        <Group gap={6} wrap="nowrap">
+          <Text size="sm" fw={500} truncate>{expense.merchant}</Text>
+          {expense.is_nonlocal && (
+            <Badge size="xs" radius="xs" color="orange" variant="light" title={`开票地区：${expense.region_name}`} style={{ flexShrink: 0 }}>外地</Badge>
+          )}
+        </Group>
         {expense.summary && <Text size="xs" c="dimmed" truncate>{expense.summary}</Text>}
       </Table.Td>
       <Table.Td><CategoryDot color={expense.category_color} name={expense.category_name} /></Table.Td>

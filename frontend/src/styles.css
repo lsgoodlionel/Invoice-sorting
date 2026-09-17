@@ -94,6 +94,11 @@ body {
   max-width: 100%;
 }
 
+.merchant-missing input::placeholder {
+  color: var(--mantine-color-red-6);
+  opacity: 1;
+}
+
 .row-warning {
   background: var(--warn-soft) !important;
 }
@@ -165,6 +170,15 @@ body {
 .status-dot[data-status='sent'] { background: var(--mantine-color-orange-6); }
 .status-dot[data-status='reimbursed'] { background: var(--mantine-color-ink-6); }
 .status-dot[data-status='void'] { background: transparent; border: 1px solid var(--mantine-color-gray-5); }
+
+.unassigned-bulk-bar {
+  position: sticky;
+  bottom: 0;
+  background: var(--paper-surface);
+  border-top: 2px solid var(--ink-text);
+  border-bottom: 1px solid var(--paper-line-strong);
+  z-index: 4;
+}
 
 .selection-bar {
   position: sticky;

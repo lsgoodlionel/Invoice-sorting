@@ -60,6 +60,11 @@ export interface InvoiceData {
   invoice_type: string;
   parser: string;
   confirmed: boolean;
+  tax_category: string;
+  region_name: string;
+  is_nonlocal: boolean;
+  order_no: string;
+  detail_platform: boolean;
   buyer_mismatch: boolean;
 }
 
@@ -115,6 +120,8 @@ export interface ExpenseSummary {
   batch_name: string | null;
   attachment_count: number;
   invoice_no: string | null;
+  region_name: string;
+  is_nonlocal: boolean;
 }
 
 export interface ExpenseDetail extends ExpenseSummary {
@@ -252,6 +259,7 @@ export interface ImportSuggestion {
   merchant: string;
   summary: string;
   category_id: number | null;
+  is_online: boolean;
 }
 
 export interface ImportMatch {
@@ -307,12 +315,31 @@ export interface ImportConfirmRow {
   summary: string;
   category_id: number | null;
   project_id?: number | null;
+  is_online?: boolean;
 }
 
 export interface ImportConfirmResult {
   created: number[];
   attached: number[];
   skipped: number;
+}
+
+export interface AttachmentBulkAssign {
+  ids: number[];
+  expense_id: number | null;
+  kind?: AttachmentKind;
+}
+
+export interface CreateExpensesSkip {
+  id: number;
+  original_name: string;
+  reason: string;
+}
+
+export interface CreateExpensesResult {
+  created: number[];
+  attached: number[];
+  skipped: CreateExpensesSkip[];
 }
 
 export interface StatsTotals {
@@ -358,11 +385,13 @@ export interface Settings {
   buyer_name: string;
   buyer_tax_id: string;
   overdue_days: number;
+  local_region: string;
+  detail_platforms: string[];
   data_dir: string;
   inbox_dir: string;
 }
 
-export type SettingsPatch = Partial<Pick<Settings, 'buyer_name' | 'buyer_tax_id' | 'overdue_days'>>;
+export type SettingsPatch = Partial<Pick<Settings, 'buyer_name' | 'buyer_tax_id' | 'overdue_days' | 'local_region' | 'detail_platforms'>>;
 
 export interface CategoryInput {
   name: string;
@@ -381,6 +410,8 @@ export interface ChecklistCondition {
   amount_gte?: number;
   amount_lt?: number;
   is_online?: boolean;
+  is_nonlocal?: boolean;
+  detail_platform?: boolean;
 }
 
 export interface ChecklistRule {

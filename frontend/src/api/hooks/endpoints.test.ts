@@ -15,6 +15,7 @@ function allRoutes() {
     'GET /api/expenses', 'POST /api/expenses', 'GET /api/expenses/1', 'PATCH /api/expenses/1', 'DELETE /api/expenses/1',
     'POST /api/expenses/1/status', 'POST /api/expenses/1/attachments',
     'GET /api/attachments/unassigned', 'PATCH /api/attachments/2', 'DELETE /api/attachments/2', 'PATCH /api/checklist-items/3',
+    'POST /api/attachments/bulk-delete', 'POST /api/attachments/bulk-assign', 'POST /api/attachments/create-expenses', 'POST /api/attachments/reparse',
     'POST /api/imports', 'POST /api/imports/s%201/confirm',
     'GET /api/batches', 'POST /api/batches', 'GET /api/batches/4', 'PATCH /api/batches/4', 'DELETE /api/batches/4',
     'POST /api/batches/4/items', 'POST /api/batches/4/export', 'POST /api/batches/4/sent', 'POST /api/batches/4/received', 'POST /api/batches/4/reopen',
@@ -53,9 +54,17 @@ describe('endpoint functions follow the contract', () => {
     await attachmentsApi.remove(2);
     await attachmentsApi.setChecklistState(3, 'not_needed', '线下购买');
     await attachmentsApi.setChecklistState(3, 'missing');
+    await attachmentsApi.bulkDelete([1, 2]);
+    await attachmentsApi.bulkAssign({ ids: [1], expense_id: 4, kind: 'order' });
+    await attachmentsApi.createExpenses([1]);
+    await attachmentsApi.reparse([2]);
     expect(calls[1].body).toEqual({ expense_id: null });
     expect(calls[3].body).toEqual({ state: 'not_needed', reason: '线下购买' });
     expect(calls[4].body).toEqual({ state: 'missing' });
+    expect(calls[5]).toMatchObject({ method: 'POST', url: '/api/attachments/bulk-delete', body: { ids: [1, 2] } });
+    expect(calls[6]).toMatchObject({ method: 'POST', url: '/api/attachments/bulk-assign', body: { ids: [1], expense_id: 4, kind: 'order' } });
+    expect(calls[7]).toMatchObject({ method: 'POST', url: '/api/attachments/create-expenses', body: { ids: [1] } });
+    expect(calls[8]).toMatchObject({ method: 'POST', url: '/api/attachments/reparse', body: { ids: [2] } });
     expect(attachmentsApi.thumbnailUrl(9)).toBe('/api/attachments/9/thumbnail');
     expect(attachmentsApi.fileUrl(9)).toBe('/api/attachments/9/file');
   });
