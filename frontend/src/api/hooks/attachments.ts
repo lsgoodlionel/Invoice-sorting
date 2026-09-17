@@ -1,0 +1,52 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { api } from '../client';
+import type { Attachment, AttachmentKind, ChecklistState, ExpenseDetail } from '../types';
+import { invalidateWorkflow } from './invalidate';
+import { queryKeys } from './keys';
+
+export interface AttachmentPatch {
+  kind?: AttachmentKind;
+  expense_id?: number | null;
+}
+
+export const attachmentsApi = {
+  unassigned: () => api.get<Attachment[]>('/attachments/unassigned'),
+  update: (id: number, patch: AttachmentPatch) => api.patch<Attachment>(`/attachments/${id}`, patch),
+  remove: (id: number) => api.del<null>(`/attachments/${id}`),
+  thumbnailUrl: (id: number) => `/api/attachments/${id}/thumbnail`,
+  fileUrl: (id: number) => `/api/attachments/${id}/file`,
+  setChecklistState: (id: number, state: Exclude<ChecklistState, 'present'>, reason?: string) =>
+    api.patch<ExpenseDetail>(`/checklist-items/${id}`, reason === undefined ? { state } : { state, reason }),
+};
+
+export function useUnassignedAttachments() {
+  return useQuery({ queryKey: queryKeys.unassigned, queryFn: attachmentsApi.unassigned });
+}
+
+export function useUpdateAttachment() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, patch }: { id: number; patch: AttachmentPatch }) => attachmentsApi.update(id, patch),
+    onSuccess: () => invalidateWorkflow(client),
+  });
+}
+
+export function useDeleteAttachment() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => attachmentsApi.remove(id),
+    onSuccess: () => invalidateWorkflow(client),
+  });
+}
+
+export function useSetChecklistState() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, state, reason }: { id: number; state: 'missing' | 'not_needed'; reason?: string }) =>
+      attachmentsApi.setChecklistState(id, state, reason),
+    onSuccess: async (detail) => {
+      client.setQueryData(queryKeys.expense(detail.id), detail);
+      await invalidateWorkflow(client);
+    },
+  });
+}
