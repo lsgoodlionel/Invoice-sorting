@@ -2,7 +2,7 @@
 
 from typing import Annotated, Any
 
-from pydantic import BaseModel, ConfigDict, Field, StrictBool
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StringConstraints
 
 from invoice_sorting.common.constants import AttachmentKind, ChecklistLevel
 
@@ -67,6 +67,10 @@ class ProjectUpdate(BaseModel):
     active: bool | None = None
 
 
+MAX_KEYWORDS = 20
+Keyword = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=20)]
+
+
 class RuleCondition(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -76,6 +80,13 @@ class RuleCondition(BaseModel):
     is_nonlocal: StrictBool | None = None
     detail_platform: StrictBool | None = None
     invoice_exempt: StrictBool | None = None
+    # 发票内容（税收分类、商品名称、销售方）或记录商家、摘要包含 / 不包含任一关键词
+    content_keywords: list[Keyword] | None = Field(
+        default=None, min_length=1, max_length=MAX_KEYWORDS
+    )
+    exclude_keywords: list[Keyword] | None = Field(
+        default=None, min_length=1, max_length=MAX_KEYWORDS
+    )
 
     def to_json(self) -> dict[str, Any]:
         return self.model_dump(exclude_none=True)

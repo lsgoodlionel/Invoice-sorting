@@ -22,7 +22,8 @@ RULES_VERSION_KEY = "rules_version"
 MEMORY_VERSION_KEY = "classification_memory_version"
 # 版本 2：分类记忆只记录用户手动修改；旧版自动写入的记忆可能固化了错误分类，升级时清空一次
 MEMORY_VERSION = 2
-RULES_VERSION = 4
+RULES_VERSION = 5
+LODGING_RULES_VERSION = 5
 BASE_RULES_VERSION = 1  # 未记录 rules_version 的旧库视为版本 1
 
 BOOK_CATEGORY: dict = {
@@ -116,8 +117,19 @@ BOOK_RULES: tuple[RuleSpec, ...] = (
 )
 
 NOT_EXEMPT: dict = {"invoice_exempt": False}
+LODGING_KEYWORDS: tuple[str, ...] = ("住宿", "酒店", "宾馆", "旅馆", "民宿", "客栈")
+IS_LODGING: dict = {"content_keywords": list(LODGING_KEYWORDS)}
+NOT_LODGING: dict = {"exclude_keywords": list(LODGING_KEYWORDS)}
 EXEMPT: dict = {"invoice_exempt": True}
 INVOICE_RULE: RuleSpec = (None, "invoice", "required", NOT_EXEMPT, "报销需附发票原件")
+
+LODGING_ORDER_RULE: RuleSpec = (
+    "差旅交通",
+    "order",
+    "required",
+    IS_LODGING,
+    "住宿费需附酒店订单（显示入住人、入住离店日期、房间数与单价）",
+)
 
 EXEMPT_RULES: tuple[RuleSpec, ...] = (
     (
@@ -166,7 +178,8 @@ DEFAULT_RULES: list[RuleSpec] = [
     ("软件服务", "acceptance", "required", {}, "审批后打印验收单"),
     *BOOK_RULES,
     ("印刷快递", "order", "suggested", {}, "打印费附明细（票面已开明细可免）"),
-    ("差旅交通", "itinerary", "required", {}, "附行程单，需与出差单对应"),
+    ("差旅交通", "itinerary", "required", NOT_LODGING, "附行程单，需与出差单对应"),
+    LODGING_ORDER_RULE,
     ("餐饮会议", "meal_form", "suggested", {}, "工作餐附工作餐单，50元/人/餐"),
     ("餐饮会议", "meeting", "suggested", {}, "会议附预算决算表、签到表、通知或议程"),
 ]
@@ -176,6 +189,7 @@ RULES_ADDED_IN: dict[int, tuple[RuleSpec, ...]] = {
     2: (NONLOCAL_ORDER_RULE,),
     3: BOOK_RULES,
     4: EXEMPT_RULES,
+    5: (LODGING_ORDER_RULE,),
 }
 EXEMPT_CONDITION_VERSION = 4  # 该版本起通用“发票”规则只对非免发票记录触发
 
@@ -294,6 +308,23 @@ def _restrict_invoice_rule(session: Session) -> None:
     session.flush()
 
 
+def _exclude_lodging_from_itinerary(session: Session) -> None:
+    """版本 5 的修改（非追加）：差旅交通的“行程单”规则不再对住宿酒店发票触发。
+
+    只改条件恰好为 {} 的规则；用户改过条件的规则保持不变。
+    """
+    travel_id = session.scalar(select(Category.id).where(Category.name == "差旅交通"))
+    if travel_id is None:
+        return
+    query = select(ChecklistRule).where(
+        ChecklistRule.category_id == travel_id, ChecklistRule.attachment_kind == "itinerary"
+    )
+    for rule in session.scalars(query):
+        if dict(rule.condition or {}) == {}:
+            rule.condition = dict(NOT_LODGING)
+    session.flush()
+
+
 def sync_default_rules(session: Session) -> None:
     """默认规则版本升级时，追加新版本引入且尚不存在的同类同条件规则；不删除用户规则。"""
     version = _stored_rules_version(session)
@@ -301,6 +332,8 @@ def sync_default_rules(session: Session) -> None:
         return
     if version < EXEMPT_CONDITION_VERSION:
         _restrict_invoice_rule(session)
+    if version < LODGING_RULES_VERSION:
+        _exclude_lodging_from_itinerary(session)
     for added_in, specs in sorted(RULES_ADDED_IN.items()):
         if added_in <= version:
             continue

@@ -539,6 +539,10 @@ export interface ChecklistCondition {
   is_nonlocal?: boolean;
   detail_platform?: boolean;
   invoice_exempt?: boolean;
+  /** 发票内容（税收分类、商品名称、销售方）或商家、摘要包含任一关键词才触发 */
+  content_keywords?: string[];
+  /** 包含任一关键词则不触发 */
+  exclude_keywords?: string[];
 }
 
 export interface ChecklistRule {

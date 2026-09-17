@@ -16,6 +16,8 @@ export interface ConditionSwitches {
   isNonlocalOnly: boolean;
   excludeDetailPlatform: boolean;
   invoiceExempt: InvoiceExemptFilter;
+  contentKeywords: string[];
+  excludeKeywords: string[];
 }
 
 export interface ConditionInput extends ConditionSwitches {
@@ -36,6 +38,8 @@ function describeFlags(condition: ChecklistCondition): string[] {
   if (condition.detail_platform === true) parts.push('仅已带明细平台');
   if (condition.invoice_exempt === true) parts.push('仅免发票记录');
   if (condition.invoice_exempt === false) parts.push('排除免发票记录');
+  if (condition.content_keywords?.length) parts.push(`发票内容含：${condition.content_keywords.join('、')}`);
+  if (condition.exclude_keywords?.length) parts.push(`发票内容不含：${condition.exclude_keywords.join('、')}`);
   return parts;
 }
 
@@ -48,6 +52,15 @@ export function describeCondition(condition: ChecklistCondition): string {
   return parts.length ? parts.join('，') : '始终';
 }
 
+function cleanKeywords(words: readonly string[]): string[] {
+  return words.map((word) => word.trim()).filter((word) => word.length > 0);
+}
+
+function keywordsEntry(key: 'content_keywords' | 'exclude_keywords', words: readonly string[]): ChecklistCondition {
+  const cleaned = cleanKeywords(words);
+  return cleaned.length ? { [key]: cleaned } : {};
+}
+
 /** 构造条件对象：省略空值，不带 undefined 键。 */
 export function buildCondition(input: ConditionInput): ChecklistCondition {
   return {
@@ -57,6 +70,8 @@ export function buildCondition(input: ConditionInput): ChecklistCondition {
     ...(input.isNonlocalOnly ? { is_nonlocal: true } : {}),
     ...(input.excludeDetailPlatform ? { detail_platform: false } : {}),
     ...(input.invoiceExempt === 'any' ? {} : { invoice_exempt: input.invoiceExempt === 'only' }),
+    ...keywordsEntry('content_keywords', input.contentKeywords),
+    ...keywordsEntry('exclude_keywords', input.excludeKeywords),
   };
 }
 
@@ -67,6 +82,8 @@ export function conditionSwitches(condition: ChecklistCondition): ConditionSwitc
     isNonlocalOnly: condition.is_nonlocal === true,
     excludeDetailPlatform: condition.detail_platform === false,
     invoiceExempt: exemptFilter(condition.invoice_exempt),
+    contentKeywords: [...(condition.content_keywords ?? [])],
+    excludeKeywords: [...(condition.exclude_keywords ?? [])],
   };
 }
 

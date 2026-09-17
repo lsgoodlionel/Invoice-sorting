@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { buildCondition, conditionSwitches, describeCondition, INVOICE_EXEMPT_OPTIONS } from './rules';
 
-const EMPTY_INPUT = { amountGte: null, amountLt: null, isOnlineOnly: false, isNonlocalOnly: false, excludeDetailPlatform: false, invoiceExempt: 'any' as const };
+const EMPTY_INPUT = { amountGte: null, amountLt: null, isOnlineOnly: false, isNonlocalOnly: false, excludeDetailPlatform: false, invoiceExempt: 'any' as const, contentKeywords: [] as string[], excludeKeywords: [] as string[] };
 
 describe('rule conditions', () => {
   test('describeCondition', () => {
@@ -28,9 +28,9 @@ describe('rule conditions', () => {
 
   test('conditionSwitches reads flags back from a stored condition', () => {
     expect(conditionSwitches({ is_nonlocal: true, detail_platform: false, is_online: true })).toEqual({
-      isOnlineOnly: true, isNonlocalOnly: true, excludeDetailPlatform: true, invoiceExempt: 'any',
+      isOnlineOnly: true, isNonlocalOnly: true, excludeDetailPlatform: true, invoiceExempt: 'any', contentKeywords: [], excludeKeywords: [],
     });
-    expect(conditionSwitches({})).toEqual({ isOnlineOnly: false, isNonlocalOnly: false, excludeDetailPlatform: false, invoiceExempt: 'any' });
+    expect(conditionSwitches({})).toEqual({ isOnlineOnly: false, isNonlocalOnly: false, excludeDetailPlatform: false, invoiceExempt: 'any', contentKeywords: [], excludeKeywords: [] });
   });
 
   test('invoice exempt condition is described, encoded and read back', () => {
@@ -41,5 +41,15 @@ describe('rule conditions', () => {
     expect(conditionSwitches({ invoice_exempt: true }).invoiceExempt).toBe('only');
     expect(conditionSwitches({ invoice_exempt: false }).invoiceExempt).toBe('exclude');
     expect(INVOICE_EXEMPT_OPTIONS.map((option) => option.label)).toEqual(['不限', '仅免发票记录', '排除免发票记录']);
+  });
+
+  test('content keyword conditions are described, encoded and read back', () => {
+    const lodging = ['住宿', '酒店'];
+    expect(describeCondition({ content_keywords: lodging })).toBe('发票内容含：住宿、酒店');
+    expect(describeCondition({ exclude_keywords: lodging })).toBe('发票内容不含：住宿、酒店');
+    expect(buildCondition({ ...EMPTY_INPUT, contentKeywords: [' 住宿 ', '', '酒店'] })).toEqual({ content_keywords: lodging });
+    expect(buildCondition({ ...EMPTY_INPUT, excludeKeywords: lodging })).toEqual({ exclude_keywords: lodging });
+    expect(conditionSwitches({ content_keywords: lodging }).contentKeywords).toEqual(lodging);
+    expect(conditionSwitches({ exclude_keywords: lodging }).excludeKeywords).toEqual(lodging);
   });
 });

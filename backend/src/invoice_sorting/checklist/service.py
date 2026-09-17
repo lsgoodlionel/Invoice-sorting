@@ -24,6 +24,30 @@ def _flag_matches(condition: dict[str, Any], key: str, actual: Callable[[], bool
     return key not in condition or actual() == bool(condition[key])
 
 
+def _content_text(expense: Expense) -> str:
+    """用于关键词条件的文本：记录商家与摘要，以及发票的税收分类、商品名称、销售方。"""
+    parts = [expense.merchant or "", expense.summary or ""]
+    for attachment in expense.attachments or []:
+        invoice = attachment.invoice_data
+        if invoice is not None:
+            parts.extend(
+                [invoice.tax_category or "", invoice.item_summary or "", invoice.seller_name or ""]
+            )
+    return " ".join(parts)
+
+
+def _keywords_match(condition: dict[str, Any], expense: Expense) -> bool:
+    """content_keywords：包含任一关键词才触发；exclude_keywords：包含任一关键词则不触发。"""
+    include = [word for word in condition.get("content_keywords") or [] if word]
+    exclude = [word for word in condition.get("exclude_keywords") or [] if word]
+    if not include and not exclude:
+        return True
+    text = _content_text(expense)
+    if include and not any(word in text for word in include):
+        return False
+    return not any(word in text for word in exclude)
+
+
 def condition_matches(
     condition: dict[str, Any] | None, expense: Expense, policy: RegionPolicy = DEFAULT_POLICY
 ) -> bool:
@@ -39,7 +63,9 @@ def condition_matches(
         ("detail_platform", lambda: is_detail_platform(expense, policy.detail_platforms)),
         ("invoice_exempt", lambda: bool(expense.invoice_exempt)),
     )
-    return all(_flag_matches(condition, key, actual) for key, actual in flags)
+    if not all(_flag_matches(condition, key, actual) for key, actual in flags):
+        return False
+    return _keywords_match(condition, expense)
 
 
 def _merge(first: ChecklistRule, second: ChecklistRule) -> ChecklistRule:

@@ -322,6 +322,6 @@ type Stats = {
 | PATCH/DELETE | `/api/checklist-rules/{id}` | | `ChecklistRule` / `null` |
 | POST | `/api/backup` | — | `{ file: string }` |
 
-`ChecklistRule = { id, category_id: number|null, attachment_kind, level, condition: { amount_gte?: number, amount_lt?: number, is_online?: boolean, is_nonlocal?: boolean, detail_platform?: boolean }, hint }`
+`ChecklistRule = { id, category_id: number|null, attachment_kind, level, condition: { amount_gte?: number, amount_lt?: number, is_online?: boolean, is_nonlocal?: boolean, detail_platform?: boolean, content_keywords?: string[], exclude_keywords?: string[] }, hint }`
 
-条件全部满足才触发：`is_nonlocal` 为外地发票；`detail_platform` 为销售方属于已带明细平台；`invoice_exempt` 为免发票记录。默认新增通用规则：`{ is_nonlocal: true, detail_platform: false }` → 订单明细（必需），提示“外地发票需附网购订单截图（京东、当当、圆迈等已带明细平台可免）；非网购外地购品需随差旅报销并说明”。
+条件全部满足才触发：`is_nonlocal` 为外地发票；`detail_platform` 为销售方属于已带明细平台；`invoice_exempt` 为免发票记录；`content_keywords` 为发票内容（税收分类、商品名称、销售方）或记录商家、摘要包含任一关键词（每个 1–20 字，最多 20 个），`exclude_keywords` 为包含任一关键词则不触发。默认规则（版本 5）：差旅交通的“订单明细”仅在含“住宿/酒店/宾馆/旅馆/民宿/客栈”时必需（酒店订单），“行程单”对这些住宿发票不触发。默认新增通用规则：`{ is_nonlocal: true, detail_platform: false }` → 订单明细（必需），提示“外地发票需附网购订单截图（京东、当当、圆迈等已带明细平台可免）；非网购外地购品需随差旅报销并说明”。
