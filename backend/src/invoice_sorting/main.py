@@ -1,7 +1,9 @@
 """应用入口：创建 FastAPI、挂载各模块路由与前端静态文件。"""
 
+import argparse
 import logging
 import webbrowser
+from collections.abc import Sequence
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -12,6 +14,10 @@ from fastapi.staticfiles import StaticFiles
 
 from invoice_sorting.attachments.file_keys import backfill_file_keys
 from invoice_sorting.attachments.router import router as attachments_router
+from invoice_sorting.auth.cli import reset_password
+from invoice_sorting.auth.middleware import AuthMiddleware
+from invoice_sorting.auth.ratelimit import LoginRateLimiter
+from invoice_sorting.auth.router import router as auth_router
 from invoice_sorting.batches.router import router as batches_router
 from invoice_sorting.checklist.router import router as checklist_router
 from invoice_sorting.common.errors import install_error_handlers, ok
@@ -59,9 +65,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = settings
     app.state.engine = engine
     app.state.session_factory = session_factory
+    app.state.login_limiter = LoginRateLimiter()
     install_error_handlers(app)
+    app.add_middleware(AuthMiddleware)
 
     for router in (
+        auth_router,
         expenses_router,
         attachments_router,
         importer_router,
@@ -94,7 +103,18 @@ def _mount_frontend(app: FastAPI, dist: Path) -> None:
         return FileResponse(index)
 
 
-def run() -> None:
+def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(prog="invoice-sorting", description="个人发票报销管理工具")
+    commands = parser.add_subparsers(dest="command")
+    commands.add_parser("reset-password", help="清除登录密码与全部会话，之后在网页重新设置")
+    return parser.parse_args(argv)
+
+
+def run(argv: Sequence[str] | None = None) -> None:
+    args = _parse_args(argv)
+    if args.command == "reset-password":
+        reset_password(Settings())
+        return
     logging.basicConfig(level=logging.INFO)
     settings = Settings()
     app = create_app(settings)

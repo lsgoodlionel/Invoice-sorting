@@ -11,14 +11,21 @@ from invoice_sorting.config import Settings
 from invoice_sorting.main import create_app
 
 
+def make_settings(tmp_path: Path, **overrides) -> Settings:
+    values = {
+        "data_dir": tmp_path / "data",
+        "open_browser": False,
+        "watch_inbox": False,
+        "frontend_dist": tmp_path / "no-frontend",
+        "auth_enabled": False,  # 现有业务测试不带登录；认证测试使用 auth_* 夹具
+        **overrides,
+    }
+    return Settings(**values)
+
+
 @pytest.fixture
 def settings(tmp_path: Path) -> Settings:
-    return Settings(
-        data_dir=tmp_path / "data",
-        open_browser=False,
-        watch_inbox=False,
-        frontend_dist=tmp_path / "no-frontend",
-    )
+    return make_settings(tmp_path)
 
 
 @pytest.fixture
@@ -37,6 +44,22 @@ def session(app) -> Iterator[Session]:
     factory = app.state.session_factory
     with factory() as db_session:
         yield db_session
+
+
+@pytest.fixture
+def auth_settings(tmp_path: Path) -> Settings:
+    return make_settings(tmp_path, auth_enabled=True)
+
+
+@pytest.fixture
+def auth_app(auth_settings: Settings):
+    return create_app(auth_settings)
+
+
+@pytest.fixture
+def auth_client(auth_app) -> Iterator[TestClient]:
+    with TestClient(auth_app) as test_client:
+        yield test_client
 
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"

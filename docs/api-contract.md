@@ -23,11 +23,11 @@
 | POST | `/api/auth/logout` | 需登录 | `null`，清除 Cookie 并使该会话失效 |
 | POST | `/api/auth/password` | 需登录；`{ current_password, new_password }`；当前密码错误 400 | `null`；其他设备会话全部失效，当前会话保留 |
 
-- 密码规则：8–128 个字符。
-- 会话 Cookie：名称 `invoice_session`，HttpOnly、SameSite=Lax、Path=/，有效期 30 天（每次访问续期）；请求经 HTTPS（含 `X-Forwarded-Proto: https`）时加 Secure。服务端只保存令牌的 SHA-256。
+- 密码规则：8–128 个字符（setup 的 `password`、修改密码的 `new_password`；不符合时 422，error 形如“参数错误：body.password 密码长度需为 8–128 个字符”）。login 的 `password` 与 `current_password` 不校验下限（长度不符按密码错误处理），仅超过 1024 字符时 422。
+- 会话 Cookie：名称 `invoice_session`，HttpOnly、SameSite=Lax、Path=/，Max-Age 30 天；访问受保护端点或 status 时续期（距上次续期超过 1 小时才写库并重新下发 Cookie）；请求经 HTTPS（含来自本机反代的 `X-Forwarded-Proto: https`）时加 Secure。服务端只保存令牌的 SHA-256。
 - 未认证访问受保护端点：401 `{ ok: false, error: "请先登录" }`；尚未设置密码时 error 为 `"请先设置初始密码"`。前端收到 401 时重新获取 `/api/auth/status` 并显示对应页面。
 - 公开端点：`/api/health`、`/api/auth/status`、`/api/auth/setup`、`/api/auth/login`；前端静态文件始终可访问。
-- 登录失败限制：同一客户端 IP（优先 `X-Real-IP`，仅信任来自 127.0.0.1 的代理头）15 分钟内失败 5 次锁定 15 分钟。
+- 登录失败限制：同一客户端 IP（直连地址为 127.0.0.1/::1 时才信任代理头：优先 `X-Real-IP`，其次 `X-Forwarded-For` 的最后一个地址）15 分钟内失败 5 次锁定 15 分钟；锁定期间任何登录请求（含正确密码）返回 429，N 为向上取整的剩余分钟；登录成功清零。计数保存在进程内存，重启服务后清零。
 - `INVOICE_SORTING_AUTH_ENABLED=false` 可关闭认证（仅限本机单人使用；status 返回 auth_enabled=false、authenticated=true）。
 - 忘记密码：服务器执行 `invoice-sorting reset-password`，清空密码与全部会话，之后网页回到“设置初始密码”。
 
@@ -254,14 +254,16 @@ type ConfirmGroup = {
 ```ts
 type Stats = {
   start: string; end: string; date_basis: DateBasis;
+  data_start: string | null;  // 所选区间与口径下最早有数据的日期（未删除、口径日期非空）；无数据为 null
   totals: { spent_cents: number; pending_cents: number; in_transit_cents: number; reimbursed_cents: number; void_cents: number };
   // spent=非作废合计；pending=spent/invoiced/complete；in_transit=sent；reimbursed=已到账金额；void=作废
   rows: { key: string; label: string; by_status: { [status]: { count: number; amount_cents: number } }; total_cents: number }[];
-  months: { month: string; amount_cents: number }[]     // 趋势（按所选口径日期的 YYYY-MM）
+  months: { month: string; amount_cents: number }[]     // 趋势（按所选口径日期的 YYYY-MM），自 max(start, data_start 所在月初) 起逐月补 0 至 end；无数据时自 start 起
 }
 ```
 
 - rows.key：category/project 为 id 字符串，merchant 为商家名，month 为 `YYYY-MM`，空值为 `none`。区间超过 240 个月返回 400。
+- data_start 仅影响 `months` 的起点，totals/rows 与导出（`/api/stats/export`）不受影响。
 
 `GET /api/stats/export?...同上` → XLSX 文件流。
 `GET /api/dashboard` → `{ missing: ExpenseSummary[] (有必需缺项，最多 20), overdue: Batch[] (已外发超过 overdue_days 未到账), spent_without_invoice: ExpenseSummary[] (已支出超过 14 天仍无发票), unassigned_count: number, month_totals: Stats["totals"] }`

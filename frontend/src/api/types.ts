@@ -438,6 +438,8 @@ export interface Stats {
   start: string;
   end: string;
   date_basis: DateBasis;
+  /** 所选区间与口径下最早有数据的日期；无数据为 null */
+  data_start: string | null;
   totals: StatsTotals;
   rows: StatsRow[];
   months: { month: string; amount_cents: number }[];
@@ -502,3 +504,19 @@ export interface ChecklistRule {
 }
 
 export type ChecklistRuleInput = Omit<ChecklistRule, 'id'>;
+
+// —— 登录认证 ——
+export interface AuthStatus {
+  auth_enabled: boolean;
+  password_set: boolean;
+  authenticated: boolean;
+}
+
+export interface AuthResult {
+  authenticated: true;
+}
+
+export interface ChangePasswordInput {
+  current_password: string;
+  new_password: string;
+}

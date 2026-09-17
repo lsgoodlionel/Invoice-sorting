@@ -105,6 +105,7 @@ def app_factory(tmp_path):
             open_browser=False,
             watch_inbox=False,
             frontend_dist=tmp_path / "no-frontend",
+            auth_enabled=False,
         )
         with TestClient(create_app(settings)) as test_client:
             yield test_client

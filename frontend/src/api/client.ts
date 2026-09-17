@@ -1,3 +1,4 @@
+import { authEvents } from './authEvents';
 import type { ApiEnvelope } from './types';
 
 export const API_BASE = '/api';
@@ -11,6 +12,19 @@ export class ApiError extends Error {
     this.status = status;
   }
 }
+
+const HTTP_UNAUTHORIZED = 401;
+
+/** 401：未登录、会话失效或尚未设置初始密码（message 为后端中文说明）。 */
+export class UnauthorizedError extends ApiError {
+  constructor(message: string) {
+    super(message, HTTP_UNAUTHORIZED);
+    this.name = 'UnauthorizedError';
+  }
+}
+
+/** 这些端点的 401 是业务结果（如登录密码错误），不代表会话失效。 */
+const AUTH_FORM_PATHS: readonly string[] = ['/auth/login', '/auth/setup'];
 
 export type QueryValue = string | number | boolean | readonly (string | number)[] | null | undefined;
 export type QueryParams = Readonly<Record<string, QueryValue>>;
@@ -37,8 +51,23 @@ function isEnvelope(value: unknown): value is ApiEnvelope<unknown> {
 const GENERIC_ERROR = '请求失败';
 const NETWORK_ERROR = '无法连接本地服务，请确认后端已启动';
 
-/** 从已解析的响应体取信封数据：ok=false 或非 2xx 时抛出 ApiError（优先使用后端中文 error）。 */
-export function unwrapEnvelope<T>(body: unknown, status: number): T {
+export interface UnwrapOptions {
+  /** 401 时是否发布“认证失效”事件，默认 true */
+  notifyUnauthorized?: boolean;
+}
+
+function unauthorized(body: unknown, notify: boolean): UnauthorizedError {
+  if (notify) authEvents.emitUnauthorized();
+  const message = isEnvelope(body) && body.error ? body.error : '请先登录';
+  return new UnauthorizedError(message);
+}
+
+/**
+ * 从已解析的响应体取信封数据：ok=false 或非 2xx 时抛出 ApiError（优先使用后端中文 error）；
+ * 401 抛出 UnauthorizedError 并（默认）发布认证失效事件。
+ */
+export function unwrapEnvelope<T>(body: unknown, status: number, options: UnwrapOptions = {}): T {
+  if (status === HTTP_UNAUTHORIZED) throw unauthorized(body, options.notifyUnauthorized ?? true);
   const isHttpOk = status >= 200 && status < 300;
   if (!isEnvelope(body)) {
     throw new ApiError(`${GENERIC_ERROR}（HTTP ${status}）`, status);
@@ -60,8 +89,8 @@ export function parseJsonText(text: string): unknown {
 }
 
 /** 解析 fetch 响应的信封。 */
-export async function parseEnvelope<T>(response: Response): Promise<T> {
-  return unwrapEnvelope<T>(parseJsonText(await response.text()), response.status);
+export async function parseEnvelope<T>(response: Response, options: UnwrapOptions = {}): Promise<T> {
+  return unwrapEnvelope<T>(parseJsonText(await response.text()), response.status, options);
 }
 
 export interface RequestOptions {
@@ -89,7 +118,7 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
     if (error instanceof DOMException && error.name === 'AbortError') throw error;
     throw new ApiError(NETWORK_ERROR, 0);
   }
-  return parseEnvelope<T>(response);
+  return parseEnvelope<T>(response, { notifyUnauthorized: !AUTH_FORM_PATHS.includes(path) });
 }
 
 export const api = {

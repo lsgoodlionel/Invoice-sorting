@@ -8,6 +8,7 @@ import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router';
 import { AppProviders } from './AppProviders';
 import { App } from './App';
+import { AuthGate } from './components/auth/AuthGate';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) throw new Error('缺少 #root 元素');
@@ -16,7 +17,9 @@ createRoot(rootElement).render(
   <StrictMode>
     <AppProviders>
       <BrowserRouter>
-        <App />
+        <AuthGate>
+          <App />
+        </AuthGate>
       </BrowserRouter>
     </AppProviders>
   </StrictMode>,

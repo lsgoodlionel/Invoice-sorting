@@ -4,6 +4,7 @@ import { CategoryManager } from '../components/settings/CategoryManager';
 import { GeneralSettings } from '../components/settings/GeneralSettings';
 import { ProjectManager } from '../components/settings/ProjectManager';
 import { RuleManager } from '../components/settings/RuleManager';
+import { SecuritySettings } from '../components/settings/SecuritySettings';
 
 function Section({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -22,6 +23,7 @@ export function SettingsPage() {
       <Section label="分类"><CategoryManager /></Section>
       <Section label="经费项目"><ProjectManager /></Section>
       <Section label="凭证清单规则"><RuleManager /></Section>
+      <Section label="登录与安全"><SecuritySettings /></Section>
     </Stack>
   );
 }

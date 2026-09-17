@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     open_browser: bool = True
     watch_inbox: bool = True
     frontend_dist: Path | None = None
+    auth_enabled: bool = True  # 应用内登录认证；仅本机单人使用时可关闭
 
     @cached_property
     def db_path(self) -> Path:
