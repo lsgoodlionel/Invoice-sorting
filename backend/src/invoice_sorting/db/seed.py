@@ -1,92 +1,63 @@
-"""首次启动时写入默认分类与凭证清单模板（蓝图 4.1 / 4.2）。已有数据时不重复写入。"""
+"""首次启动时写入默认分类与凭证清单模板（蓝图 4.1 / 4.2）；默认关键词升级时合并进已有分类。"""
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from invoice_sorting.db.models import Category, ChecklistRule
+from invoice_sorting.db.default_keywords import DEFAULT_KEYWORDS, KEYWORDS_VERSION
+from invoice_sorting.db.models import AppSetting, Category, ChecklistRule
 
 YUAN = 100
+KEYWORDS_VERSION_KEY = "keywords_version"
 
 DEFAULT_CATEGORIES: list[dict] = [
     {
         "name": "办公用品",
         "color": "blue",
-        "keywords": [
-            "文件夹",
-            "签字笔",
-            "中性笔",
-            "便利贴",
-            "打印纸",
-            "复印纸",
-            "文具",
-            "办公用品",
-        ],
         "route_hint": "办公用品不在设备与实验室平台填报，走日常报销。",
     },
     {
         "name": "易耗品",
         "color": "teal",
-        "keywords": [
-            "鼠标",
-            "键盘",
-            "硒鼓",
-            "墨盒",
-            "电池",
-            "网线",
-            "手套",
-            "内存",
-            "读卡器",
-            "摄像头",
-            "插线板",
-            "计算机配套产品",
-        ],
         "route_hint": "公共数据库 → 设备与实验室 → 报账管理 → 材料易耗品低值品报账 → "
         "新增报账单 → 审批后打印验收单；报销金额填“材料费”。",
     },
     {
         "name": "低值品",
         "color": "cyan",
-        "keywords": ["移动硬盘", "U盘", "优盘", "录音笔", "工具"],
         "route_hint": "同易耗品路径：材料易耗品低值品报账，审批后打印验收单。",
     },
     {
         "name": "设备",
         "color": "indigo",
-        "keywords": ["笔记本电脑", "计算机", "显示器", "打印机", "服务器", "仪器"],
         "route_hint": "单价≥1000元设备先申购报账，再到财务“资产业务”；申购时间须早于购买时间。",
     },
     {
         "name": "材料",
         "color": "green",
-        "keywords": ["试剂", "材料", "耗材"],
         "route_hint": "材料易耗品低值品报账，审批后打印验收单；金额填“材料费”。",
     },
     {
         "name": "软件服务",
         "color": "violet",
-        "keywords": ["会员", "网盘", "腾讯会议", "问卷星", "订阅", "软件", "信息技术服务"],
         "route_hint": "无形资产软件报账，审批后打印验收单；金额填“委托其他业务费”。",
     },
     {
         "name": "印刷快递",
         "color": "orange",
-        "keywords": ["印刷", "打印费", "复印费", "快递", "邮政", "物流"],
         "route_hint": "打印费需附明细或票面已开明细。",
     },
     {
         "name": "差旅交通",
         "color": "yellow",
-        "keywords": ["铁路", "客票", "航空", "机票", "住宿", "出行", "打车", "滴滴", "客运"],
         "route_hint": "选择国内差旅费；市内交通附发票及行程单，个人出行与节假日不报。",
     },
     {
         "name": "餐饮会议",
         "color": "red",
-        "keywords": ["餐饮", "餐费", "会议费", "会务"],
         "route_hint": "工作餐附工作餐单（50元/人/餐）；"
         "会议附预算决算表、申请流程、签到表、通知或议程。",
     },
-    {"name": "其他", "color": "gray", "keywords": [], "route_hint": ""},
+    {"name": "其他", "color": "gray", "route_hint": ""},
 ]
 
 # (分类名 或 None=通用, 附件类型, 级别, 条件, 提示)
@@ -132,7 +103,8 @@ def seed_defaults(session: Session) -> None:
         return
     by_name: dict[str, Category] = {}
     for index, data in enumerate(DEFAULT_CATEGORIES):
-        category = Category(sort=index, **data)
+        keywords = list(DEFAULT_KEYWORDS.get(data["name"], ()))
+        category = Category(sort=index, keywords=keywords, **data)
         session.add(category)
         by_name[category.name] = category
     session.flush()
@@ -146,4 +118,19 @@ def seed_defaults(session: Session) -> None:
                 hint=hint,
             )
         )
+    session.merge(AppSetting(key=KEYWORDS_VERSION_KEY, value=str(KEYWORDS_VERSION)))
+    session.commit()
+
+
+def sync_default_keywords(session: Session) -> None:
+    """默认词表版本升级时，把新增关键词追加到同名分类；同一版本只合并一次。"""
+    stored = session.get(AppSetting, KEYWORDS_VERSION_KEY)
+    if stored is not None and stored.value == str(KEYWORDS_VERSION):
+        return
+    for category in session.scalars(select(Category)):
+        existing = list(category.keywords or [])
+        additions = [kw for kw in DEFAULT_KEYWORDS.get(category.name, ()) if kw not in existing]
+        if additions:
+            category.keywords = existing + additions
+    session.merge(AppSetting(key=KEYWORDS_VERSION_KEY, value=str(KEYWORDS_VERSION)))
     session.commit()

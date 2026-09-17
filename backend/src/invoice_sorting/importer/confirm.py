@@ -16,7 +16,7 @@ from invoice_sorting.expenses.service import (
     create_expense,
     get_expense_or_404,
     refresh_expense,
-    remember_merchant_category,
+    remember_invoice_category,
     update_expense,
 )
 from invoice_sorting.importer.journal import FsJournal
@@ -74,9 +74,8 @@ def _assign(ctx: _Context, attachment: Attachment, expense: Expense) -> None:
     ctx.journal.moved(before, absolute_path(ctx.settings, attachment))
     if attachment.invoice_data is not None:
         attachment.invoice_data.confirmed = True
-        seller = attachment.invoice_data.seller_name
-        if expense.category_id is not None and seller:
-            remember_merchant_category(ctx.session, seller, expense.category_id)
+        if expense.category_id is not None:
+            remember_invoice_category(ctx.session, attachment.invoice_data, expense.category_id)
 
 
 def _finish(ctx: _Context, expense: Expense, folder_before: str) -> None:

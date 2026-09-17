@@ -3,7 +3,7 @@
 from sqlalchemy import select
 
 from invoice_sorting.db.models import Category
-from invoice_sorting.expenses.service import remember_merchant_category
+from invoice_sorting.expenses.service import remember_item_category, remember_merchant_category
 from invoice_sorting.importer.classify import suggest_category
 
 
@@ -79,3 +79,29 @@ def test_returns_none_when_other_is_archived(session):
     session.flush()
 
     assert suggest_category(session, "无名", "无法归类", "") is None
+
+
+# ---- 实际使用反馈：收纳盒（*日用杂品*）应归入办公用品；手动改分类后要按商品记住 ----
+
+
+def test_storage_box_with_daily_goods_tax_category_is_office_supplies(session):
+    result = suggest_category(session, "吱二(上海)家居用品有限公司", "收纳盒", "日用杂品")
+
+    assert result == category_id(session, "办公用品")
+
+
+def test_item_memory_beats_merchant_memory_and_keywords(session):
+    remember_merchant_category(session, "综合商城", category_id(session, "易耗品"))
+    remember_item_category(session, "收纳盒等2项", category_id(session, "低值品"))
+
+    result = suggest_category(session, "综合商城", "收纳盒", "日用杂品")
+
+    assert result == category_id(session, "低值品")
+
+
+def test_item_memory_normalizes_summary_suffix(session):
+    remember_item_category(session, " 桌面收纳架 ", category_id(session, "办公用品"))
+
+    result = suggest_category(session, "新商家", "桌面收纳架等3项", "")
+
+    assert result == category_id(session, "办公用品")

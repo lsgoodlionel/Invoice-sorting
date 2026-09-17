@@ -212,6 +212,16 @@ class MerchantMemory(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
 
 
+class ItemMemory(Base):
+    """发票商品名称 → 用户确认的分类，优先级高于商家记忆（同一商家可能卖不同类商品）。"""
+
+    __tablename__ = "item_memory"
+
+    item_name: Mapped[str] = mapped_column(String(200), primary_key=True)
+    category_id: Mapped[int] = mapped_column(ForeignKey("category.id"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
+
+
 class AppSetting(Base):
     """键值配置，如 buyer_name / buyer_tax_id / overdue_days。"""
 

@@ -1,9 +1,10 @@
-"""分类建议（蓝图 4.1）：① 商家记忆 → ② 税收分类简称 → ③ 摘要/销售方关键词 → ④ 其他。"""
+"""分类建议：① 商品记忆 → ② 商家记忆 → ③ 税收分类简称 → ④ 摘要/销售方关键词 → ⑤ 其他。"""
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from invoice_sorting.db.models import Category, MerchantMemory
+from invoice_sorting.db.models import Category, ItemMemory, MerchantMemory
+from invoice_sorting.expenses.service import normalize_item_name
 
 OTHER_CATEGORY_NAME = "其他"
 
@@ -30,14 +31,18 @@ def _longest_keyword_match(categories: list[Category], text: str) -> Category | 
     return best
 
 
-def _from_memory(session: Session, seller_name: str, active_ids: set[int]) -> int | None:
-    name = (seller_name or "").strip()
-    if not name:
-        return None
-    memory = session.get(MerchantMemory, name)
-    if memory is None or memory.category_id not in active_ids:
-        return None
-    return memory.category_id
+def _from_memory(
+    session: Session, seller_name: str, item_summary: str, active_ids: set[int]
+) -> int | None:
+    lookups = (
+        (ItemMemory, normalize_item_name(item_summary)),
+        (MerchantMemory, (seller_name or "").strip()),
+    )
+    for model, key in lookups:
+        memory = session.get(model, key) if key else None
+        if memory is not None and memory.category_id in active_ids:
+            return memory.category_id
+    return None
 
 
 def suggest_category(
@@ -45,7 +50,8 @@ def suggest_category(
 ) -> int | None:
     """按优先级给出分类 id；归档分类不参与，连“其他”也不可用时返回 None。"""
     categories = _active_categories(session)
-    remembered = _from_memory(session, seller_name, {item.id for item in categories})
+    active_ids = {item.id for item in categories}
+    remembered = _from_memory(session, seller_name, item_summary, active_ids)
     if remembered is not None:
         return remembered
     for text in (tax_category, item_summary, seller_name):

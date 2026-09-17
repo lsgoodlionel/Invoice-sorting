@@ -15,7 +15,7 @@ from invoice_sorting.batches.router import router as batches_router
 from invoice_sorting.checklist.router import router as checklist_router
 from invoice_sorting.common.errors import install_error_handlers, ok
 from invoice_sorting.config import Settings
-from invoice_sorting.db.seed import seed_defaults
+from invoice_sorting.db.seed import seed_defaults, sync_default_keywords
 from invoice_sorting.db.session import create_db_engine, init_db, make_session_factory
 from invoice_sorting.expenses.router import router as expenses_router
 from invoice_sorting.importer.router import router as importer_router
@@ -35,6 +35,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     session_factory = make_session_factory(engine)
     with session_factory() as session:
         seed_defaults(session)
+        sync_default_keywords(session)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):

@@ -1,5 +1,6 @@
 """支出记录服务：新建、修改、自动/手动状态、软删除、商家分类记忆。"""
 
+import re
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -13,6 +14,8 @@ from invoice_sorting.db.models import (
     Batch,
     Category,
     Expense,
+    InvoiceData,
+    ItemMemory,
     MerchantMemory,
     Project,
     StatusEvent,
@@ -63,13 +66,11 @@ def _record_status(
     session.flush()
 
 
-def _invoice_sellers(expense: Expense) -> list[str]:
+def _invoices(expense: Expense) -> list[InvoiceData]:
     return [
-        attachment.invoice_data.seller_name
+        attachment.invoice_data
         for attachment in expense.attachments
-        if attachment.kind == AttachmentKind.INVOICE
-        and attachment.invoice_data is not None
-        and attachment.invoice_data.seller_name
+        if attachment.kind == AttachmentKind.INVOICE and attachment.invoice_data is not None
     ]
 
 
@@ -79,6 +80,36 @@ def get_expense_or_404(session: Session, expense_id: int) -> Expense:
     if expense is None or expense.deleted:
         raise NotFoundError("支出记录")
     return expense
+
+
+ITEM_COUNT_SUFFIX = re.compile(r"等\d+项$")
+
+
+def normalize_item_name(item_summary: str) -> str:
+    """“收纳盒等2项” → “收纳盒”，用于按商品记忆分类。"""
+    return ITEM_COUNT_SUFFIX.sub("", (item_summary or "").strip()).strip()
+
+
+def remember_item_category(session: Session, item_summary: str, category_id: int) -> None:
+    """记住“发票商品名称 → 分类”，用于导入时的分类建议。"""
+    name = normalize_item_name(item_summary)
+    if not name:
+        return
+    memory = session.get(ItemMemory, name)
+    if memory is None:
+        session.add(ItemMemory(item_name=name, category_id=category_id, updated_at=now()))
+    else:
+        memory.category_id = category_id
+        memory.updated_at = now()
+    session.flush()
+
+
+def remember_invoice_category(session: Session, invoice: InvoiceData, category_id: int) -> None:
+    """同时记住该发票的销售方与商品名称对应的分类。"""
+    if invoice.seller_name:
+        remember_merchant_category(session, invoice.seller_name, category_id)
+    if invoice.item_summary:
+        remember_item_category(session, invoice.item_summary, category_id)
 
 
 def remember_merchant_category(session: Session, seller_name: str, category_id: int) -> None:
@@ -114,8 +145,8 @@ def update_expense(
         setattr(expense, name, value)
     session.flush()
     if fields.get("category_id") is not None:
-        for seller in _invoice_sellers(expense):
-            remember_merchant_category(session, seller, fields["category_id"])
+        for invoice in _invoices(expense):
+            remember_invoice_category(session, invoice, fields["category_id"])
     return refresh_expense(session, settings, expense)
 
 
