@@ -177,7 +177,7 @@ type ImportFileResult = {
   original_name: string;
   status: "imported" | "duplicate" | "error";
   attachment: Attachment | null;      // imported 时为已入库附件（含 invoice / evidence 识别结果）
-  recognized_as: string;              // 中文识别结论，如“发票”“订单明细（京东订单）”“支付记录（银行交易）”“未识别”
+  recognized_as: string;              // 中文识别结论，如“发票”“发票（数电发票）”“订单明细（电商订单）”“支付记录（银行交易）”“未识别”
   message: string;                    // duplicate/error 的原因；imported 时可为提醒（如“无法识别发票内容，已作为附件导入”）或 ""
   existing_expense_id: number | null  // duplicate 时已存在的记录
 }
@@ -195,6 +195,10 @@ type ConfirmGroup = {
 }
 ```
 
+- 分文件导入：`start` 返回空会话；`files` 每次一个文件，入库并提交后返回 `ImportFileResult`。文件保存/校验失败（类型不支持、为空、超过上限）与识别异常均返回 200 + `status="error"`（message 为中文原因），不是 4xx；会话不存在或已过期时 404“导入会话已过期，请重新导入”。
+- `recognized_as`：发票为“发票”或“发票（票种）”；凭证为“附件类型（识别器）”，识别器名称：jd_order→电商订单、app_store_order→App Store 订单、receipt→收据/账单、bank_transaction→银行交易、wallet_bill→微信/支付宝账单、ride_itinerary→打车行程单、filename→按文件名判断（其他识别器只显示类型）；类型为“其他”、duplicate、error 时为“未识别”。
+- duplicate：同一文件为“文件已导入”，同一发票号为“发票号码 xxx 已存在”；前端可并发上传，同一文件被并发上传多次时只有一个 imported，其余为 duplicate（“文件已导入”，existing_expense_id 为 null），不会返回 500。
+- `finish` 可重复调用（如重试失败文件后再次 finish）：按会话内仍待归属的附件（已删除或已归属的跳过）从数据库重建分组，结果与一次性 `POST /api/imports` 相同；发票的支出日期沿用导入时的建议日期（差旅票优先乘车日期）。`confirm` 与一次性导入相同，确认后附件移出会话。
 - attachment_ids 为准：每个附件须属于本次导入会话、仍待归属、且不重复出现在多个组，否则 400（如“文件“a.png”：不属于本次导入或已处理”“文件“a.png”：不能同时出现在多个组”“附件 #9 不存在或已处理”）。
 - kinds 的键须是该组的附件 id，否则 400“类型设置中的附件 #id 不在该组”；先应用 kinds 再校验发票数。
 - 一个 ConfirmGroup 最多含一张发票（否则 400“每组最多一张发票：“a.pdf”、“b.pdf””）。
