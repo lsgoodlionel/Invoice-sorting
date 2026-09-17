@@ -24,6 +24,9 @@ class ParsedInvoice:
     warnings: tuple[str, ...]
     raw_text: str
     travel: dict[str, str] | None = None  # 差旅票：date, from, to, passenger, train_or_flight
+    region_code: str = ""  # 开票地区的省级行政区划代码前两位，如 "31"；无法判断为 ""
+    region_name: str = ""  # 开票地区简称，如 "上海"
+    order_no: str = ""  # 票面备注中的电商订单号，如京东“订单号:338623377834”
 
 
 class InvoiceParser(Protocol):

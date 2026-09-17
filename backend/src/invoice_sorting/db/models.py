@@ -152,6 +152,9 @@ class InvoiceData(Base):
     buyer_tax_id: Mapped[str] = mapped_column(String(50), default="")
     item_summary: Mapped[str] = mapped_column(String(300), default="")
     invoice_type: Mapped[str] = mapped_column(String(50), default="")
+    tax_category: Mapped[str] = mapped_column(String(50), default="")
+    region_name: Mapped[str] = mapped_column(String(20), default="")  # 开票地区，如“北京”
+    order_no: Mapped[str] = mapped_column(String(50), default="")  # 电商订单号
     parser: Mapped[str] = mapped_column(String(50), default="")
     confirmed: Mapped[bool] = mapped_column(Boolean, default=False)
     raw_text: Mapped[str] = mapped_column(Text, default="")
