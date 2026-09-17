@@ -59,6 +59,8 @@ type ExpenseDetail = ExpenseSummary & {
   sent_on: string | null; reimbursed_on: string | null; reimbursed_cents: number;
   folder_path: string; route_hint: string;
   region_name: string; is_nonlocal: boolean;   // 取该记录发票的开票地区；多张发票任一外地即为外地
+  invoice_exempt: boolean;            // 免发票（境外消费等），可 PATCH
+  currency: string; original_amount_cents: number | null;   // 原币（CNY 时 original 为 null），可 PATCH
   attachments: Attachment[]; checklist: ChecklistItem[]; timeline: StatusEvent[];
   created_at: string; updated_at: string
 }
@@ -100,32 +102,80 @@ type ExportRecord = { id: number; layout: ExportLayout; file_name: string; url: 
 | POST | `/api/attachments/bulk-delete` | `{ ids: number[] }`（仅限待归属附件，否则 409） | `{ deleted: number }` |
 | POST | `/api/attachments/bulk-assign` | `{ ids: number[], expense_id: number \| null, kind?: AttachmentKind }` | `Attachment[]` |
 | POST | `/api/attachments/create-expenses` | `{ ids: number[] }`：把待归属发票生成记录（有匹配的“已支出”记录则挂上，否则按识别结果新建；缺金额或日期的跳过） | `{ created: number[], attached: number[], skipped: { id: number, original_name: string, reason: string }[] }` |
-| POST | `/api/attachments/reparse` | `{ ids: number[] }`：重新识别发票（更新票面字段，保留 confirmed；已归属记录的金额/日期/商家不自动改，商家为空时补上） | `Attachment[]` |
+| POST | `/api/attachments/reparse` | `{ ids: number[] }`：重新识别发票与非发票凭证（凭证走 OCR/识别器，更新 evidence；更新票面字段，保留 confirmed；已归属记录的金额/日期/商家不自动改，商家为空时补上） | `Attachment[]` |
 | PATCH | `/api/checklist-items/{id}` | `{ state: "not_needed" \| "missing", reason? }` | `ExpenseDetail` |
 
-### 导入（importer 模块）
+### 导入（importer 模块）— v2.1 按“凭证组”导入
+
+设计说明见 `docs/凭证识别与自动归并_设计_v2.1.md`。
 
 | 方法 | 路径 | 请求 | 返回 data |
 | --- | --- | --- | --- |
 | POST | `/api/imports` | multipart：`files` | `ImportSession` |
-| POST | `/api/imports/{session_id}/confirm`（action=skip 时其余字段忽略；会话过期 404） | `{ rows: [{ row_id, action: "create" \| "attach" \| "skip", expense_id?, spent_on, amount_cents, merchant, summary, category_id, project_id? }] }` | `{ created: number[], attached: number[], skipped: number }`（expense id 列表） |
+| POST | `/api/imports/{session_id}/confirm` | `{ groups: ConfirmGroup[] }` | `{ created: number[], attached: number[], skipped: number }`（expense id 列表；skipped 为留在待归属的文件数） |
+| GET | `/api/attachments/{id}/candidates` | — 待归属附件的候选记录（同 5.2 评分） | `MatchCandidate[]` |
 
 ```ts
-type ImportRow = {
-  row_id: string; attachment: Attachment;             // 已入库（未归属）
-  is_invoice: boolean;
-  suggested: { spent_on: string | null; amount_cents: number | null; merchant: string; summary: string; category_id: number | null; is_online: boolean };  // is_online：有订单号或销售方为电商平台
-  match: { expense_id: number; merchant: string; amount_cents: number; spent_on: string } | null;  // 匹配到的“已支出”记录
-  warnings: string[]                                   // 如“购方名称与设置不一致”“金额校验不一致”
+type EvidenceData = {                 // 非发票凭证识别结果（Attachment.evidence）
+  doc_type: "order" | "receipt" | "payment" | "itinerary" | "unknown";
+  recognizer: string;                 // jd_order / app_store_order / receipt / bank_transaction / wallet_bill / ride_itinerary / filename
+  amount_cents: number | null; currency: string;          // 票面金额与币种（ISO，如 "USD"）
+  cny_cents: number | null;           // 人民币金额（CNY 凭证等于 amount_cents；银行交易为入账人民币）
+  occurred_on: string | null; merchant: string; item_name: string;
+  order_no: string; card_last4: string; is_foreign: boolean; confirmed: boolean
 }
+// Attachment 新增：evidence: EvidenceData | null；file_key: string（文件名键）
+
+type MatchCandidate = {
+  expense_id: number; spent_on: string; merchant: string; amount_cents: number;
+  currency: string; original_amount_cents: number | null;
+  status: ExpenseStatus; missing_kinds: AttachmentKind[];
+  score: number; reasons: string[]    // 如 ["订单号一致"]、["金额相同", "日期相差 1 天", "商家相同"]
+}
+
+type GroupSummary = {                 // 建议用于新建记录的字段
+  spent_on: string | null; amount_cents: number | null;   // 人民币
+  currency: string; original_amount_cents: number | null; // 原币（CNY 时 original 为 null）
+  merchant: string; summary: string; category_id: number | null;
+  is_online: boolean; invoice_exempt: boolean
+}
+
+type ImportGroup = {
+  group_id: string;
+  attachments: Attachment[];          // 已入库（未归属），含 invoice / evidence 识别结果
+  link_reasons: string[];             // 组内关联依据，如 ["订单号一致"]、["文件名一致"]；单文件为 []
+  summary: GroupSummary;
+  match: MatchCandidate | null;       // 强匹配（建议挂上）
+  candidates: MatchCandidate[];       // 其他候选（最多 5 个，按分数降序，不含 match）
+  suggested_action: "create" | "attach" | "skip";
+  warnings: string[]                  // 购方不一致、外地发票、可能重复（同订单同类型凭证已在 #id）等
+}
+
 type ImportSession = {
-  session_id: string; rows: ImportRow[];               // 发票行
-  attachments: Attachment[];                           // 非发票文件 → 待归属
+  session_id: string;
+  groups: ImportGroup[];
   duplicates: { original_name: string; existing_expense_id: number | null; reason: string }[];
-  errors: { original_name: string; error: string }[];     // 未能导入
-  notices: { original_name: string; message: string }[]   // 已导入但需提醒（如无法识别发票内容，已作为附件导入）
+  errors: { original_name: string; error: string }[];
+  notices: { original_name: string; message: string }[]
+}
+
+type ConfirmGroup = {
+  group_id: string;
+  attachment_ids: number[];           // 用户可在组间移动文件：以此为准（须属于本次会话、仍待归属）
+  kinds?: { [attachment_id: string]: AttachmentKind };    // 用户改过的附件类型
+  action: "create" | "attach" | "skip";
+  expense_id?: number;                // attach 必填
+  // create 时使用（可被用户修改）：
+  spent_on?: string; amount_cents?: number; currency?: string; original_amount_cents?: number | null;
+  merchant?: string; summary?: string; category_id?: number | null; project_id?: number | null;
+  is_online?: boolean; invoice_exempt?: boolean
 }
 ```
+
+- 一个 ConfirmGroup 最多含一张发票（否则 400）。
+- attach：文件挂到目标记录，发票 `confirmed=true`、凭证 `confirmed=true`；目标记录缺商家/原币信息时补上，不覆盖金额与日期。
+- create：金额与日期必填（免发票记录允许金额为空时返回 400“请填写人民币金额”）。
+- 收件箱与“生成记录”使用同一分组与匹配逻辑自动确认（设计 5.3）。
 
 ### 批次（batches 模块）
 
@@ -178,4 +228,4 @@ type Stats = {
 
 `ChecklistRule = { id, category_id: number|null, attachment_kind, level, condition: { amount_gte?: number, amount_lt?: number, is_online?: boolean, is_nonlocal?: boolean, detail_platform?: boolean }, hint }`
 
-条件全部满足才触发：`is_nonlocal` 为外地发票；`detail_platform` 为销售方属于已带明细平台。默认新增通用规则：`{ is_nonlocal: true, detail_platform: false }` → 订单明细（必需），提示“外地发票需附网购订单截图（京东、当当、圆迈等已带明细平台可免）；非网购外地购品需随差旅报销并说明”。
+条件全部满足才触发：`is_nonlocal` 为外地发票；`detail_platform` 为销售方属于已带明细平台；`invoice_exempt` 为免发票记录。默认新增通用规则：`{ is_nonlocal: true, detail_platform: false }` → 订单明细（必需），提示“外地发票需附网购订单截图（京东、当当、圆迈等已带明细平台可免）；非网购外地购品需随差旅报销并说明”。
