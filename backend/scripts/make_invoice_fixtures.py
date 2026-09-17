@@ -69,6 +69,11 @@ def write_pdf(name: str, lines: list[Line], font: str, encrypt: str | None = Non
     canvas.save()
 
 
+def fake_bold(lines: list[Line], copies: int = 3, offset: float = 0.25) -> list[Line]:
+    """模拟真实发票“同一位置重复绘制文字”的伪粗体：pdfplumber 会抽出“发发发票票票”。"""
+    return [(x + i * offset, y, text) for x, y, text in lines for i in range(copies)]
+
+
 def vertical(x: float, top: float, text: str, step: float = 13) -> list[Line]:
     return [(x, top - index * step, char) for index, char in enumerate(text)]
 
@@ -360,6 +365,7 @@ def main() -> None:
     write_pdf("digital_same_line.pdf", digital_lines(digital_same_line()), font)
     write_pdf("digital_multiline.pdf", digital_lines(digital_multiline()), font)
     write_pdf("digital_upper_mismatch.pdf", digital_lines(digital_upper_mismatch()), font)
+    write_pdf("fake_bold_labels.pdf", fake_bold(digital_lines(digital_same_line())), font)
     write_pdf("vat_electronic_normal.pdf", vat_normal_lines(), font)
     buyer = (BUYER, BUYER_ID)
     write_sized_pdf(OUT_DIR / "jd_spaced_labels.pdf", jd_spaced_labels_lines(buyer), font)

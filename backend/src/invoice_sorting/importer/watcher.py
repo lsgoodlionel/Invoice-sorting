@@ -13,7 +13,7 @@ from watchdog.observers import Observer
 
 from invoice_sorting.config import Settings
 from invoice_sorting.db.models import now
-from invoice_sorting.importer.auto_confirm import auto_confirm_rows
+from invoice_sorting.importer.auto_confirm import auto_confirm_entries
 from invoice_sorting.importer.service import ImportResult, import_files
 
 logger = logging.getLogger(__name__)
@@ -53,28 +53,28 @@ def _stable_files(inbox: Path, interval: float) -> list[Path]:
 
 
 def _auto_confirm(session: Session, settings: Settings, result: ImportResult) -> None:
-    if not result.rows:
+    if not result.entries:
         return
     try:
-        outcome = auto_confirm_rows(session, settings, result.rows)
+        outcome = auto_confirm_entries(session, settings, result.entries, result.warnings)
         session.commit()
     except Exception:
         session.rollback()
-        logger.exception("收件箱自动确认失败，发票保留在待归属")
+        logger.exception("收件箱自动确认失败，文件保留在待归属")
         return
     for skipped in outcome.skipped:
-        logger.info("收件箱发票留在待归属：%s（%s）", skipped["original_name"], skipped["reason"])
+        logger.info("收件箱文件留在待归属：%s（%s）", skipped["original_name"], skipped["reason"])
 
 
-def _import_path(factory: sessionmaker[Session], settings: Settings, path: Path) -> str | None:
-    """导入单个文件；返回失败原因，成功（含重复）返回 None。"""
+def _import_paths(
+    factory: sessionmaker[Session], settings: Settings, paths: list[Path]
+) -> dict[int, str]:
+    """一次导入同批文件（便于同一笔支出的凭证互相归组）；返回 输入序号 → 失败原因。"""
     with factory() as session:
-        result = import_files(session, settings, [(path, path.name)])
+        result = import_files(session, settings, [(path, path.name) for path in paths])
         session.commit()
-        if result.failed:
-            return next(iter(result.failed.values()))
         _auto_confirm(session, settings, result)
-    return None
+    return dict(result.failed)
 
 
 def _free_name(directory: Path, name: str) -> Path:
@@ -96,13 +96,7 @@ def _move_to_failed(settings: Settings, path: Path, reason: str) -> None:
     Path(f"{target}.txt").write_text(note, encoding="utf-8")
 
 
-def _process_path(app: Any, path: Path) -> None:
-    settings: Settings = app.state.settings
-    try:
-        reason = _import_path(app.state.session_factory, settings, path)
-    except Exception:
-        logger.exception("收件箱文件导入失败：%s", path.name)
-        reason = UNEXPECTED_ERROR
+def _tidy_source(settings: Settings, path: Path, reason: str | None) -> None:
     try:
         if reason is None:
             path.unlink(missing_ok=True)
@@ -112,13 +106,24 @@ def _process_path(app: Any, path: Path) -> None:
         logger.exception("整理收件箱文件失败：%s", path.name)
 
 
+def _process_paths(app: Any, paths: list[Path]) -> None:
+    settings: Settings = app.state.settings
+    try:
+        failed = _import_paths(app.state.session_factory, settings, paths)
+    except Exception:
+        logger.exception("收件箱文件导入失败：%s", [path.name for path in paths])
+        failed = dict.fromkeys(range(len(paths)), UNEXPECTED_ERROR)
+    for index, path in enumerate(paths):
+        _tidy_source(settings, path, failed.get(index))
+
+
 def process_inbox_once(app: Any, interval: float | None = None) -> int:
     """处理收件箱中已稳定的文件，返回处理的文件数。"""
     settings: Settings = app.state.settings
     wait = STABLE_INTERVAL_SECONDS if interval is None else interval
     ready = _stable_files(settings.inbox_dir, wait)
-    for path in ready:
-        _process_path(app, path)
+    if ready:
+        _process_paths(app, ready)
     return len(ready)
 
 

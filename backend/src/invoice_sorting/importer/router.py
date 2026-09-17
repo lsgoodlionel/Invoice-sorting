@@ -1,4 +1,4 @@
-"""导入 API：批量导入文件并生成确认会话，确认后建记录或挂到已有记录。"""
+"""导入 API：批量导入文件并按凭证组生成确认会话，确认后建记录或挂到已有记录。"""
 
 import tempfile
 from pathlib import Path
@@ -8,7 +8,7 @@ from fastapi import APIRouter, File, Request, UploadFile
 
 from invoice_sorting.attachments.uploads import save_upload, upload_name
 from invoice_sorting.common.errors import AppError, NotFoundError, ok
-from invoice_sorting.importer.confirm import confirm_rows
+from invoice_sorting.importer.confirm import confirm_groups
 from invoice_sorting.importer.schemas import ConfirmRequest
 from invoice_sorting.importer.serializers import serialize_import
 from invoice_sorting.importer.service import ImportResult, import_files
@@ -64,8 +64,7 @@ def post_import(
         session.commit()
     for name, message in failures:
         result.add_error(name, message)
-    rows = {row.row_id: row.attachment.id for row in result.rows}
-    session_id = get_session_store(request.app).create(rows)
+    session_id = get_session_store(request.app).create(result.attachment_ids)
     return ok(serialize_import(session_id, result, buyer_identity(session), region_policy(session)))
 
 
@@ -78,10 +77,10 @@ def post_confirm(
     config: ConfigDep,
 ) -> dict[str, Any]:
     store = get_session_store(request.app)
-    refs = store.get(session_id)
-    if refs is None:
+    allowed = store.get(session_id)
+    if allowed is None:
         raise ImportSessionExpiredError()
-    result = confirm_rows(session, config, refs, body.rows)
+    result = confirm_groups(session, config, set(allowed), body.groups)
     session.commit()
-    store.remove_rows(session_id, {row.row_id for row in body.rows})
+    store.remove_attachments(session_id, {i for group in body.groups for i in group.attachment_ids})
     return ok(result.as_dict())

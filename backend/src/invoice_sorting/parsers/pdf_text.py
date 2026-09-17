@@ -37,7 +37,7 @@ def extract_pdf_text(path: Path, max_pages: int = MAX_PAGES) -> str | None:
     try:
         with pdfplumber.open(path) as pdf:
             for page in pdf.pages[:max_pages]:
-                texts.append(page.extract_text() or "")
+                texts.append(page.dedupe_chars().extract_text() or "")
                 if time.monotonic() - started > TIME_BUDGET_SECONDS:
                     logger.debug("PDF 文本提取超出时间预算：%s", path)
                     break
@@ -66,7 +66,8 @@ def extract_page_words(path: Path) -> PageWords | None:
         with pdfplumber.open(path) as pdf:
             if not pdf.pages:
                 return None
-            page = pdf.pages[0]
+            # 去除同位置重复绘制的字符（部分发票用重复绘制模拟粗体）
+            page = pdf.pages[0].dedupe_chars()
             raw_words = page.extract_words(
                 x_tolerance=WORD_X_TOLERANCE, y_tolerance=WORD_Y_TOLERANCE
             )

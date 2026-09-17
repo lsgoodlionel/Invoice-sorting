@@ -10,6 +10,12 @@ from invoice_sorting.db.models import Attachment, Expense
 from invoice_sorting.expenses.service import create_expense, refresh_expense
 from tests.invoice_factory import parsed_invoice, store_invoice
 
+
+@pytest.fixture(autouse=True)
+def _isolate_recognition(fake_recognition):
+    """凭证识别使用可控的假实现。"""
+
+
 URL = "/api/attachments/reparse"
 OLD_NO = "26312000000000000099"
 
@@ -168,6 +174,7 @@ def test_missing_file_is_skipped(client, session, settings, tmp_path, parse_as):
 def test_attached_non_invoice_becomes_confirmed_invoice(
     client, session, settings, tmp_path, parse_as
 ):
+
     expense = blank_expense(session, settings, merchant="店")
     attachment = store_invoice(
         session, settings, tmp_path, name="扫描.pdf", kind=AttachmentKind.OTHER, expense=expense

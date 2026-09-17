@@ -75,6 +75,7 @@ class RuleCondition(BaseModel):
     is_online: StrictBool | None = None
     is_nonlocal: StrictBool | None = None
     detail_platform: StrictBool | None = None
+    invoice_exempt: StrictBool | None = None
 
     def to_json(self) -> dict[str, Any]:
         return self.model_dump(exclude_none=True)

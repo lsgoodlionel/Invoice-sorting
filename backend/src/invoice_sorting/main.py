@@ -10,6 +10,7 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from invoice_sorting.attachments.file_keys import backfill_file_keys
 from invoice_sorting.attachments.router import router as attachments_router
 from invoice_sorting.batches.router import router as batches_router
 from invoice_sorting.checklist.router import router as checklist_router
@@ -37,6 +38,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         seed_defaults(session)
         sync_default_keywords(session)
         sync_default_rules(session)
+        backfill_file_keys(session)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):

@@ -11,6 +11,12 @@ from invoice_sorting.importer.suggestions import is_online_purchase
 from invoice_sorting.importer.watcher import process_inbox_once
 from tests.invoice_factory import blank_pdf, parsed_invoice
 
+
+@pytest.fixture(autouse=True)
+def _isolate_recognition(fake_recognition):
+    """凭证识别使用可控的假实现。"""
+
+
 NONLOCAL_WARNING = "外地发票（北京）：需附网购订单截图，已带明细平台可免"
 
 
@@ -31,17 +37,18 @@ def upload(client, tmp_path) -> dict:
 
 
 def confirm_create(client, data: dict, **extra):
-    row = data["rows"][0]
-    suggested = row["suggested"]
+    group = data["groups"][0]
+    summary = group["summary"]
     payload = {
-        "row_id": row["row_id"],
+        "group_id": group["group_id"],
+        "attachment_ids": [attachment["id"] for attachment in group["attachments"]],
         "action": "create",
-        "spent_on": suggested["spent_on"],
-        "amount_cents": suggested["amount_cents"],
-        "merchant": suggested["merchant"],
+        "spent_on": summary["spent_on"],
+        "amount_cents": summary["amount_cents"],
+        "merchant": summary["merchant"],
         **extra,
     }
-    response = client.post(f"/api/imports/{data['session_id']}/confirm", json={"rows": [payload]})
+    response = client.post(f"/api/imports/{data['session_id']}/confirm", json={"groups": [payload]})
     assert response.status_code == 200, response.text
     return response.json()["data"]["created"][0]
 
@@ -49,33 +56,33 @@ def confirm_create(client, data: dict, **extra):
 def test_nonlocal_invoice_fields_and_warning(client, tmp_path, parse_as):
     parse_as(parsed_invoice())
 
-    row = upload(client, tmp_path)["rows"][0]
+    row = upload(client, tmp_path)["groups"][0]
 
-    invoice = row["attachment"]["invoice"]
+    invoice = row["attachments"][0]["invoice"]
     assert invoice["region_name"] == "北京" and invoice["is_nonlocal"] is True
     assert invoice["tax_category"] == "纸制品"
     assert invoice["order_no"] == "" and invoice["detail_platform"] is False
-    assert row["suggested"]["is_online"] is False
+    assert row["summary"]["is_online"] is False
     assert NONLOCAL_WARNING in row["warnings"]
 
 
 def test_platform_invoice_with_order_no_is_online_without_warning(client, tmp_path, parse_as):
     parse_as(parsed_invoice(seller_name="北京京东世纪贸易有限公司", order_no="338623377834"))
 
-    row = upload(client, tmp_path)["rows"][0]
+    row = upload(client, tmp_path)["groups"][0]
 
-    invoice = row["attachment"]["invoice"]
+    invoice = row["attachments"][0]["invoice"]
     assert invoice["order_no"] == "338623377834" and invoice["detail_platform"] is True
-    assert row["suggested"]["is_online"] is True
+    assert row["summary"]["is_online"] is True
     assert not any("外地发票" in warning for warning in row["warnings"])
 
 
 def test_local_invoice_has_no_warning(client, tmp_path, parse_as):
     parse_as(parsed_invoice(region_name="上海", region_code="31"))
 
-    row = upload(client, tmp_path)["rows"][0]
+    row = upload(client, tmp_path)["groups"][0]
 
-    assert row["attachment"]["invoice"]["is_nonlocal"] is False
+    assert row["attachments"][0]["invoice"]["is_nonlocal"] is False
     assert not any("外地发票" in warning for warning in row["warnings"])
 
 
@@ -83,9 +90,9 @@ def test_warning_follows_local_region_setting(client, tmp_path, parse_as):
     client.put("/api/settings", json={"local_region": "北京"})
     parse_as(parsed_invoice())
 
-    row = upload(client, tmp_path)["rows"][0]
+    row = upload(client, tmp_path)["groups"][0]
 
-    assert row["attachment"]["invoice"]["is_nonlocal"] is False
+    assert row["attachments"][0]["invoice"]["is_nonlocal"] is False
     assert NONLOCAL_WARNING not in row["warnings"]
 
 

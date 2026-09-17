@@ -1,14 +1,24 @@
-"""导入 API：拖入发票建记录、重复判定、匹配已支出、损坏文件、购方校验（T01/T02/T03/T17/T19）。"""
+"""导入 API：拖入发票建记录、重复判定、匹配已支出、损坏文件、购方校验（T01/T02/T03/T17/T19）。
+
+v2.1 起导入结果按凭证组返回（groups），确认时按组提交。
+"""
 
 import io
 import shutil
 from pathlib import Path
 
+import pytest
 from PIL import Image
 from sqlalchemy import func, select
 
 from invoice_sorting.db.models import Category, Expense, MerchantMemory
 from tests.conftest import FIXTURES_DIR
+
+
+@pytest.fixture(autouse=True)
+def _isolate_recognition(fake_recognition):
+    """凭证识别使用可控的假实现。"""
+
 
 INVOICES = FIXTURES_DIR / "invoices"
 SAME_LINE_NO = "26312000000123456789"
@@ -29,20 +39,16 @@ def upload(client, *paths: Path) -> dict:
     return client.post("/api/imports", files=files).json()
 
 
-def confirm(client, session_id: str, *rows: dict):
-    return client.post(f"/api/imports/{session_id}/confirm", json={"rows": list(rows)})
+def confirm(client, session_id: str, *groups: dict):
+    return client.post(f"/api/imports/{session_id}/confirm", json={"groups": list(groups)})
 
 
-def row_payload(row: dict, action: str = "create", **overrides) -> dict:
-    suggested = row["suggested"]
+def group_payload(group: dict, action: str = "create", **overrides) -> dict:
     payload = {
-        "row_id": row["row_id"],
+        "group_id": group["group_id"],
+        "attachment_ids": [attachment["id"] for attachment in group["attachments"]],
         "action": action,
-        "spent_on": suggested["spent_on"],
-        "amount_cents": suggested["amount_cents"],
-        "merchant": suggested["merchant"],
-        "summary": suggested["summary"],
-        "category_id": suggested["category_id"],
+        **group["summary"],
     }
     payload.update(overrides)
     return payload
@@ -59,23 +65,27 @@ def expense_count(session) -> int:
 def test_t01_import_digital_invoice_and_create(client, session, settings, tmp_path):
     data = upload(client, sample(tmp_path, "digital_same_line.pdf"))["data"]
 
-    assert data["duplicates"] == [] and data["errors"] == [] and data["attachments"] == []
-    row = data["rows"][0]
-    assert row["is_invoice"] is True and row["match"] is None and row["warnings"] == []
-    assert row["suggested"] == {
+    assert data["duplicates"] == [] and data["errors"] == []
+    row = data["groups"][0]
+    assert row["match"] is None and row["warnings"] == [] and row["candidates"] == []
+    assert row["suggested_action"] == "create" and row["link_reasons"] == []
+    assert row["summary"] == {
         "spent_on": "2026-09-15",
         "amount_cents": 96000,
+        "currency": "CNY",
+        "original_amount_cents": None,
         "merchant": "上海示例科技有限公司",
         "summary": "鼠标",
         "category_id": category_id(session, "易耗品"),
         "is_online": False,
+        "invoice_exempt": False,
     }
-    attachment = row["attachment"]
+    attachment = row["attachments"][0]
     assert attachment["kind"] == "invoice" and attachment["expense_id"] is None
     assert attachment["file_name"] == f"发票_{SAME_LINE_NO}.pdf"
-    assert attachment["invoice"]["confirmed"] is False
+    assert attachment["invoice"]["confirmed"] is False and attachment["evidence"] is None
 
-    result = confirm(client, data["session_id"], row_payload(row)).json()["data"]
+    result = confirm(client, data["session_id"], group_payload(row)).json()["data"]
 
     assert result["attached"] == [] and result["skipped"] == 0
     detail = client.get(f"/api/expenses/{result['created'][0]}").json()["data"]
@@ -85,16 +95,16 @@ def test_t01_import_digital_invoice_and_create(client, session, settings, tmp_pa
     assert detail["attachments"][0]["invoice"]["confirmed"] is True
     stored = settings.library_dir / detail["folder_path"] / f"发票_{SAME_LINE_NO}.pdf"
     assert stored.is_file()
-    assert detail["timeline"][-1]["note"] == "导入发票"
+    assert detail["timeline"][-1]["note"] == "导入凭证"
     assert session.get(MerchantMemory, "上海示例科技有限公司") is not None
 
 
 def test_confirm_removes_processed_rows_from_session(client, tmp_path):
     data = upload(client, sample(tmp_path, "digital_same_line.pdf"))["data"]
-    row = data["rows"][0]
-    assert confirm(client, data["session_id"], row_payload(row)).status_code == 200
+    row = data["groups"][0]
+    assert confirm(client, data["session_id"], group_payload(row)).status_code == 200
 
-    response = confirm(client, data["session_id"], row_payload(row))
+    response = confirm(client, data["session_id"], group_payload(row))
 
     assert response.status_code == 404
     assert response.json()["error"] == "导入会话已过期，请重新导入"
@@ -103,11 +113,11 @@ def test_confirm_removes_processed_rows_from_session(client, tmp_path):
 def test_t02_same_file_imported_twice(client, session, tmp_path):
     path = sample(tmp_path, "digital_same_line.pdf")
     first = upload(client, path)["data"]
-    created = confirm(client, first["session_id"], row_payload(first["rows"][0])).json()["data"]
+    created = confirm(client, first["session_id"], group_payload(first["groups"][0])).json()["data"]
 
     second = upload(client, path)["data"]
 
-    assert second["rows"] == []
+    assert second["groups"] == []
     assert second["duplicates"] == [
         {
             "original_name": "digital_same_line.pdf",
@@ -124,7 +134,7 @@ def test_t02_same_invoice_number_different_files(client, settings, tmp_path):
 
     data = upload(client, pdf, ofd)["data"]
 
-    assert len(data["rows"]) == 1
+    assert len(data["groups"]) == 1
     duplicate = data["duplicates"][0]
     assert duplicate["original_name"] == "digital_text_only.ofd"
     assert duplicate["reason"] == f"发票号码 {MULTILINE_NO} 已存在"
@@ -133,7 +143,7 @@ def test_t02_same_invoice_number_different_files(client, settings, tmp_path):
     assert len(unassigned) == 1
     assert len(list((settings.library_dir / "待归属").iterdir())) == 1
 
-    created = confirm(client, data["session_id"], row_payload(data["rows"][0])).json()["data"]
+    created = confirm(client, data["session_id"], group_payload(data["groups"][0])).json()["data"]
     again = upload(client, sample(tmp_path, "digital_text_only.ofd", "副本.ofd"))["data"]
     assert again["duplicates"][0]["existing_expense_id"] == created["created"][0]
 
@@ -143,15 +153,22 @@ def test_t03_match_spent_expense_and_attach(client, session, tmp_path):
         "/api/expenses", json={"spent_on": "2026-09-12", "amount_cents": 96000, "merchant": "京东"}
     ).json()["data"]
     data = upload(client, sample(tmp_path, "digital_same_line.pdf"))["data"]
-    row = data["rows"][0]
+    row = data["groups"][0]
+    assert row["suggested_action"] == "attach"
     assert row["match"] == {
         "expense_id": spent["id"],
         "merchant": "京东",
         "amount_cents": 96000,
         "spent_on": "2026-09-12",
+        "currency": "CNY",
+        "original_amount_cents": None,
+        "status": "spent",
+        "missing_kinds": ["invoice"],
+        "score": 80,
+        "reasons": ["金额相同", "日期相差 3 天", "正好缺少发票"],
     }
 
-    payload = row_payload(row, "attach", expense_id=spent["id"], amount_cents=1, merchant="改")
+    payload = group_payload(row, "attach", expense_id=spent["id"], amount_cents=1, merchant="改")
     result = confirm(client, data["session_id"], payload).json()["data"]
 
     assert result == {"created": [], "attached": [spent["id"]], "skipped": 0}
@@ -176,7 +193,7 @@ def test_attach_keeps_existing_category(client, session, tmp_path):
     ).json()["data"]
     data = upload(client, sample(tmp_path, "digital_same_line.pdf"))["data"]
 
-    payload = row_payload(data["rows"][0], "attach", expense_id=spent["id"])
+    payload = group_payload(data["groups"][0], "attach", expense_id=spent["id"])
     assert confirm(client, data["session_id"], payload).status_code == 200
 
     assert client.get(f"/api/expenses/{spent['id']}").json()["data"]["category_id"] == office
@@ -202,8 +219,14 @@ def test_t17_corrupt_encrypted_and_image_files(client, tmp_path):
 
     data = response.json()["data"]
     assert response.status_code == 200
-    assert data["rows"] == []
-    assert len(data["attachments"]) == 5
+    assert len(data["groups"]) == 5
+    assert all(len(group["attachments"]) == 1 for group in data["groups"])
+    assert {group["suggested_action"] for group in data["groups"]} == {"skip", "create"}
+    image_group = next(
+        g for g in data["groups"] if g["attachments"][0]["original_name"] == "截图.png"
+    )
+    assert image_group["suggested_action"] == "skip"
+    assert image_group["attachments"][0]["evidence"]["doc_type"] == "unknown"
     # 文件名含“发票/invoice”但解析失败 → 作为附件导入并提示
     hint = "无法识别发票内容，已作为附件导入"
     assert data["notices"] == [
@@ -222,7 +245,7 @@ def test_unsupported_and_empty_files_do_not_block_others(client, tmp_path):
 
     data = client.post("/api/imports", files=files).json()["data"]
 
-    assert len(data["rows"]) == 1
+    assert len(data["groups"]) == 1
     names = [item["original_name"] for item in data["errors"]]
     assert names == ["说明.txt", "空.pdf"]
     assert "不支持的文件类型" in data["errors"][0]["error"]
@@ -233,16 +256,16 @@ def test_t19_buyer_mismatch_and_parser_warnings(client, tmp_path):
 
     data = upload(client, sample(tmp_path, "digital_upper_mismatch.pdf"))["data"]
 
-    row = data["rows"][0]
+    row = data["groups"][0]
     assert "大小写金额不一致" in row["warnings"]
     assert "购方名称或税号与设置不一致，请核对发票抬头" in row["warnings"]
-    assert row["attachment"]["invoice"]["buyer_mismatch"] is True
+    assert row["attachments"][0]["invoice"]["buyer_mismatch"] is True
 
 
 def test_rail_ticket_uses_travel_date(client, session, tmp_path):
     data = upload(client, sample(tmp_path, "rail_ticket.pdf"))["data"]
 
-    suggested = data["rows"][0]["suggested"]
+    suggested = data["groups"][0]["summary"]
     assert suggested["spent_on"] == "2026-09-12"
     assert suggested["category_id"] == category_id(session, "差旅交通")
 
@@ -250,9 +273,7 @@ def test_rail_ticket_uses_travel_date(client, session, tmp_path):
 def test_skip_keeps_invoice_unassigned(client, tmp_path):
     data = upload(client, sample(tmp_path, "digital_same_line.pdf"))["data"]
 
-    result = confirm(
-        client, data["session_id"], {"row_id": data["rows"][0]["row_id"], "action": "skip"}
-    )
+    result = confirm(client, data["session_id"], group_payload(data["groups"][0], "skip"))
 
     assert result.json()["data"] == {"created": [], "attached": [], "skipped": 1}
     unassigned = client.get("/api/attachments/unassigned").json()["data"]
@@ -263,15 +284,15 @@ def test_failed_row_rolls_back_everything(client, session, settings, tmp_path):
     data = upload(
         client, sample(tmp_path, "digital_same_line.pdf"), sample(tmp_path, "rail_ticket.pdf")
     )["data"]
-    first, second = data["rows"]
-    before = settings.data_dir / "文件库" / "待归属" / first["attachment"]["file_name"]
+    first, second = data["groups"]
+    before = settings.data_dir / "文件库" / "待归属" / first["attachments"][0]["file_name"]
     assert before.is_file()
 
     response = confirm(
         client,
         data["session_id"],
-        row_payload(first),
-        row_payload(second, "attach", expense_id=999),
+        group_payload(first),
+        group_payload(second, "attach", expense_id=999),
     )
 
     assert response.status_code == 404
@@ -280,7 +301,7 @@ def test_failed_row_rolls_back_everything(client, session, settings, tmp_path):
     assert expense_count(session) == 0
     assert before.is_file()
     assert not any((settings.library_dir / "2026").rglob("*.pdf"))
-    ok = confirm(client, data["session_id"], row_payload(first), row_payload(second))
+    ok = confirm(client, data["session_id"], group_payload(first), group_payload(second))
     assert ok.status_code == 200 and len(ok.json()["data"]["created"]) == 2
 
 
@@ -291,39 +312,39 @@ def test_rollback_restores_renamed_attach_target(client, session, settings, tmp_
     data = upload(
         client, sample(tmp_path, "digital_same_line.pdf"), sample(tmp_path, "rail_ticket.pdf")
     )["data"]
-    first, second = data["rows"]
+    first, second = data["groups"]
 
     response = confirm(
         client,
         data["session_id"],
-        row_payload(first, "attach", expense_id=spent["id"]),
-        row_payload(second, amount_cents=None),
+        group_payload(first, "attach", expense_id=spent["id"]),
+        group_payload(second, amount_cents=None),
     )
 
     assert response.status_code == 400
     assert response.json()["error"] == "文件“rail_ticket.pdf”：请填写金额"
     folder = settings.library_dir / spent["folder_path"]
     assert folder.is_dir() and not any(folder.iterdir())
-    pending = settings.library_dir / "待归属" / first["attachment"]["file_name"]
+    pending = settings.library_dir / "待归属" / first["attachments"][0]["file_name"]
     assert pending.is_file()
 
 
 def test_confirm_validation_errors(client, tmp_path):
     data = upload(client, sample(tmp_path, "digital_same_line.pdf"))["data"]
-    row = data["rows"][0]
+    row = data["groups"][0]
     session_id = data["session_id"]
 
-    attach = confirm(client, session_id, row_payload(row, "attach"))
-    unknown = confirm(client, session_id, {"row_id": "nope", "action": "skip"})
-    merchant = confirm(client, session_id, row_payload(row, merchant="  "))
-    no_date = confirm(client, session_id, row_payload(row, spent_on=None))
-    twice = confirm(client, session_id, row_payload(row), row_payload(row))
+    attach = confirm(client, session_id, group_payload(row, "attach"))
+    unknown = confirm(client, session_id, {**group_payload(row, "skip"), "attachment_ids": [9999]})
+    merchant = confirm(client, session_id, group_payload(row, merchant="  "))
+    no_date = confirm(client, session_id, group_payload(row, spent_on=None))
+    twice = confirm(client, session_id, group_payload(row), group_payload(row))
 
     assert attach.json()["error"] == "文件“digital_same_line.pdf”：挂到已有记录时需要选择记录"
-    assert unknown.json()["error"] == "导入行不存在或已处理：nope"
+    assert unknown.json()["error"] == "附件 #9999 不存在或已处理"
     assert merchant.json()["error"] == "文件“digital_same_line.pdf”：请填写商家"
     assert no_date.json()["error"] == "文件“digital_same_line.pdf”：请填写支出日期"
-    assert twice.json()["error"] == "文件“digital_same_line.pdf”：同一行不能重复提交"
+    assert twice.json()["error"] == "文件“digital_same_line.pdf”：不能同时出现在多个组"
 
 
 def test_confirm_rejects_attachment_already_assigned(client, tmp_path):
@@ -331,10 +352,12 @@ def test_confirm_rejects_attachment_already_assigned(client, tmp_path):
         "/api/expenses", json={"spent_on": "2026-01-01", "amount_cents": 1, "merchant": "甲"}
     ).json()["data"]
     data = upload(client, sample(tmp_path, "digital_same_line.pdf"))["data"]
-    row = data["rows"][0]
-    client.patch(f"/api/attachments/{row['attachment']['id']}", json={"expense_id": spent["id"]})
+    row = data["groups"][0]
+    client.patch(
+        f"/api/attachments/{row['attachments'][0]['id']}", json={"expense_id": spent["id"]}
+    )
 
-    response = confirm(client, data["session_id"], row_payload(row))
+    response = confirm(client, data["session_id"], group_payload(row))
 
     assert response.json()["error"] == (
         f"文件“digital_same_line.pdf”：已归属到记录 #{spent['id']}，请刷新后重试"
@@ -342,7 +365,8 @@ def test_confirm_rejects_attachment_already_assigned(client, tmp_path):
 
 
 def test_confirm_unknown_session(client):
-    response = confirm(client, "missing", {"row_id": "x", "action": "skip"})
+    payload = {"group_id": "g", "attachment_ids": [1], "action": "skip"}
+    response = confirm(client, "missing", payload)
 
     assert response.status_code == 404
     assert response.json()["error"] == "导入会话已过期，请重新导入"
@@ -357,6 +381,6 @@ def test_import_requires_files(client):
 def test_import_response_attachment_is_downloadable(client, tmp_path):
     data = upload(client, sample(tmp_path, "digital_same_line.pdf"))["data"]
 
-    content = client.get(data["rows"][0]["attachment"]["url"]).content
+    content = client.get(data["groups"][0]["attachments"][0]["url"]).content
 
     assert io.BytesIO(content).read(4) == b"%PDF"

@@ -40,3 +40,11 @@ def session(app) -> Iterator[Session]:
 
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
+
+
+@pytest.fixture
+def fake_recognition(monkeypatch):
+    """注入可预设的凭证识别结果（默认未识别、文件名键为空），不依赖真实识别器进度。"""
+    from tests.evidence_factory import FakeRecognition
+
+    return FakeRecognition().install(monkeypatch)

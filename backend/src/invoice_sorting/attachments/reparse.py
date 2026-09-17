@@ -1,11 +1,16 @@
-"""重新识别发票：更新票面字段（保留 confirmed），解析失败保持原样。"""
+"""重新识别：发票更新票面字段，非发票凭证重新识别并更新 EvidenceData（均保留 confirmed）。
+
+解析失败保持原样；已归属记录的金额/日期/商家不自动改，商家为空时补上。
+"""
 
 import logging
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from invoice_sorting.attachments import evidence_records
 from invoice_sorting.attachments.bulk import load_attachments, refresh_expenses
+from invoice_sorting.attachments.file_keys import compute_file_key
 from invoice_sorting.attachments.storage import absolute_path, relocate_attachment
 from invoice_sorting.common.constants import AttachmentKind
 from invoice_sorting.config import Settings
@@ -85,18 +90,43 @@ def _fill_merchant(expense: Expense | None, seller_name: str) -> None:
         expense.merchant = seller_name
 
 
+def _reparse_evidence(settings: Settings, attachment: Attachment) -> str:
+    """重新识别非发票凭证；待归属或类型为“其他”的附件按识别结果改类型。返回识别到的商家。"""
+    name = attachment.original_name
+    recognized = evidence_records.recognize_file(absolute_path(settings, attachment), name)
+    current = AttachmentKind(attachment.kind)
+    if attachment.expense_id is None or current == AttachmentKind.OTHER:
+        attachment.kind = str(evidence_records.kind_for_evidence(recognized, name, current))
+    evidence_records.apply_evidence(attachment, recognized)
+    return recognized.merchant or ""
+
+
+def _reparse_one(session: Session, settings: Settings, attachment: Attachment) -> bool:
+    """返回是否有更新。有发票数据的发票解析失败时保持原样。"""
+    if not absolute_path(settings, attachment).is_file():
+        return False
+    attachment.file_key = compute_file_key(attachment.original_name)
+    parsed = _parse(settings, attachment)
+    if parsed is not None:
+        _apply(session, attachment, parsed)
+        merchant = parsed.seller_name
+    elif attachment.kind != AttachmentKind.INVOICE or attachment.invoice_data is None:
+        merchant = _reparse_evidence(settings, attachment)
+    else:
+        return False
+    session.flush()
+    relocate_attachment(session, settings, attachment)
+    _fill_merchant(attachment.expense, merchant)
+    return True
+
+
 def reparse_attachments(session: Session, settings: Settings, ids: list[int]) -> list[Attachment]:
     """逐个重新识别；返回请求中的全部附件（未识别成功的保持原样）。"""
     attachments = load_attachments(session, ids)
-    touched: list[Expense | None] = []
-    for attachment in attachments:
-        parsed = _parse(settings, attachment)
-        if parsed is None:
-            continue
-        _apply(session, attachment, parsed)
-        session.flush()
-        relocate_attachment(session, settings, attachment)
-        _fill_merchant(attachment.expense, parsed.seller_name)
-        touched.append(attachment.expense)
+    touched: list[Expense | None] = [
+        attachment.expense
+        for attachment in attachments
+        if _reparse_one(session, settings, attachment)
+    ]
     refresh_expenses(session, settings, touched)
     return attachments

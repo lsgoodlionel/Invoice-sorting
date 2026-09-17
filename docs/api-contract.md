@@ -33,7 +33,9 @@ type Attachment = {
   id: number; expense_id: number | null; kind: AttachmentKind; kind_label: string;
   original_name: string; file_name: string; mime: string; size: number; created_at: string;
   url: string;                       // GET 该地址返回文件内容（inline）
-  invoice: InvoiceData | null
+  file_key: string;                  // 文件名键（设计 3.3），无则 ""
+  invoice: InvoiceData | null;
+  evidence: EvidenceData | null      // 非发票凭证识别结果，见“导入”一节
 }
 
 type ChecklistItem = {
@@ -51,16 +53,17 @@ type ExpenseSummary = {               // 列表行
   status: ExpenseStatus; status_label: string; status_manual: boolean;
   missing_count: number;              // 必需且 missing 的清单项数
   batch_id: number | null; batch_name: string | null;
-  attachment_count: number; invoice_no: string | null
+  attachment_count: number; invoice_no: string | null;
+  region_name: string; is_nonlocal: boolean;   // 取该记录发票的开票地区；多张发票任一外地即为外地
+  invoice_exempt: boolean;            // 免发票（境外消费等）
+  currency: string; original_amount_cents: number | null    // 原币（CNY 时 original 为 null）
 }
 
 type ExpenseDetail = ExpenseSummary & {
   pay_method: string; is_online: boolean; note: string; void_reason: string;
   sent_on: string | null; reimbursed_on: string | null; reimbursed_cents: number;
   folder_path: string; route_hint: string;
-  region_name: string; is_nonlocal: boolean;   // 取该记录发票的开票地区；多张发票任一外地即为外地
-  invoice_exempt: boolean;            // 免发票（境外消费等），可 PATCH
-  currency: string; original_amount_cents: number | null;   // 原币（CNY 时 original 为 null），可 PATCH
+  // invoice_exempt / currency / original_amount_cents 见 ExpenseSummary，均可 POST / PATCH
   attachments: Attachment[]; checklist: ChecklistItem[]; timeline: StatusEvent[];
   created_at: string; updated_at: string
 }
@@ -83,12 +86,12 @@ type ExportRecord = { id: number; layout: ExportLayout; file_name: string; url: 
 | 方法 | 路径 | 请求 | 返回 data |
 | --- | --- | --- | --- |
 | GET | `/api/expenses` | query: `start`,`end`(含),`date_basis`(默认 spent),`category_id`,`project_id`,`status`(可多个，逗号分隔),`q`(商家/摘要/发票号),`batch_id`,`unbatched`(bool),`missing`(bool，仅含必需缺项),`page`(1),`page_size`(默认 50, 最大 500) | `{ items: ExpenseSummary[], total: number, total_cents: number, status_counts: { [status]: { count, amount_cents } } }` |
-| POST | `/api/expenses` | `{ spent_on, amount_cents, merchant, summary?, category_id?, project_id?, pay_method?, is_online?, note? }` | `ExpenseDetail` |
+| POST | `/api/expenses` | `{ spent_on, amount_cents, merchant, summary?, category_id?, project_id?, pay_method?, is_online?, note?, invoice_exempt?(默认 false), currency?(3 位 ISO 大写，小写自动转大写，默认 "CNY"), original_amount_cents? }`；币种为 CNY 时 original_amount_cents 自动置空 | `ExpenseDetail` |
 | GET | `/api/expenses/{id}` | — | `ExpenseDetail` |
 | PATCH | `/api/expenses/{id}` | 上述任意字段 | `ExpenseDetail`（自动重算清单、状态、文件夹名） |
 | DELETE | `/api/expenses/{id}` | — | `null`（软删除：移出草稿批次，文件移到回收站并删除附件记录；所在批次已外发时 409） |
 | POST | `/api/expenses/{id}/status` | `{ status, note? }`；`void` 必须带 note，并自动移出草稿批次（批次已外发时 409）；`{ status: null }` 表示取消手动、恢复自动 | `ExpenseDetail` |
-| POST | `/api/expenses/{id}/attachments` | multipart：`files`(多个)，`kind`(可选，不传则自动判断) | `ExpenseDetail` |
+| POST | `/api/expenses/{id}/attachments` | multipart：`files`(多个)，`kind`(可选)。不传 kind 时自动识别：能解析为发票（且发票号未被占用）→ `invoice` 并写入 invoice（confirmed=true）；否则走凭证识别器，按 doc_type 设类型（order/receipt→order，payment→payment，itinerary→itinerary，未识别→文件名线索/关键词），写入 evidence（confirmed=true）。传 kind 时不识别 | `ExpenseDetail`（清单与状态已重算） |
 
 ### 附件与清单
 
@@ -101,8 +104,8 @@ type ExportRecord = { id: number; layout: ExportLayout; file_name: string; url: 
 | DELETE | `/api/attachments/{id}` | — | `null`（移入回收站） |
 | POST | `/api/attachments/bulk-delete` | `{ ids: number[] }`（仅限待归属附件，否则 409） | `{ deleted: number }` |
 | POST | `/api/attachments/bulk-assign` | `{ ids: number[], expense_id: number \| null, kind?: AttachmentKind }` | `Attachment[]` |
-| POST | `/api/attachments/create-expenses` | `{ ids: number[] }`：把待归属发票生成记录（有匹配的“已支出”记录则挂上，否则按识别结果新建；缺金额或日期的跳过） | `{ created: number[], attached: number[], skipped: { id: number, original_name: string, reason: string }[] }` |
-| POST | `/api/attachments/reparse` | `{ ids: number[] }`：重新识别发票与非发票凭证（凭证走 OCR/识别器，更新 evidence；更新票面字段，保留 confirmed；已归属记录的金额/日期/商家不自动改，商家为空时补上） | `Attachment[]` |
+| POST | `/api/attachments/create-expenses` | `{ ids: number[] }`：把所选待归属附件（发票与非发票凭证）先按导入规则分组，再逐组自动确认：强匹配 → 挂上；无匹配且有金额和日期 → 新建（无发票且境外/外币 → 免发票记录）；可能重复、缺金额或日期 → 跳过。已归属附件跳过（“已归属到记录 #id，无需生成”）；单组失败只跳过该组 | `{ created: number[], attached: number[], skipped: { id: number, original_name: string, reason: string }[] }`（skipped 按文件列出，reason 如“未识别到金额，请手工处理”“未识别到开票日期，请手工处理”“未识别到日期，请手工处理”“未识别到发票内容，请先重新识别或手工处理”或可能重复提示） |
+| POST | `/api/attachments/reparse` | `{ ids: number[] }`：重新识别发票与非发票凭证（凭证走 OCR/识别器，更新 evidence；更新票面字段，保留 confirmed；同时重算 file_key。非发票凭证仅在待归属或类型为 other 时按识别结果改类型，已归属附件保留用户设置的类型；有发票数据的发票解析失败时保持原样；已归属记录的金额/日期/商家不自动改，商家为空时补上） | `Attachment[]` |
 | PATCH | `/api/checklist-items/{id}` | `{ state: "not_needed" \| "missing", reason? }` | `ExpenseDetail` |
 
 ### 导入（importer 模块）— v2.1 按“凭证组”导入
@@ -113,7 +116,7 @@ type ExportRecord = { id: number; layout: ExportLayout; file_name: string; url: 
 | --- | --- | --- | --- |
 | POST | `/api/imports` | multipart：`files` | `ImportSession` |
 | POST | `/api/imports/{session_id}/confirm` | `{ groups: ConfirmGroup[] }` | `{ created: number[], attached: number[], skipped: number }`（expense id 列表；skipped 为留在待归属的文件数） |
-| GET | `/api/attachments/{id}/candidates` | — 待归属附件的候选记录（同 5.2 评分） | `MatchCandidate[]` |
+| GET | `/api/attachments/{id}/candidates` | — 待归属附件的候选记录（同 5.2 匹配与评分）；强匹配（如有）排第一，其余最多 5 个按分数降序；附件已归属时 409，不存在 404 | `MatchCandidate[]` |
 
 ```ts
 type EvidenceData = {                 // 非发票凭证识别结果（Attachment.evidence）
@@ -124,13 +127,15 @@ type EvidenceData = {                 // 非发票凭证识别结果（Attachmen
   occurred_on: string | null; merchant: string; item_name: string;
   order_no: string; card_last4: string; is_foreign: boolean; confirmed: boolean
 }
-// Attachment 新增：evidence: EvidenceData | null；file_key: string（文件名键）
+// Attachment.evidence 为本类型；Attachment.file_key 为文件名键
 
 type MatchCandidate = {
   expense_id: number; spent_on: string; merchant: string; amount_cents: number;
   currency: string; original_amount_cents: number | null;
   status: ExpenseStatus; missing_kinds: AttachmentKind[];
-  score: number; reasons: string[]    // 如 ["订单号一致"]、["金额相同", "日期相差 1 天", "商家相同"]
+  score: number;                      // 订单号/文件名强匹配为 100；评分见设计 5.2，低于 45 分不列出
+  reasons: string[]                   // 取值：订单号一致、文件名一致、金额相同、原币金额相同、日期相同、
+                                      // 日期相差 N 天、商家相同、正好缺少{类型}、已有{类型}
 }
 
 type GroupSummary = {                 // 建议用于新建记录的字段
@@ -151,6 +156,12 @@ type ImportGroup = {
   warnings: string[]                  // 购方不一致、外地发票、可能重复（同订单同类型凭证已在 #id）等
 }
 
+// summary 来源：金额与日期取 发票 > 人民币支付记录 > 订单/收据；商家与摘要取 发票 > 订单/收据 > 支付记录；
+// 原币取外币订单/收据（其次外币支付记录）；分类先按文件名首段分类词（办公→办公用品、软件→软件服务、
+// 打车/出行→差旅交通、线缆/数码/数据→易耗品、图书→图书、设备→设备，或同名分类），否则走分类建议。
+// suggested_action：含“可能重复”提示 → skip；有强匹配 → attach；含发票或有金额和日期 → create；否则 skip。
+// link_reasons 取值：订单号一致、文件名一致、金额与日期一致、境外订单与银行交易日期一致、卡号末四位一致。
+
 type ImportSession = {
   session_id: string;
   groups: ImportGroup[];
@@ -160,7 +171,7 @@ type ImportSession = {
 }
 
 type ConfirmGroup = {
-  group_id: string;
+  group_id: string;                   // 仅用于提示，可为前端生成的新组 id（如 "split-1"），不校验
   attachment_ids: number[];           // 用户可在组间移动文件：以此为准（须属于本次会话、仍待归属）
   kinds?: { [attachment_id: string]: AttachmentKind };    // 用户改过的附件类型
   action: "create" | "attach" | "skip";
@@ -172,10 +183,16 @@ type ConfirmGroup = {
 }
 ```
 
-- 一个 ConfirmGroup 最多含一张发票（否则 400）。
+- attachment_ids 为准：每个附件须属于本次导入会话、仍待归属、且不重复出现在多个组，否则 400（如“文件“a.png”：不属于本次导入或已处理”“文件“a.png”：不能同时出现在多个组”“附件 #9 不存在或已处理”）。
+- kinds 的键须是该组的附件 id，否则 400“类型设置中的附件 #id 不在该组”；先应用 kinds 再校验发票数。
+- 一个 ConfirmGroup 最多含一张发票（否则 400“每组最多一张发票：“a.pdf”、“b.pdf””）。
+- 组内错误统一加前缀：单文件为 `文件“name”：`，多文件为 `文件“name”等 N 个：`。
+- 整个请求原子：任一组失败则全部回滚（含文件移动）；成功后本次提交的附件（含 skip）移出会话，会话清空后再提交返回 404“导入会话已过期，请重新导入”。
+- 记录时间线备注为“导入凭证”。
 - attach：文件挂到目标记录，发票 `confirmed=true`、凭证 `confirmed=true`；目标记录缺商家/原币信息时补上，不覆盖金额与日期。
-- create：金额与日期必填（免发票记录允许金额为空时返回 400“请填写人民币金额”）。
-- 收件箱与“生成记录”使用同一分组与匹配逻辑自动确认（设计 5.3）。
+- create：日期、金额、商家必填（“请填写支出日期”“请填写金额”“请填写商家”；invoice_exempt=true 时缺金额提示“请填写人民币金额”）。
+- skip：只需 `{ group_id, attachment_ids, action: "skip" }`，文件留在待归属，计入 skipped。
+- 收件箱与“生成记录”使用同一分组与匹配逻辑自动确认（设计 5.3）；收件箱同一轮检测到的文件一起导入以便互相归组；每组确认前重新匹配，单组失败只回滚该组。
 
 ### 批次（batches 模块）
 

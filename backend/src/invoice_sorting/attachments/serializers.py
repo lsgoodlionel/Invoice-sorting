@@ -12,7 +12,7 @@ from invoice_sorting.checklist.regions import (
     is_nonlocal_region,
 )
 from invoice_sorting.common.constants import AttachmentKind
-from invoice_sorting.db.models import TZ, Attachment, InvoiceData
+from invoice_sorting.db.models import TZ, Attachment, EvidenceData, InvoiceData
 
 WHITESPACE = re.compile(r"\s+")
 FULLWIDTH_PARENS = str.maketrans({"（": "(", "）": ")"})
@@ -80,12 +80,29 @@ def serialize_invoice(
     }
 
 
+def serialize_evidence(evidence: EvidenceData) -> dict[str, Any]:
+    return {
+        "doc_type": evidence.doc_type,
+        "recognizer": evidence.recognizer or "",
+        "amount_cents": evidence.amount_cents,
+        "currency": evidence.currency or "CNY",
+        "cny_cents": evidence.cny_cents,
+        "occurred_on": iso_date(evidence.occurred_on),
+        "merchant": evidence.merchant or "",
+        "item_name": evidence.item_name or "",
+        "order_no": evidence.order_no or "",
+        "card_last4": evidence.card_last4 or "",
+        "is_foreign": bool(evidence.is_foreign),
+        "confirmed": bool(evidence.confirmed),
+    }
+
+
 def serialize_attachment(
     attachment: Attachment,
     buyer: tuple[str, str] | None = None,
     policy: RegionPolicy = DEFAULT_POLICY,
 ) -> dict[str, Any]:
-    invoice = attachment.invoice_data
+    invoice, evidence = attachment.invoice_data, attachment.evidence_data
     return {
         "id": attachment.id,
         "expense_id": attachment.expense_id,
@@ -97,5 +114,7 @@ def serialize_attachment(
         "size": attachment.size,
         "created_at": iso_datetime(attachment.created_at),
         "url": f"/api/attachments/{attachment.id}/file",
+        "file_key": attachment.file_key or "",
         "invoice": serialize_invoice(invoice, buyer, policy) if invoice is not None else None,
+        "evidence": serialize_evidence(evidence) if evidence is not None else None,
     }

@@ -119,3 +119,66 @@ def test_non_numeric_version_is_treated_as_base(session):
     sync_default_rules(session)
 
     assert len(nonlocal_rules(session)) == 1
+
+
+INVOICE_RULE_QUERY = select(ChecklistRule).where(
+    ChecklistRule.category_id.is_(None), ChecklistRule.attachment_kind == "invoice"
+)
+
+
+def exempt_rules(session) -> list[tuple[str, str]]:
+    query = select(ChecklistRule).where(ChecklistRule.category_id.is_(None))
+    return sorted(
+        (rule.attachment_kind, rule.level)
+        for rule in session.scalars(query)
+        if rule.condition == {"invoice_exempt": True}
+    )
+
+
+def simulate_v3_database(session) -> None:
+    """模拟版本 3 的库：发票规则条件为空，没有免发票规则。"""
+    for rule in session.scalars(INVOICE_RULE_QUERY):
+        rule.condition = {}
+    for rule in session.scalars(select(ChecklistRule)):
+        if rule.condition == {"invoice_exempt": True}:
+            session.delete(rule)
+    session.merge(AppSetting(key=RULES_VERSION_KEY, value="3"))
+    session.commit()
+
+
+def test_fresh_database_has_exempt_rules_and_restricted_invoice_rule(session):
+    assert [rule.condition for rule in session.scalars(INVOICE_RULE_QUERY)] == [
+        {"invoice_exempt": False}
+    ]
+    assert exempt_rules(session) == [
+        ("order", "required"), ("payment", "required"), ("statement", "suggested"),
+    ]  # fmt: skip
+
+
+def test_v4_upgrade_modifies_invoice_rule_and_appends_exempt_rules_once(session):
+    simulate_v3_database(session)
+    before = rule_count(session)
+
+    sync_default_rules(session)
+    session.merge(AppSetting(key=RULES_VERSION_KEY, value="3"))  # 再次执行升级也不重复
+    session.commit()
+    sync_default_rules(session)
+
+    assert [rule.condition for rule in session.scalars(INVOICE_RULE_QUERY)] == [
+        {"invoice_exempt": False}
+    ]
+    assert rule_count(session) == before + 3
+    assert len(exempt_rules(session)) == 3
+    assert session.get(AppSetting, RULES_VERSION_KEY).value == str(RULES_VERSION)
+
+
+def test_v4_upgrade_keeps_user_changed_invoice_rule(session):
+    simulate_v3_database(session)
+    rule = session.scalar(INVOICE_RULE_QUERY)
+    rule.condition = {"amount_gte": 100}
+    session.commit()
+
+    sync_default_rules(session)
+
+    session.refresh(rule)
+    assert rule.condition == {"amount_gte": 100}

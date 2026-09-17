@@ -5,6 +5,7 @@ import time
 from datetime import date
 from pathlib import Path
 
+import pytest
 from sqlalchemy import select
 
 from invoice_sorting.db.models import Attachment, Expense, InvoiceData
@@ -12,6 +13,12 @@ from invoice_sorting.expenses.service import create_expense
 from invoice_sorting.importer import auto_confirm, watcher
 from invoice_sorting.importer.watcher import process_inbox_once, start_inbox_watcher
 from tests.conftest import FIXTURES_DIR
+
+
+@pytest.fixture(autouse=True)
+def _isolate_recognition(fake_recognition):
+    """凭证识别使用可控的假实现。"""
+
 
 INVOICES = FIXTURES_DIR / "invoices"
 WAIT_SECONDS = 10
@@ -129,7 +136,7 @@ def test_auto_confirm_failure_keeps_invoice_pending(app, session, settings, monk
     def boom(*_args, **_kwargs):
         raise RuntimeError("boom")
 
-    monkeypatch.setattr(auto_confirm, "confirm_rows", boom)
+    monkeypatch.setattr(auto_confirm, "confirm_groups", boom)
 
     assert process_inbox_once(app, interval=0) == 1
     assert not source.exists()

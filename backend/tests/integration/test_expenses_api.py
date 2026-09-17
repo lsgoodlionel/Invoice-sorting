@@ -44,7 +44,8 @@ DETAIL_KEYS = {
     "missing_count", "batch_id", "batch_name", "attachment_count", "invoice_no", "pay_method",
     "is_online", "note", "void_reason", "sent_on", "reimbursed_on", "reimbursed_cents",
     "folder_path", "route_hint", "attachments", "checklist", "timeline", "created_at",
-    "updated_at", "region_name", "is_nonlocal",
+    "updated_at", "region_name", "is_nonlocal", "invoice_exempt", "currency",
+    "original_amount_cents",
 }  # fmt: skip
 
 

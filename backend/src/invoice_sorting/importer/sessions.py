@@ -1,4 +1,4 @@
-"""导入会话：内存保存 row_id → attachment_id，2 小时过期，最多保留 50 个。"""
+"""导入会话：内存保存本次导入的附件 id，2 小时过期，最多保留 50 个。"""
 
 import threading
 import time
@@ -16,7 +16,7 @@ _STORE_LOCK = threading.Lock()
 @dataclass
 class _Entry:
     created_at: float
-    rows: dict[str, int] = field(default_factory=dict)
+    attachment_ids: frozenset[int] = field(default_factory=frozenset)
 
 
 class ImportSessionStore:
@@ -41,26 +41,31 @@ class ImportSessionStore:
         while len(self._entries) > self._max:
             self._entries.popitem(last=False)
 
-    def create(self, rows: dict[str, int]) -> str:
+    def create(self, attachment_ids: Iterable[int]) -> str:
         session_id = uuid.uuid4().hex
+        entry = _Entry(created_at=self._clock(), attachment_ids=frozenset(attachment_ids))
         with self._lock:
-            self._entries[session_id] = _Entry(created_at=self._clock(), rows=dict(rows))
+            self._entries[session_id] = entry
             self._purge()
         return session_id
 
-    def get(self, session_id: str) -> dict[str, int] | None:
+    def get(self, session_id: str) -> frozenset[int] | None:
         with self._lock:
             self._purge()
             entry = self._entries.get(session_id)
-            return dict(entry.rows) if entry is not None else None
+            return entry.attachment_ids if entry is not None else None
 
-    def remove_rows(self, session_id: str, row_ids: Iterable[str]) -> None:
+    def remove_attachments(self, session_id: str, attachment_ids: Iterable[int]) -> None:
+        """已确认（含留在待归属）的附件移出会话；会话清空时删除。"""
+        removed = frozenset(attachment_ids)
         with self._lock:
             entry = self._entries.get(session_id)
             if entry is None:
                 return
-            entry.rows = {key: value for key, value in entry.rows.items() if key not in row_ids}
-            if not entry.rows:
+            remaining = entry.attachment_ids - removed
+            if remaining:
+                self._entries[session_id] = _Entry(entry.created_at, remaining)
+            else:
                 del self._entries[session_id]
 
 

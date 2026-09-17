@@ -11,6 +11,12 @@ from invoice_sorting.db.models import Expense
 from invoice_sorting.importer import auto_confirm
 from tests.invoice_factory import store_invoice
 
+
+@pytest.fixture(autouse=True)
+def _isolate_recognition(fake_recognition):
+    """凭证识别使用可控的假实现。"""
+
+
 URL = "/api/attachments/create-expenses"
 
 
@@ -87,7 +93,7 @@ def test_skips_with_reasons(client, add, session):
     reasons = {item["id"]: (item["original_name"], item["reason"]) for item in result["skipped"]}
     assert reasons[no_amount] == ("缺金额.pdf", "未识别到金额，请手工处理")
     assert reasons[no_date] == ("缺日期.pdf", "未识别到开票日期，请手工处理")
-    assert reasons[order] == ("订单.pdf", "不是发票，请归属到已有记录")
+    assert reasons[order] == ("订单.pdf", "未识别到金额，请手工处理")
     assert "重新识别" in reasons[empty_invoice][1]
     assert f"#{assigned_expense['id']}" in reasons[assigned][1]
     assert session.scalar(select(func.count(Expense.id))) == 1
@@ -101,18 +107,18 @@ def test_unknown_merchant_used_when_seller_missing(client, add):
 
 def test_single_failure_only_skips_that_invoice(client, add, session, monkeypatch):
     broken, app_error, good = add(invoice("1")), add(invoice("2")), add(invoice("3"))
-    original = auto_confirm.confirm_rows
+    original = auto_confirm.confirm_groups
 
-    def flaky(session_, settings_, refs, rows):
-        attachment_id = next(iter(refs.values()))
+    def flaky(session_, settings_, allowed, groups):
+        attachment_id = groups[0].attachment_ids[0]
         if attachment_id == broken:
-            original(session_, settings_, refs, rows)  # 先真实写入，再失败，验证回滚
+            original(session_, settings_, allowed, groups)  # 先真实写入，再失败，验证回滚
             raise RuntimeError("boom")
         if attachment_id == app_error:
             raise AppError("文件“x”：请填写商家")
-        return original(session_, settings_, refs, rows)
+        return original(session_, settings_, allowed, groups)
 
-    monkeypatch.setattr(auto_confirm, "confirm_rows", flaky)
+    monkeypatch.setattr(auto_confirm, "confirm_groups", flaky)
 
     result = post(client, [broken, app_error, good])
 

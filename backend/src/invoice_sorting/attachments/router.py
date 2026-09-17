@@ -18,9 +18,11 @@ from invoice_sorting.attachments.service import (
 )
 from invoice_sorting.attachments.storage import absolute_path
 from invoice_sorting.attachments.thumbnails import get_thumbnail
-from invoice_sorting.common.errors import NotFoundError, ok
+from invoice_sorting.common.errors import ConflictError, NotFoundError, ok
 from invoice_sorting.db.models import Attachment
 from invoice_sorting.importer.from_attachments import create_expenses_from_attachments
+from invoice_sorting.importer.matching import candidates_for_attachment
+from invoice_sorting.importer.serializers import serialize_candidate
 from invoice_sorting.settings.deps import ConfigDep, SessionDep
 from invoice_sorting.settings.service import buyer_identity, region_policy
 
@@ -64,6 +66,15 @@ def post_reparse(body: BulkIds, session: SessionDep, config: ConfigDep) -> dict[
     attachments = reparse_attachments(session, config, body.ids)
     session.commit()
     return ok(_serialize_all(session, attachments))
+
+
+@router.get("/attachments/{attachment_id}/candidates")
+def attachment_candidates(attachment_id: int, session: SessionDep) -> dict[str, Any]:
+    attachment = get_attachment_or_404(session, attachment_id)
+    if attachment.expense_id is not None:
+        raise ConflictError(f"附件已归属到记录 #{attachment.expense_id}")
+    candidates = candidates_for_attachment(session, attachment)
+    return ok([serialize_candidate(candidate) for candidate in candidates])
 
 
 @router.get("/attachments/{attachment_id}/file")

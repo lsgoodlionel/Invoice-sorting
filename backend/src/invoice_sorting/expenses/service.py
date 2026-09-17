@@ -34,8 +34,13 @@ EDITABLE_FIELDS = frozenset(
         "pay_method",
         "is_online",
         "note",
+        "invoice_exempt",
+        "currency",
+        "original_amount_cents",
     }
 )
+CNY = "CNY"
+EXEMPT_EVIDENCE_KINDS = frozenset({AttachmentKind.ORDER, AttachmentKind.PAYMENT})
 SENT_BATCH_STATUSES = frozenset({BatchStatus.SENT, BatchStatus.PARTIAL, BatchStatus.RECEIVED})
 CREATED_NOTE = "创建"
 
@@ -126,9 +131,18 @@ def remember_merchant_category(session: Session, seller_name: str, category_id: 
     session.flush()
 
 
+def _normalize_currency(expense: Expense) -> None:
+    """人民币记录不保留原币金额。"""
+    if not expense.currency:
+        expense.currency = CNY
+    if expense.currency == CNY:
+        expense.original_amount_cents = None
+
+
 def create_expense(session: Session, settings: Settings, **fields: Any) -> Expense:
     _validate_fields(session, fields)
     expense = Expense(status=str(ExpenseStatus.SPENT), status_manual=False, **fields)
+    _normalize_currency(expense)
     session.add(expense)
     session.flush()
     expense.status_events.append(
@@ -143,6 +157,7 @@ def update_expense(
     _validate_fields(session, fields)
     for name, value in fields.items():
         setattr(expense, name, value)
+    _normalize_currency(expense)
     session.flush()
     if fields.get("category_id") is not None:
         for invoice in _invoices(expense):
@@ -165,12 +180,19 @@ def _in_sent_batch(session: Session, expense: Expense) -> bool:
     return batch is not None and batch.status in SENT_BATCH_STATUSES
 
 
+def has_exempt_evidence(expense: Expense) -> bool:
+    """免发票记录的“已收凭证”：有订单/收据或支付记录任一项。"""
+    return any(attachment.kind in EXEMPT_EVIDENCE_KINDS for attachment in expense.attachments)
+
+
 def _auto_status(session: Session, expense: Expense) -> ExpenseStatus:
     return derive_status(
         has_invoice=has_confirmed_invoice(expense),
         required_missing=required_missing_count(expense),
         in_sent_batch=_in_sent_batch(session, expense),
         reimbursed=expense.reimbursed_on is not None,
+        invoice_exempt=bool(expense.invoice_exempt),
+        has_exempt_evidence=has_exempt_evidence(expense),
     )
 
 

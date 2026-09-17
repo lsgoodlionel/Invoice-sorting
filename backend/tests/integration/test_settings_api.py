@@ -97,12 +97,16 @@ def test_checklist_rules_crud(client):
                 "category_id": None,
                 "attachment_kind": "statement",
                 "level": "suggested",
-                "condition": {"amount_gte": 500000, "is_online": True},
+                "condition": {"amount_gte": 500000, "is_online": True, "invoice_exempt": False},
                 "hint": "大额网购附说明",
             },
         )
     )
-    assert created["condition"] == {"amount_gte": 500000, "is_online": True}
+    assert created["condition"] == {
+        "amount_gte": 500000,
+        "is_online": True,
+        "invoice_exempt": False,
+    }
 
     patched = data(
         client.patch(f"/api/checklist-rules/{created['id']}", json={"level": "required"})

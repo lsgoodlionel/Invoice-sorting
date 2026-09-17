@@ -67,6 +67,9 @@ def serialize_expense_summary(
         "invoice_no": first_invoice_no(expense),
         "region_name": region_name(expense, policy.local_region),
         "is_nonlocal": is_nonlocal(expense, policy.local_region),
+        "invoice_exempt": bool(expense.invoice_exempt),
+        "currency": expense.currency or "CNY",
+        "original_amount_cents": expense.original_amount_cents,
     }
 
 

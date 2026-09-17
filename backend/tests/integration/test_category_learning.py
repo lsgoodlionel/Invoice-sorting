@@ -1,11 +1,17 @@
 """手动修改分类后记住“商品 → 分类”；默认关键词升级时合并进已有分类。"""
 
+import pytest
 from sqlalchemy import select
 
 from invoice_sorting.db.default_keywords import KEYWORDS_VERSION
 from invoice_sorting.db.models import AppSetting, Category, ItemMemory
 from invoice_sorting.db.seed import sync_default_keywords
-from tests.integration.test_importer_api import confirm, row_payload, sample, upload
+from tests.integration.test_importer_api import confirm, group_payload, sample, upload
+
+
+@pytest.fixture(autouse=True)
+def _isolate_recognition(fake_recognition):
+    """凭证识别使用可控的假实现。"""
 
 
 def category(session, name: str) -> Category:
@@ -14,8 +20,8 @@ def category(session, name: str) -> Category:
 
 def test_changing_category_remembers_invoice_item(client, session, tmp_path):
     imported = upload(client, sample(tmp_path, "digital_same_line.pdf"))["data"]
-    row = imported["rows"][0]
-    expense_id = confirm(client, imported["session_id"], row_payload(row)).json()["data"][
+    row = imported["groups"][0]
+    expense_id = confirm(client, imported["session_id"], group_payload(row)).json()["data"][
         "created"
     ][0]
     low_value = category(session, "低值品").id

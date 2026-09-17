@@ -234,3 +234,14 @@ def test_pdf_parsers_extract_text_themselves_when_not_given():
     assert rail.parse(ticket, None).total_cents == 13950
     assert digital.parse(INVOICES / "digital_same_line.pdf", None).total_cents == 96000
     assert digital.can_parse(INVOICES / "digital_invoice.xml", None) is False
+
+
+def test_fake_bold_duplicated_characters_are_deduplicated():
+    # 真实发票用同位置重复绘制模拟粗体，抽取文本为“发发发票票票号号号码码码”
+    result = parse_invoice_file(INVOICES / "fake_bold_labels.pdf")
+
+    assert result is not None
+    assert result.invoice_no == "26312000000123456789"
+    assert result.total_cents == 96000
+    assert result.buyer_name == "华东师范大学"
+    assert result.seller_name

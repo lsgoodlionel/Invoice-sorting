@@ -46,6 +46,7 @@ class ChecklistRule(Base):
     condition 为 JSON，支持键（全部满足才触发，空对象表示总是触发）：
       amount_gte: int（分）  amount_lt: int（分）  is_online: bool
       is_nonlocal: bool（外地发票）  detail_platform: bool（销售方属于已带明细平台）
+      invoice_exempt: bool（免发票记录，如境外订阅）
     """
 
     __tablename__ = "checklist_rule"
@@ -102,6 +103,9 @@ class Expense(Base):
     void_reason: Mapped[str] = mapped_column(Text, default="")
     note: Mapped[str] = mapped_column(Text, default="")
     folder_path: Mapped[str] = mapped_column(String(500), default="")  # 相对 library_dir
+    invoice_exempt: Mapped[bool] = mapped_column(Boolean, default=False)  # 免发票（境外消费等）
+    currency: Mapped[str] = mapped_column(String(10), default="CNY")  # 原币种
+    original_amount_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 原币金额
     deleted: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
@@ -131,10 +135,14 @@ class Attachment(Base):
     sha256: Mapped[str] = mapped_column(String(64), unique=True)
     mime: Mapped[str] = mapped_column(String(100), default="")
     size: Mapped[int] = mapped_column(Integer, default=0)
+    file_key: Mapped[str] = mapped_column(String(200), default="")  # 文件名键（设计 3.3）
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
     expense: Mapped[Expense | None] = relationship(back_populates="attachments")
     invoice_data: Mapped["InvoiceData | None"] = relationship(
+        back_populates="attachment", cascade="all, delete-orphan", uselist=False
+    )
+    evidence_data: Mapped["EvidenceData | None"] = relationship(
         back_populates="attachment", cascade="all, delete-orphan", uselist=False
     )
 
@@ -161,6 +169,30 @@ class InvoiceData(Base):
     raw_text: Mapped[str] = mapped_column(Text, default="")
 
     attachment: Mapped[Attachment] = relationship(back_populates="invoice_data")
+
+
+class EvidenceData(Base):
+    """非发票凭证（订单、收据、银行交易、行程单等）的识别结果，与附件 1:1。"""
+
+    __tablename__ = "evidence_data"
+
+    attachment_id: Mapped[int] = mapped_column(ForeignKey("attachment.id"), primary_key=True)
+    doc_type: Mapped[str] = mapped_column(String(20), default="unknown")
+    recognizer: Mapped[str] = mapped_column(String(50), default="")
+    amount_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 按 currency
+    currency: Mapped[str] = mapped_column(String(10), default="CNY")
+    cny_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 人民币金额
+    occurred_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    merchant: Mapped[str] = mapped_column(String(200), default="")
+    item_name: Mapped[str] = mapped_column(String(300), default="")
+    order_no: Mapped[str] = mapped_column(String(100), default="")
+    card_last4: Mapped[str] = mapped_column(String(4), default="")
+    is_foreign: Mapped[bool] = mapped_column(Boolean, default=False)
+    file_key: Mapped[str] = mapped_column(String(200), default="")
+    raw_text: Mapped[str] = mapped_column(Text, default="")
+    confirmed: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    attachment: Mapped[Attachment] = relationship(back_populates="evidence_data")
 
 
 class ChecklistItem(Base):

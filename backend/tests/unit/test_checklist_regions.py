@@ -140,3 +140,13 @@ def test_default_rule_requires_order_for_nonlocal_invoice(session, settings, tmp
     update_app_settings(session, detail_platforms=["文具商行"])
     refresh_expense(session, settings, expense)
     assert _order_item(expense) is None
+
+
+@pytest.mark.parametrize(("exempt", "condition", "expected"), [
+    (True, {"invoice_exempt": True}, True),
+    (False, {"invoice_exempt": True}, False),
+    (None, {"invoice_exempt": False}, True),
+])  # fmt: skip
+def test_invoice_exempt_condition(exempt, condition, expected):
+    expense = Expense(amount_cents=100, is_online=False, invoice_exempt=exempt, attachments=[])
+    assert condition_matches(condition, expense) is expected

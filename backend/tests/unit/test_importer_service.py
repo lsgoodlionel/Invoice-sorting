@@ -26,6 +26,12 @@ from invoice_sorting.importer.suggestions import (
 from invoice_sorting.parsers import ParsedInvoice
 from tests.conftest import FIXTURES_DIR
 
+
+@pytest.fixture(autouse=True)
+def _isolate_recognition(fake_recognition):
+    """凭证识别使用可控的假实现。"""
+
+
 INVOICES = FIXTURES_DIR / "invoices"
 
 PARSED = ParsedInvoice(
@@ -86,7 +92,7 @@ def test_unexpected_error_discards_file_and_continues(session, settings, tmp_pat
     second = tmp_path / "b.pdf"
     shutil.copyfile(INVOICES / "digital_same_line.pdf", first)
     shutil.copyfile(INVOICES / "digital_multiline.pdf", second)
-    original = service.find_spent_match
+    original = service.build_warnings
     calls = {"count": 0}
 
     def flaky(*args, **kwargs):
@@ -95,13 +101,13 @@ def test_unexpected_error_discards_file_and_continues(session, settings, tmp_pat
             raise RuntimeError("boom")
         return original(*args, **kwargs)
 
-    monkeypatch.setattr(service, "find_spent_match", flaky)
+    monkeypatch.setattr(service, "build_warnings", flaky)
 
     result = import_files(session, settings, [(first, "a.pdf"), (second, "b.pdf")])
 
     assert result.errors == [{"original_name": "a.pdf", "error": service.UNEXPECTED_ERROR}]
     assert result.failed == {0: service.UNEXPECTED_ERROR}
-    assert [row.attachment.original_name for row in result.rows] == ["b.pdf"]
+    assert [a.original_name for group in result.groups for a in group.attachments] == ["b.pdf"]
     assert [item.original_name for item in session.scalars(select(Attachment))] == ["b.pdf"]
     assert session.scalar(select(InvoiceData.invoice_no)) == "26312000000987654321"
     assert len(list((settings.library_dir / "待归属").iterdir())) == 1

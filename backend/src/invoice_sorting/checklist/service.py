@@ -37,6 +37,7 @@ def condition_matches(
         ("is_online", lambda: bool(expense.is_online)),
         ("is_nonlocal", lambda: is_nonlocal(expense, policy.local_region)),
         ("detail_platform", lambda: is_detail_platform(expense, policy.detail_platforms)),
+        ("invoice_exempt", lambda: bool(expense.invoice_exempt)),
     )
     return all(_flag_matches(condition, key, actual) for key, actual in flags)
 

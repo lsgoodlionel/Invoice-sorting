@@ -13,7 +13,7 @@ from invoice_sorting.db.models import AppSetting, Category, ChecklistRule
 YUAN = 100
 KEYWORDS_VERSION_KEY = "keywords_version"
 RULES_VERSION_KEY = "rules_version"
-RULES_VERSION = 3
+RULES_VERSION = 4
 BASE_RULES_VERSION = 1  # 未记录 rules_version 的旧库视为版本 1
 
 BOOK_CATEGORY: dict = {
@@ -106,9 +106,26 @@ BOOK_RULES: tuple[RuleSpec, ...] = (
     ),
 )
 
+NOT_EXEMPT: dict = {"invoice_exempt": False}
+EXEMPT: dict = {"invoice_exempt": True}
+INVOICE_RULE: RuleSpec = (None, "invoice", "required", NOT_EXEMPT, "报销需附发票原件")
+
+EXEMPT_RULES: tuple[RuleSpec, ...] = (
+    (
+        None,
+        "order",
+        "required",
+        EXEMPT,
+        "境外消费无发票：附订单或收据（显示商品、金额、日期）",
+    ),
+    (None, "payment", "required", EXEMPT, "附银行卡交易明细，显示人民币入账金额"),
+    (None, "statement", "suggested", EXEMPT, "说明用途及无法取得发票的原因"),
+)
+
 # (分类名 或 None=通用, 附件类型, 级别, 条件, 提示)
 DEFAULT_RULES: list[RuleSpec] = [
-    (None, "invoice", "required", {}, "报销需附发票原件"),
+    INVOICE_RULE,
+    *EXEMPT_RULES,
     (
         None,
         "payment",
@@ -146,7 +163,12 @@ DEFAULT_RULES: list[RuleSpec] = [
 ]
 
 # 规则版本 → 该版本新增的默认规则；已有数据库升级时只追加这些规则
-RULES_ADDED_IN: dict[int, tuple[RuleSpec, ...]] = {2: (NONLOCAL_ORDER_RULE,), 3: BOOK_RULES}
+RULES_ADDED_IN: dict[int, tuple[RuleSpec, ...]] = {
+    2: (NONLOCAL_ORDER_RULE,),
+    3: BOOK_RULES,
+    4: EXEMPT_RULES,
+}
+EXEMPT_CONDITION_VERSION = 4  # 该版本起通用“发票”规则只对非免发票记录触发
 
 
 def seed_defaults(session: Session) -> None:
@@ -249,11 +271,27 @@ def _append_rule(session: Session, spec: RuleSpec) -> None:
         session.flush()
 
 
+def _restrict_invoice_rule(session: Session) -> None:
+    """版本 4 的修改（非追加）：通用、条件为空的“发票”规则改为仅对非免发票记录触发。
+
+    只改条件恰好为 {} 的规则；用户改过条件的规则保持不变，重复执行无副作用。
+    """
+    query = select(ChecklistRule).where(
+        ChecklistRule.category_id.is_(None), ChecklistRule.attachment_kind == "invoice"
+    )
+    for rule in session.scalars(query):
+        if dict(rule.condition or {}) == {}:
+            rule.condition = dict(NOT_EXEMPT)
+    session.flush()
+
+
 def sync_default_rules(session: Session) -> None:
     """默认规则版本升级时，追加新版本引入且尚不存在的同类同条件规则；不删除用户规则。"""
     version = _stored_rules_version(session)
     if version >= RULES_VERSION:
         return
+    if version < EXEMPT_CONDITION_VERSION:
+        _restrict_invoice_rule(session)
     for added_in, specs in sorted(RULES_ADDED_IN.items()):
         if added_in <= version:
             continue

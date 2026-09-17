@@ -1,4 +1,4 @@
-"""导入会话内存存储：过期、容量上限、移除已处理行。"""
+"""导入会话内存存储：过期、容量上限、移除已处理附件。"""
 
 from types import SimpleNamespace
 
@@ -13,19 +13,19 @@ class FakeClock:
         return self.value
 
 
-def test_put_and_get_rows():
+def test_put_and_get_attachment_ids():
     store = ImportSessionStore()
 
-    session_id = store.create({"r1": 1, "r2": 2})
+    session_id = store.create([1, 2, 2])
 
-    assert store.get(session_id) == {"r1": 1, "r2": 2}
+    assert store.get(session_id) == frozenset({1, 2})
     assert store.get("missing") is None
 
 
 def test_sessions_expire_after_ttl():
     clock = FakeClock()
     store = ImportSessionStore(ttl_seconds=10, clock=clock)
-    session_id = store.create({"r1": 1})
+    session_id = store.create([1])
 
     clock.value += 11
 
@@ -34,34 +34,32 @@ def test_sessions_expire_after_ttl():
 
 def test_keeps_at_most_max_sessions():
     store = ImportSessionStore(max_sessions=2)
-    first = store.create({"a": 1})
-    second = store.create({"b": 2})
-    third = store.create({"c": 3})
+    first = store.create([1])
+    second = store.create([2])
+    third = store.create([3])
 
     assert store.get(first) is None
-    assert store.get(second) == {"b": 2}
-    assert store.get(third) == {"c": 3}
+    assert store.get(second) == {2}
+    assert store.get(third) == {3}
 
 
-def test_remove_rows_drops_empty_session():
+def test_remove_attachments_drops_empty_session():
     store = ImportSessionStore()
-    session_id = store.create({"a": 1, "b": 2})
+    session_id = store.create([1, 2])
 
-    store.remove_rows(session_id, ["a"])
-    assert store.get(session_id) == {"b": 2}
+    store.remove_attachments(session_id, [1])
+    assert store.get(session_id) == {2}
 
-    store.remove_rows(session_id, ["b"])
+    store.remove_attachments(session_id, [2, 99])
     assert store.get(session_id) is None
-    store.remove_rows("missing", ["x"])
+    store.remove_attachments("missing", [1])
 
 
-def test_get_returns_copy():
+def test_get_returns_immutable_set():
     store = ImportSessionStore()
-    session_id = store.create({"a": 1})
+    session_id = store.create([1])
 
-    store.get(session_id)["b"] = 2
-
-    assert store.get(session_id) == {"a": 1}
+    assert isinstance(store.get(session_id), frozenset)
 
 
 def test_store_is_attached_to_app_state_once():

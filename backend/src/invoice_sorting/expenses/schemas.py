@@ -3,7 +3,14 @@
 from datetime import date
 from typing import Annotated, Any
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    model_validator,
+)
 
 from invoice_sorting.common.constants import ExpenseStatus
 
@@ -12,8 +19,24 @@ SUMMARY_MAX = 200
 PAY_METHOD_MAX = 30
 NOTE_MAX = 2000
 
+DEFAULT_CURRENCY = "CNY"
+
 Cents = Annotated[int, Field(ge=0, strict=True)]
-NON_NULLABLE_FIELDS = ("spent_on", "amount_cents", "merchant", "summary", "pay_method", "is_online")
+Currency = Annotated[
+    str,
+    BeforeValidator(lambda value: value.strip().upper() if isinstance(value, str) else value),
+    StringConstraints(pattern=r"^[A-Z]{3}$"),
+]
+NON_NULLABLE_FIELDS = (
+    "spent_on",
+    "amount_cents",
+    "merchant",
+    "summary",
+    "pay_method",
+    "is_online",
+    "invoice_exempt",
+    "currency",
+)
 
 
 class ExpenseCreate(BaseModel):
@@ -28,6 +51,9 @@ class ExpenseCreate(BaseModel):
     pay_method: str = Field(default="", max_length=PAY_METHOD_MAX)
     is_online: bool = False
     note: str = Field(default="", max_length=NOTE_MAX)
+    invoice_exempt: bool = False
+    currency: Currency = DEFAULT_CURRENCY
+    original_amount_cents: Cents | None = None
 
 
 class ExpenseUpdate(BaseModel):
@@ -42,6 +68,9 @@ class ExpenseUpdate(BaseModel):
     pay_method: str | None = Field(default=None, max_length=PAY_METHOD_MAX)
     is_online: bool | None = None
     note: str | None = Field(default=None, max_length=NOTE_MAX)
+    invoice_exempt: bool | None = None
+    currency: Currency | None = None
+    original_amount_cents: Cents | None = None
 
     @model_validator(mode="after")
     def _reject_null_required(self) -> "ExpenseUpdate":

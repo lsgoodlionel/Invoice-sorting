@@ -6,6 +6,8 @@ from pathlib import Path
 from fastapi import UploadFile
 from sqlalchemy.orm import Session
 
+from invoice_sorting.attachments.file_keys import compute_file_key
+from invoice_sorting.attachments.recognition import recognize_attachment
 from invoice_sorting.attachments.storage import absolute_path, guess_kind, store_file
 from invoice_sorting.common.constants import AttachmentKind
 from invoice_sorting.common.errors import AppError
@@ -40,7 +42,10 @@ def store_uploads(
     kind: AttachmentKind | None,
     expense: Expense | None,
 ) -> list[Attachment]:
-    """逐个入库；任一失败时删除本次已复制进文件库的文件并抛出原错误。"""
+    """逐个入库；未指定类型时自动识别（发票/订单/支付记录等）。
+
+    任一失败时删除本次已复制进文件库的文件并抛出原错误。
+    """
     stored: list[Attachment] = []
     settings.data_dir.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=settings.data_dir, prefix=".upload-") as tmp:
@@ -49,7 +54,11 @@ def store_uploads(
                 name = upload_name(upload)
                 src = save_upload(upload, Path(tmp) / f"{index}.part")
                 file_kind = kind or guess_kind(name)
-                stored.append(store_file(session, settings, src, name, file_kind, expense))
+                attachment = store_file(session, settings, src, name, file_kind, expense)
+                stored.append(attachment)
+                attachment.file_key = compute_file_key(name)
+                if kind is None:
+                    recognize_attachment(session, settings, attachment)
         except Exception:
             for attachment in stored:
                 absolute_path(settings, attachment).unlink(missing_ok=True)
