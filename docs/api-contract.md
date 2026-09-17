@@ -11,6 +11,26 @@
   - BatchStatus：`draft` 待外发 / `sent` 已外发 / `partial` 部分到账 / `received` 已到账
   - ExportLayout：`by_expense` / `by_kind`；DateBasis：`spent` / `invoiced` / `sent` / `received`
 
+## 0 登录认证
+
+应用自身负责认证（不再使用 Nginx 登录弹窗）。首次打开网页设置初始密码；未设置初始密码前，除下列公开端点外的所有 `/api/*` 均不可访问。
+
+| 方法 | 路径 | 请求 | 返回 data |
+| --- | --- | --- | --- |
+| GET | `/api/auth/status` | — 公开 | `{ auth_enabled: boolean, password_set: boolean, authenticated: boolean }` |
+| POST | `/api/auth/setup` | 公开；`{ password }`，仅在尚未设置密码时可用，否则 409“已设置过初始密码，请直接登录” | `{ authenticated: true }`，并写入会话 Cookie |
+| POST | `/api/auth/login` | 公开；`{ password }`；错误 401“密码错误”；未设置 409“请先设置初始密码”；失败过多 429“尝试次数过多，请 N 分钟后再试” | `{ authenticated: true }`，并写入会话 Cookie |
+| POST | `/api/auth/logout` | 需登录 | `null`，清除 Cookie 并使该会话失效 |
+| POST | `/api/auth/password` | 需登录；`{ current_password, new_password }`；当前密码错误 400 | `null`；其他设备会话全部失效，当前会话保留 |
+
+- 密码规则：8–128 个字符。
+- 会话 Cookie：名称 `invoice_session`，HttpOnly、SameSite=Lax、Path=/，有效期 30 天（每次访问续期）；请求经 HTTPS（含 `X-Forwarded-Proto: https`）时加 Secure。服务端只保存令牌的 SHA-256。
+- 未认证访问受保护端点：401 `{ ok: false, error: "请先登录" }`；尚未设置密码时 error 为 `"请先设置初始密码"`。前端收到 401 时重新获取 `/api/auth/status` 并显示对应页面。
+- 公开端点：`/api/health`、`/api/auth/status`、`/api/auth/setup`、`/api/auth/login`；前端静态文件始终可访问。
+- 登录失败限制：同一客户端 IP（优先 `X-Real-IP`，仅信任来自 127.0.0.1 的代理头）15 分钟内失败 5 次锁定 15 分钟。
+- `INVOICE_SORTING_AUTH_ENABLED=false` 可关闭认证（仅限本机单人使用；status 返回 auth_enabled=false、authenticated=true）。
+- 忘记密码：服务器执行 `invoice-sorting reset-password`，清空密码与全部会话，之后网页回到“设置初始密码”。
+
 ## 1 数据形状
 
 ```ts
