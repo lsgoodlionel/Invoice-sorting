@@ -21,6 +21,11 @@ type InvoiceData = {
   invoice_no: string | null; issued_on: string | null; total_cents: number | null; tax_cents: number | null;
   seller_name: string; seller_tax_id: string; buyer_name: string; buyer_tax_id: string;
   item_summary: string; invoice_type: string; parser: string; confirmed: boolean;
+  tax_category: string;               // 税收分类简称，如“纸制品”
+  region_name: string;               // 开票地区，如“北京”，无法判断为 ""
+  is_nonlocal: boolean;              // region_name 非空且不等于设置中的本地地区
+  order_no: string;                  // 票面订单号，无则 ""
+  detail_platform: boolean;          // 销售方属于已带明细的平台（设置 detail_platforms），外地订单截图可免
   buyer_mismatch: boolean            // 与设置中的购方抬头不一致
 }
 
@@ -53,6 +58,7 @@ type ExpenseDetail = ExpenseSummary & {
   pay_method: string; is_online: boolean; note: string; void_reason: string;
   sent_on: string | null; reimbursed_on: string | null; reimbursed_cents: number;
   folder_path: string; route_hint: string;
+  region_name: string; is_nonlocal: boolean;   // 取该记录发票的开票地区；多张发票任一外地即为外地
   attachments: Attachment[]; checklist: ChecklistItem[]; timeline: StatusEvent[];
   created_at: string; updated_at: string
 }
@@ -91,6 +97,10 @@ type ExportRecord = { id: number; layout: ExportLayout; file_name: string; url: 
 | GET | `/api/attachments/{id}/thumbnail` | — | PNG 缩略图（PDF 首页/图片缩放，非信封） |
 | PATCH | `/api/attachments/{id}` | `{ kind?, expense_id? }`（expense_id=null 表示移回待归属） | `Attachment` |
 | DELETE | `/api/attachments/{id}` | — | `null`（移入回收站） |
+| POST | `/api/attachments/bulk-delete` | `{ ids: number[] }`（仅限待归属附件，否则 409） | `{ deleted: number }` |
+| POST | `/api/attachments/bulk-assign` | `{ ids: number[], expense_id: number \| null, kind?: AttachmentKind }` | `Attachment[]` |
+| POST | `/api/attachments/create-expenses` | `{ ids: number[] }`：把待归属发票生成记录（有匹配的“已支出”记录则挂上，否则按识别结果新建；缺金额或日期的跳过） | `{ created: number[], attached: number[], skipped: { id: number, original_name: string, reason: string }[] }` |
+| POST | `/api/attachments/reparse` | `{ ids: number[] }`：重新识别发票（更新票面字段，保留 confirmed；已归属记录的金额/日期/商家不自动改，商家为空时补上） | `Attachment[]` |
 | PATCH | `/api/checklist-items/{id}` | `{ state: "not_needed" \| "missing", reason? }` | `ExpenseDetail` |
 
 ### 导入（importer 模块）
@@ -104,7 +114,7 @@ type ExportRecord = { id: number; layout: ExportLayout; file_name: string; url: 
 type ImportRow = {
   row_id: string; attachment: Attachment;             // 已入库（未归属）
   is_invoice: boolean;
-  suggested: { spent_on: string | null; amount_cents: number | null; merchant: string; summary: string; category_id: number | null };
+  suggested: { spent_on: string | null; amount_cents: number | null; merchant: string; summary: string; category_id: number | null; is_online: boolean };  // is_online：有订单号或销售方为电商平台
   match: { expense_id: number; merchant: string; amount_cents: number; spent_on: string } | null;  // 匹配到的“已支出”记录
   warnings: string[]                                   // 如“购方名称与设置不一致”“金额校验不一致”
 }
@@ -156,8 +166,8 @@ type Stats = {
 
 | 方法 | 路径 | 请求 | 返回 data |
 | --- | --- | --- | --- |
-| GET | `/api/settings` | — | `{ buyer_name, buyer_tax_id, overdue_days, data_dir, inbox_dir }` |
-| PUT | `/api/settings` | `{ buyer_name?, buyer_tax_id?, overdue_days? }` | 同上 |
+| GET | `/api/settings` | — | `{ buyer_name, buyer_tax_id, overdue_days, local_region, detail_platforms: string[], data_dir, inbox_dir }`（local_region 默认“上海”，detail_platforms 默认 ["京东","当当","圆迈"]） |
+| PUT | `/api/settings` | `{ buyer_name?, buyer_tax_id?, overdue_days?, local_region?, detail_platforms? }` | 同上 |
 | GET/POST | `/api/categories` | POST `{ name, color?, keywords?, route_hint? }` | `Category[]` / `Category` |
 | PATCH/DELETE | `/api/categories/{id}` | DELETE 为归档 | `Category` / `null` |
 | GET/POST | `/api/projects` | POST `{ code?, name, owner? }` | `Project[]` / `Project` |
@@ -166,4 +176,6 @@ type Stats = {
 | PATCH/DELETE | `/api/checklist-rules/{id}` | | `ChecklistRule` / `null` |
 | POST | `/api/backup` | — | `{ file: string }` |
 
-`ChecklistRule = { id, category_id: number|null, attachment_kind, level, condition: { amount_gte?: number, amount_lt?: number, is_online?: boolean }, hint }`
+`ChecklistRule = { id, category_id: number|null, attachment_kind, level, condition: { amount_gte?: number, amount_lt?: number, is_online?: boolean, is_nonlocal?: boolean, detail_platform?: boolean }, hint }`
+
+条件全部满足才触发：`is_nonlocal` 为外地发票；`detail_platform` 为销售方属于已带明细平台。默认新增通用规则：`{ is_nonlocal: true, detail_platform: false }` → 订单明细（必需），提示“外地发票需附网购订单截图（京东、当当、圆迈等已带明细平台可免）；非网购外地购品需随差旅报销并说明”。
