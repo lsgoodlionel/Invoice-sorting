@@ -17,6 +17,7 @@ PRINT_NAME = "01_打印版_全部材料.pdf"
 INVOICE_DIR = "02_发票原件"
 SUPPORT_DIR = "03_支撑材料"
 FALLBACK_MERCHANT = "未填商家"
+FALLBACK_CATEGORY = "未分类"
 
 # 打印版合并顺序；同时用于附件清单的显示顺序
 KIND_ORDER: tuple[AttachmentKind, ...] = (
@@ -68,6 +69,11 @@ def merchant_token(expense: Expense) -> str:
     return safe_component(expense.merchant or "")[:MERCHANT_MAX_CHARS] or FALLBACK_MERCHANT
 
 
+def category_token(expense: Expense) -> str:
+    name = expense.category.name if expense.category else ""
+    return safe_component(name) or FALLBACK_CATEGORY
+
+
 def attachment_ext(attachment: Attachment) -> str:
     return extension_for(attachment.original_name, attachment.mime)
 
@@ -76,7 +82,9 @@ def invoice_original_name(item: PackageItem, attachment: Attachment) -> str:
     invoice = attachment.invoice_data
     token = safe_component(invoice.invoice_no) if invoice and invoice.invoice_no else ""
     amount = cents_to_yuan(item.expense.amount_cents)
-    name = f"{item.seq:02d}_{amount}_{merchant_token(item.expense)}_{token or attachment.id}"
+    category = category_token(item.expense)
+    merchant = merchant_token(item.expense)
+    name = f"{item.seq:02d}_{category}_{amount}_{merchant}_{token or attachment.id}"
     return f"{INVOICE_DIR}/{name}{attachment_ext(attachment)}"
 
 

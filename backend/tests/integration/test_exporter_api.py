@@ -101,9 +101,9 @@ def test_export_zip_structure_and_summary(client, settings, eight_items):  # T09
 
     by_seq = {row[0]: row for row in body}
     for name in invoices:
-        seq, amount, merchant = Path(name).stem.split("_")[:3]
+        seq, category, amount, merchant = Path(name).stem.split("_")[:4]
         row = by_seq[int(seq)]
-        assert (amount, merchant) == (f"{row[5]:.2f}", row[2])
+        assert (category, amount, merchant) == (row[4] or "未分类", f"{row[5]:.2f}", row[2])
     first = next(row for row in body if row[2] == "商家0")
     assert first[7] == "发票、订单明细、支付记录"
     group = f"03_支撑材料/{first[0]:02d}_商家0_{first[5]:.2f}/"
@@ -189,3 +189,35 @@ def test_export_skips_missing_source_file(client, settings):
 
 def expense_detail_first_attachment(client, expense_id: int) -> dict:
     return client.get(f"/api/expenses/{expense_id}").json()["data"]["attachments"][0]
+
+
+def test_delete_export_removes_file_and_record(client, settings, eight_items):
+    batch, _ = eight_items
+    first, second = export(client, batch["id"]), export(client, batch["id"])
+
+    response = client.delete(f"/api/exports/{first['id']}")
+
+    assert response.status_code == 200 and response.json()["data"] is None
+    assert len(list(settings.packages_dir.rglob("*.zip"))) == 1
+    detail = client.get(f"/api/batches/{batch['id']}").json()["data"]
+    assert [item["id"] for item in detail["exports"]] == [second["id"]]
+    assert client.get(f"/api/exports/{first['id']}/file").status_code == 404
+
+
+def test_delete_last_export_prunes_empty_package_dir(client, settings, eight_items):
+    batch, _ = eight_items
+    record = export(client, batch["id"])
+
+    client.delete(f"/api/exports/{record['id']}")
+
+    assert not [path for path in settings.packages_dir.iterdir() if path.is_dir()]
+
+
+def test_delete_export_tolerates_missing_file_and_unknown_id(client, settings, eight_items):
+    batch, _ = eight_items
+    record = export(client, batch["id"])
+    for path in settings.packages_dir.rglob("*.zip"):
+        path.unlink()
+
+    assert client.delete(f"/api/exports/{record['id']}").status_code == 200
+    assert client.delete(f"/api/exports/{record['id']}").status_code == 404

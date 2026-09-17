@@ -27,6 +27,7 @@ export const batchesApi = {
   markReceived: (id: number, input: BatchReceived) => api.post<BatchDetail>(`/batches/${id}/received`, input),
   reopen: (id: number) => api.post<BatchDetail>(`/batches/${id}/reopen`, {}),
   exportFileUrl: (exportId: number) => `/api/exports/${exportId}/file`,
+  removeExport: (exportId: number) => api.del<null>(`/exports/${exportId}`),
 };
 
 export function useBatchList(status?: BatchStatus) {
@@ -66,3 +67,4 @@ export const useMarkBatchSent = (id: number) => useBatchMutation((input: BatchSe
 export const useMarkBatchReceived = (id: number) =>
   useBatchMutation((input: BatchReceived) => batchesApi.markReceived(id, input));
 export const useReopenBatch = (id: number) => useBatchMutation(() => batchesApi.reopen(id));
+export const useDeleteExport = () => useBatchMutation((exportId: number) => batchesApi.removeExport(exportId));

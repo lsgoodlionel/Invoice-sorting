@@ -109,11 +109,11 @@ git pull && bash scripts/setup.sh && backend/.venv/bin/invoice-sorting
 curl -fsSL https://raw.githubusercontent.com/lsgoodlionel/Invoice-sorting/main/deploy/install.sh | sudo bash
 ```
 
-完成后终端会打印访问地址、登录用户名和**自动生成的登录密码（只显示一次，请保存）**。
+完成后通过 `http://服务器IP:8765` 访问（云服务器需在安全组放行 8765 端口）。终端会打印访问地址、登录用户名和**自动生成的登录密码（只显示一次，请保存）**。
 
 ### 使用域名并启用 HTTPS
 
-域名需已解析到服务器，且 80/443 端口可访问：
+域名需已解析到服务器，且 80/443 端口可访问（Let's Encrypt 证书验证需要 80 端口，因此启用 HTTPS 时使用标准 80/443 端口）：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/lsgoodlionel/Invoice-sorting/main/deploy/install.sh | sudo DOMAIN=invoice.example.com ENABLE_HTTPS=true EMAIL=you@example.com bash
@@ -134,8 +134,8 @@ curl -fsSL https://raw.githubusercontent.com/lsgoodlionel/Invoice-sorting/main/d
 | `EMAIL` | — | 证书通知邮箱 |
 | `AUTH_USER` | `admin` | 网页登录用户名 |
 | `AUTH_PASSWORD` | 首次自动生成 | 提供则设置/重置密码 |
-| `HTTP_PORT` | `80` | Nginx 监听端口 |
-| `APP_PORT` | `8765` | 应用内部端口（仅本机） |
+| `HTTP_PORT` | `8765`（启用 HTTPS 时 `80`） | 对外访问端口（Nginx） |
+| `APP_PORT` | `18765` | 应用内部端口（仅本机，不对外） |
 | `BRANCH` | `main` | 部署的 Git 分支 |
 | `INSTALL_DIR` | `/opt/invoice-sorting` | 程序目录 |
 | `DATA_DIR` | `/var/lib/invoice-sorting` | 数据目录 |
@@ -148,8 +148,8 @@ curl -fsSL https://raw.githubusercontent.com/lsgoodlionel/Invoice-sorting/main/d
 2. 创建无登录权限的系统用户 `invoice`
 3. 若已有数据库，升级前备份到 `数据目录/备份/upgrade_时间.db`（保留最近 10 份）
 4. 拉取代码（已安装则更新到最新提交），安装后端依赖、构建前端
-5. 注册 systemd 服务 `invoice-sorting`（开机自启、异常自动重启，仅监听 127.0.0.1）
-6. 配置 Nginx 反向代理 + 登录密码（HTTP Basic Auth），上传上限 100 MB
+5. 注册 systemd 服务 `invoice-sorting`（开机自启、异常自动重启，仅监听 127.0.0.1:18765）
+6. 配置 Nginx 反向代理（对外 8765 端口）+ 登录密码（HTTP Basic Auth），上传上限 100 MB
 7. 防火墙 ufw 已启用时放行端口；按需申请 HTTPS 证书
 8. 健康检查通过后打印访问信息
 
@@ -277,12 +277,17 @@ scp *.pdf user@server:/tmp/ && ssh user@server 'sudo install -o invoice -g invoi
   ├── 00_报销汇总表.xlsx        汇总（序号/日期/商家/摘要/分类/金额/发票号/附件清单/缺项/备注 + 合计）与分类小计
   ├── 01_打印版_全部材料.pdf     按序号合并：发票 → 订单 → 支付记录 → 验收单 …（图片自动排成 A4）
   ├── 02_发票原件/              原始电子发票，未经修改
-  │   └── 01_960.00_京东××店_26312000000123456789.pdf
+  │   └── 01_易耗品_960.00_京东××店_26312000000123456789.pdf
   └── 03_支撑材料/              按支出分组：01_京东××店_960.00/订单明细_1.png
                                 或按材料类型分组：订单明细/01_京东××店_960.00_1.png
   ```
 
-  序号贯穿汇总表、打印 PDF 和文件名，方便财务对照。
+  序号贯穿汇总表、打印 PDF 和文件名，方便财务对照；发票原件文件名依次为 `序号_分类_金额_商家_发票号`。
+
+  **按支出分组 vs 按材料类型分组**：两者汇总表、打印版 PDF、发票原件完全相同，只有 `03_支撑材料/` 的目录结构不同——
+  - 按支出分组：一笔支出的所有材料放在一个文件夹，适合财务逐笔核对、按笔打印装订；
+  - 按材料类型分组：订单明细、支付记录、验收单等同类材料各放一个文件夹，适合报销系统要求按附件类型分别上传。
+- **删除资料包**：打包历史中每个资料包右侧的删除按钮可删除该 ZIP（二次确认），记录与凭证不受影响，可随时重新生成。
 - **标记已外发**：填写外发日期、方式、接收人、外部单号（如预约报销单号），批次内记录变为「已外发」。已外发的批次不能再增删记录。
 - **登记到账**：全部或勾选部分记录到账，批次显示「部分到账」/「已到账」。
 - **重新打开**：外发或到账登记有误时，重新打开回到待外发状态，记录状态按凭证清单重新计算。

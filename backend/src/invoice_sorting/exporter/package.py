@@ -114,3 +114,14 @@ def export_batch(
     session.add(record)
     session.flush()
     return record
+
+
+def delete_export(session: Session, settings: Settings, record: ExportRecord) -> None:
+    """删除资料包文件与导出记录；文件已不存在时只删记录，并清理空的资料包目录。"""
+    path = settings.data_dir / record.file_path
+    path.unlink(missing_ok=True)
+    parent = path.parent
+    if parent != settings.packages_dir and parent.is_dir() and not any(parent.iterdir()):
+        parent.rmdir()
+    session.delete(record)
+    session.flush()

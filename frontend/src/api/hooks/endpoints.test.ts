@@ -18,7 +18,7 @@ function allRoutes() {
     'POST /api/attachments/bulk-delete', 'POST /api/attachments/bulk-assign', 'POST /api/attachments/create-expenses', 'POST /api/attachments/reparse', 'GET /api/attachments/2/candidates',
     'POST /api/imports', 'POST /api/imports/s%201/confirm',
     'GET /api/batches', 'POST /api/batches', 'GET /api/batches/4', 'PATCH /api/batches/4', 'DELETE /api/batches/4',
-    'POST /api/batches/4/items', 'POST /api/batches/4/export', 'POST /api/batches/4/sent', 'POST /api/batches/4/received', 'POST /api/batches/4/reopen',
+    'POST /api/batches/4/items', 'POST /api/batches/4/export', 'POST /api/batches/4/sent', 'POST /api/batches/4/received', 'POST /api/batches/4/reopen', 'DELETE /api/exports/8',
     'GET /api/stats', 'GET /api/dashboard',
     'GET /api/settings', 'PUT /api/settings', 'POST /api/backup',
     'GET /api/categories', 'POST /api/categories', 'PATCH /api/categories/5', 'DELETE /api/categories/5',
@@ -94,12 +94,14 @@ describe('endpoint functions follow the contract', () => {
     await batchesApi.markSent(4, { sent_on: '2026-09-01' });
     await batchesApi.markReceived(4, { received_on: '2026-09-02', expense_ids: [1] });
     await batchesApi.reopen(4);
+    await batchesApi.removeExport(8);
     expect(calls[0].url).toBe('/api/batches?status=draft');
     expect(calls[5].body).toEqual({ add: [1], force: true });
     expect(calls[6].body).toEqual({ layout: 'by_kind' });
     expect(batchesApi.exportFileUrl(8)).toBe('/api/exports/8/file');
-    expect(calls.at(-1)?.url).toBe('/api/batches/4/reopen');
-    expect(calls.at(-1)?.method).toBe('POST');
+    expect(calls.at(-2)?.url).toBe('/api/batches/4/reopen');
+    expect(calls.at(-1)).toMatchObject({ method: 'DELETE', url: '/api/exports/8' });
+    expect(calls.at(-2)?.method).toBe('POST');
   });
 
   test('stats, dashboard, settings', async () => {

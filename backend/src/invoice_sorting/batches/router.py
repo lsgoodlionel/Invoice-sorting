@@ -31,7 +31,7 @@ from invoice_sorting.batches.service import (
 from invoice_sorting.common.constants import BatchStatus
 from invoice_sorting.common.errors import NotFoundError, ok
 from invoice_sorting.db.models import ExportRecord
-from invoice_sorting.exporter.package import export_batch
+from invoice_sorting.exporter.package import delete_export, export_batch
 from invoice_sorting.settings.deps import ConfigDep, SessionDep
 
 router = APIRouter(prefix="/api", tags=["报销批次"])
@@ -127,3 +127,13 @@ def get_export_file(export_id: int, session: SessionDep, config: ConfigDep) -> F
     if not path.is_file():
         raise NotFoundError("资料包文件")
     return FileResponse(path, media_type=ZIP_MIME, filename=path.name)
+
+
+@router.delete("/exports/{export_id}")
+def remove_export(export_id: int, session: SessionDep, config: ConfigDep) -> dict[str, Any]:
+    record = session.get(ExportRecord, export_id)
+    if record is None:
+        raise NotFoundError("导出记录")
+    delete_export(session, config, record)
+    session.commit()
+    return ok(None)

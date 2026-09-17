@@ -206,6 +206,7 @@ type ConfirmGroup = {
 | POST | `/api/batches/{id}/items` | `{ add?: number[], remove?: number[], force?: boolean }`；加入含必需缺项的记录且 force=false 时返回 409 并在 error 中说明；项目不一致同样 409 | `BatchDetail` |
 | POST | `/api/batches/{id}/export` | `{ layout: "by_expense" \| "by_kind" }` | `ExportRecord` |
 | GET | `/api/exports/{id}/file` | — | ZIP 文件流 |
+| DELETE | `/api/exports/{id}` | — 删除资料包文件与导出记录（记录与凭证不受影响） | `null` |
 | POST | `/api/batches/{id}/sent` | `{ sent_on, sent_via?, receiver?, external_no? }` | `BatchDetail` |
 | POST | `/api/batches/{id}/received` | `{ received_on, expense_ids?: number[] }`（不传=全部）；草稿或已全部到账时 409 | `BatchDetail` |
 | POST | `/api/batches/{id}/reopen` | — 回到草稿，清空外发/到账信息并重算记录状态；草稿批次 409 | `BatchDetail` |

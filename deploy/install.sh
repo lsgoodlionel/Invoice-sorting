@@ -10,8 +10,8 @@
 #   EMAIL           证书通知邮箱
 #   AUTH_USER       网页登录用户名，默认 admin
 #   AUTH_PASSWORD   网页登录密码；首次安装未提供时自动生成并打印；再次提供则重置
-#   HTTP_PORT       Nginx 监听端口，默认 80
-#   APP_PORT        应用内部端口（仅本机），默认 8765
+#   HTTP_PORT       对外访问端口（Nginx），默认 8765；启用 HTTPS 时默认 80（证书验证需要）
+#   APP_PORT        应用内部端口（仅本机），默认 18765
 #   BRANCH          Git 分支，默认 main
 #   REPO_URL        仓库地址
 #   MIRROR          下载源：auto（默认，测速选择官方源或国内镜像）| cn | global
@@ -27,8 +27,12 @@ INSTALL_DIR="${INSTALL_DIR:-/opt/invoice-sorting}"
 APP_DIR="${INSTALL_DIR}/app"
 DATA_DIR="${DATA_DIR:-/var/lib/invoice-sorting}"
 APP_USER="${APP_USER:-invoice}"
-APP_PORT="${APP_PORT:-8765}"
-HTTP_PORT="${HTTP_PORT:-80}"
+APP_PORT="${APP_PORT:-18765}"
+if [ "${ENABLE_HTTPS:-false}" = "true" ]; then
+  HTTP_PORT="${HTTP_PORT:-80}"
+else
+  HTTP_PORT="${HTTP_PORT:-8765}"
+fi
 DOMAIN="${DOMAIN:-_}"
 ENABLE_HTTPS="${ENABLE_HTTPS:-false}"
 EMAIL="${EMAIL:-}"
@@ -57,6 +61,7 @@ check_environment() {
   if [ "$ENABLE_HTTPS" = "true" ] && { [ "$DOMAIN" = "_" ] || [ -z "$EMAIL" ]; }; then
     die "启用 HTTPS 需要同时设置 DOMAIN 与 EMAIL"
   fi
+  [ "$HTTP_PORT" != "$APP_PORT" ] || die "HTTP_PORT 与 APP_PORT 不能相同（当前均为 ${APP_PORT}）"
 }
 
 install_packages() {
