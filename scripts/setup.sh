@@ -4,8 +4,11 @@
 #   scripts/setup.sh            安装后端依赖（含 OCR）+ 前端依赖并构建
 #   NO_OCR=1 scripts/setup.sh   不安装 OCR（截图凭证只按文件名识别）
 #   MIRROR=cn scripts/setup.sh  强制国内镜像；MIRROR=global 强制官方源
+#   FRONTEND_BUILD=local        本地构建前端（默认，开发时反映未提交的前端改动）
+#   FRONTEND_BUILD=prebuilt     只用 CI 预构建前端（无需 Node.js）；auto：优先预构建，失败再本地构建
+#   SKIP_FRONTEND=1             跳过前端
 #
-# 需要：uv、Node.js ≥ 20、pnpm（或 corepack）。版本严格按 uv.lock / pnpm-lock.yaml 安装。
+# 需要：uv；本地构建前端时还需要 Node.js ≥ 20 与 pnpm。版本严格按 uv.lock / pnpm-lock.yaml 安装。
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -38,18 +41,29 @@ install_backend() {
   uv pip install --quiet --python "$backend/.venv/bin/python" --no-deps -e "$backend"
 }
 
-install_frontend() {
+build_frontend_locally() {
   local frontend="$ROOT/frontend"
+  command -v pnpm >/dev/null 2>&1 || { echo "未找到 pnpm，请先执行 corepack enable" >&2; exit 1; }
   log "安装前端依赖（${NPM_REGISTRY}）"
+  # 慢速网络：放宽超时并重试；corepack 按 package.json 固定的 pnpm 版本下载，不查询最新版
   export COREPACK_NPM_REGISTRY="$NPM_REGISTRY" COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+  export npm_config_fetch_retries=5 npm_config_fetch_timeout=300000
   pnpm --dir "$frontend" install --frozen-lockfile --silent --registry "$NPM_REGISTRY"
   log "构建前端"
   pnpm --dir "$frontend" build >/dev/null
 }
 
+install_frontend() {
+  [ "${SKIP_FRONTEND:-0}" = "1" ] && return 0
+  case "${FRONTEND_BUILD:-local}" in
+    prebuilt) bash "$ROOT/scripts/fetch-frontend.sh" ;;
+    auto) bash "$ROOT/scripts/fetch-frontend.sh" || build_frontend_locally ;;
+    *) build_frontend_locally ;;
+  esac
+}
+
 main() {
   command -v uv >/dev/null 2>&1 || { echo "未找到 uv，请先安装：https://docs.astral.sh/uv/" >&2; exit 1; }
-  command -v pnpm >/dev/null 2>&1 || { echo "未找到 pnpm，请先执行 corepack enable" >&2; exit 1; }
   select_mirrors
   install_backend
   install_frontend

@@ -16,6 +16,7 @@
 #   REPO_URL        仓库地址
 #   MIRROR          下载源：auto（默认，测速选择官方源或国内镜像）| cn | global
 #   NO_OCR          设为 1 时不安装截图文字识别（OCR）
+#   FRONTEND_BUILD  prebuilt（默认：下载 CI 预构建前端，失败再本地构建）| local（服务器上构建）
 #   INSTALL_DIR     程序目录，默认 /opt/invoice-sorting
 #   DATA_DIR        数据目录，默认 /var/lib/invoice-sorting
 set -euo pipefail
@@ -98,12 +99,16 @@ install_node_binary() {
     aarch64 | arm64) arch="arm64" ;;
     *) die "不支持的 CPU 架构：$(uname -m)" ;;
   esac
-  tarball="$(curl -fsSL "${NODE_DIST}/latest-v${NODE_MAJOR}.x/SHASUMS256.txt" |
+  tarball="$(curl -fsSL --retry 5 --retry-all-errors "${NODE_DIST}/latest-v${NODE_MAJOR}.x/SHASUMS256.txt" |
     grep -o "node-v[0-9.]*-linux-${arch}.tar.xz" | head -n1)"
   [ -n "$tarball" ] || die "无法获取 Node.js ${NODE_MAJOR} 版本信息（${NODE_DIST}）"
   log "安装 Node.js（${tarball}，来源 ${NODE_DIST}）"
-  curl -fsSL "${NODE_DIST}/latest-v${NODE_MAJOR}.x/${tarball}" |
-    tar -xJ -C /usr/local --strip-components=1 --exclude='*.md' --exclude=LICENSE
+  local archive="${INSTALL_DIR}/.cache/${tarball}"
+  mkdir -p "${INSTALL_DIR}/.cache"
+  # 断点续传 + 重试，避免慢速网络下只下载到半个文件
+  curl -fL -C - --retry 8 --retry-all-errors --retry-delay 3 --connect-timeout 20 \
+    -o "$archive" "${NODE_DIST}/latest-v${NODE_MAJOR}.x/${tarball}"
+  tar -xJf "$archive" -C /usr/local --strip-components=1 --exclude='*.md' --exclude=LICENSE
 }
 
 install_uv() {
@@ -154,9 +159,21 @@ fetch_source() {
   log "当前版本：$(as_app git -C "$APP_DIR" log -1 --format='%h %s')"
 }
 
+prepare_frontend() {
+  # 优先下载 CI 预构建前端：服务器无需 Node.js/pnpm，也不依赖 npm 源
+  if [ "${FRONTEND_BUILD:-prebuilt}" != "local" ] && as_app bash "${APP_DIR}/scripts/fetch-frontend.sh"; then
+    FRONTEND_READY=1
+    return 0
+  fi
+  log "改为在服务器上构建前端（需要 Node.js）"
+  install_node
+  FRONTEND_READY=0
+}
+
 build_app() {
   # UV_NO_CONFIG：不读取任何 uv.toml，避免受调用者目录或用户配置影响
   as_app env MIRROR="$MIRROR" NO_OCR="${NO_OCR:-0}" UV_NO_CONFIG=1 \
+    SKIP_FRONTEND="${FRONTEND_READY:-0}" FRONTEND_BUILD=local \
     PYPI_INDEX="$PYPI_INDEX" NPM_REGISTRY="$NPM_REGISTRY" NODE_DIST="$NODE_DIST" \
     PYTHON_MIRROR="$PYTHON_MIRROR" \
     UV_PYTHON_INSTALL_DIR="${INSTALL_DIR}/python" UV_CACHE_DIR="${INSTALL_DIR}/.cache/uv" \
@@ -324,8 +341,8 @@ main() {
   backup_database
   fetch_source
   load_mirrors
-  install_node
   install_uv
+  prepare_frontend
   build_app
   write_service
   write_nginx

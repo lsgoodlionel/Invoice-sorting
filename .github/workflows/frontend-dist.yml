@@ -1,0 +1,63 @@
+name: 前端预构建
+
+# 构建前端并发布到 Release「frontend-dist」，供部署脚本直接下载，服务器无需 Node.js
+on:
+  push:
+    branches: [main]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/frontend-dist.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: frontend-dist
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: frontend/package.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: 安装依赖
+        run: pnpm --dir frontend install --frozen-lockfile
+
+      - name: 测试
+        run: pnpm --dir frontend test
+
+      - name: 构建
+        run: pnpm --dir frontend build
+
+      - name: 打包（附带对应的前端代码版本）
+        run: |
+          key="$(git log -1 --format=%H -- frontend)"
+          mkdir -p out
+          cp -r frontend/dist out/dist
+          echo "$key" > out/BUILD_COMMIT
+          tar -czf frontend-dist.tar.gz -C out dist BUILD_COMMIT
+          echo "前端代码版本：$key"
+
+      - name: 发布到 Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release view frontend-dist >/dev/null 2>&1; then
+            gh release create frontend-dist --title "前端预构建" \
+              --notes "由 CI 在前端代码变更后自动更新，供部署脚本直接下载。" --latest=false
+          fi
+          gh release upload frontend-dist frontend-dist.tar.gz --clobber
