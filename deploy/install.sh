@@ -223,13 +223,50 @@ write_htpasswd() {
   chmod 640 "$HTPASSWD_FILE"
 }
 
+# 输出监听指定 TCP 端口的进程名（无人监听时为空）
+port_owner() {
+  ss -ltnpH "sport = :$1" 2>/dev/null | grep -o 'users:(("[^"]*"' | head -n1 | cut -d'"' -f2
+}
+
+check_ports() {
+  local owner
+  owner="$(port_owner "$HTTP_PORT")"
+  if [ -n "$owner" ] && [ "$owner" != "nginx" ]; then
+    die "访问端口 ${HTTP_PORT} 已被程序「${owner}」占用。请停止该程序，或换一个端口重新执行，例如：| sudo HTTP_PORT=18080 bash"
+  fi
+  owner="$(port_owner "$APP_PORT")"
+  if [ -n "$owner" ] && ! systemctl is-active --quiet "$APP_NAME" 2>/dev/null; then
+    die "应用内部端口 ${APP_PORT} 已被程序「${owner}」占用。请换一个端口重新执行，例如：| sudo APP_PORT=18766 bash"
+  fi
+}
+
+# Nginx 自带的默认站点监听 80 端口；80 端口已被其他程序占用时会导致 Nginx 无法启动
+disable_conflicting_default_site() {
+  local default_site=/etc/nginx/sites-enabled/default owner
+  [ -e "$default_site" ] || return 0
+  owner="$(port_owner 80)"
+  if [ "$HTTP_PORT" = "80" ] && [ "$DOMAIN" = "_" ]; then
+    rm -f "$default_site"
+  elif [ -n "$owner" ] && [ "$owner" != "nginx" ]; then
+    warn "80 端口已被「${owner}」占用，停用 Nginx 自带的默认站点以避免冲突"
+    rm -f "$default_site"
+  fi
+}
+
+ipv6_listen_line() {
+  # 系统未启用 IPv6 时监听 [::] 会导致 Nginx 启动失败
+  [ -s /proc/net/if_inet6 ] && echo "    listen [::]:${HTTP_PORT};"
+  return 0
+}
+
 write_nginx() {
   log "配置 Nginx（带登录密码保护）"
   write_htpasswd
+  check_ports
   cat >"$NGINX_SITE" <<EOF
 server {
     listen ${HTTP_PORT};
-    listen [::]:${HTTP_PORT};
+$(ipv6_listen_line)
     server_name ${DOMAIN};
 
     client_max_body_size ${MAX_UPLOAD_MB}m;
@@ -254,9 +291,7 @@ server {
 }
 EOF
   ln -sf "$NGINX_SITE" "/etc/nginx/sites-enabled/${APP_NAME}"
-  if [ "$DOMAIN" = "_" ] && [ "$HTTP_PORT" = "80" ]; then
-    rm -f /etc/nginx/sites-enabled/default
-  fi
+  disable_conflicting_default_site
   nginx -t >/dev/null 2>&1 || { nginx -t; die "Nginx 配置检查失败"; }
 }
 
@@ -286,7 +321,11 @@ start_services() {
   systemctl enable --quiet "$APP_NAME"
   systemctl restart "$APP_NAME"
   systemctl enable --quiet nginx
-  systemctl reload nginx 2>/dev/null || systemctl restart nginx
+  if ! { systemctl reload nginx 2>/dev/null || systemctl restart nginx; }; then
+    journalctl -u nginx -n 20 --no-pager || true
+    ss -ltnp 2>/dev/null | grep -E ":(80|${HTTP_PORT}) " || true
+    die "Nginx 启动失败，原因见上方日志；修正后重新执行安装命令即可"
+  fi
   wait_until_healthy
 }
 
