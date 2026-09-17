@@ -23,8 +23,14 @@ from invoice_sorting.batches.router import router as batches_router
 from invoice_sorting.checklist.router import router as checklist_router
 from invoice_sorting.common.errors import install_error_handlers, ok
 from invoice_sorting.config import Settings
-from invoice_sorting.db.seed import seed_defaults, sync_default_keywords, sync_default_rules
+from invoice_sorting.db.seed import (
+    reset_polluted_memory,
+    seed_defaults,
+    sync_default_keywords,
+    sync_default_rules,
+)
 from invoice_sorting.db.session import create_db_engine, init_db, make_session_factory
+from invoice_sorting.expenses.reclassify_router import router as reclassify_router
 from invoice_sorting.expenses.router import router as expenses_router
 from invoice_sorting.importer.router import router as importer_router
 from invoice_sorting.settings.router import router as settings_router
@@ -46,6 +52,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         seed_defaults(session)
         sync_default_keywords(session)
         sync_default_rules(session)
+        reset_polluted_memory(session)
         backfill_file_keys(session)
         migrate_users(session)
 
@@ -82,6 +89,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         stats_router,
         settings_router,
         users_router,
+        reclassify_router,
     ):
         app.include_router(router)
 

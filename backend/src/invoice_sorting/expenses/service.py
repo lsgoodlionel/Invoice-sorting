@@ -9,6 +9,7 @@ from invoice_sorting.attachments.storage import sync_expense_folder, trash_expen
 from invoice_sorting.checklist.service import compute_checklist, required_missing_count
 from invoice_sorting.common.constants import AttachmentKind, BatchStatus, ExpenseStatus
 from invoice_sorting.common.errors import AppError, ConflictError, NotFoundError
+from invoice_sorting.common.platforms import is_marketplace_seller
 from invoice_sorting.config import Settings
 from invoice_sorting.db.models import (
     Batch,
@@ -118,9 +119,9 @@ def remember_invoice_category(session: Session, invoice: InvoiceData, category_i
 
 
 def remember_merchant_category(session: Session, seller_name: str, category_id: int) -> None:
-    """记住“销售方 → 分类”，用于导入时的分类建议。"""
+    """记住“销售方 → 分类”；京东、圆迈等综合电商平台什么都卖，不记忆。"""
     name = seller_name.strip()
-    if not name:
+    if not name or is_marketplace_seller(name):
         return
     memory = session.get(MerchantMemory, name)
     if memory is None:
@@ -155,11 +156,13 @@ def update_expense(
     session: Session, settings: Settings, expense: Expense, **fields: Any
 ) -> Expense:
     _validate_fields(session, fields)
+    category_changed = fields.get("category_id") not in (None, expense.category_id)
     for name, value in fields.items():
         setattr(expense, name, value)
     _normalize_currency(expense)
     session.flush()
-    if fields.get("category_id") is not None:
+    # 只有用户实际改了分类才记住，避免把原有（可能错误的）分类固化
+    if category_changed:
         for invoice in _invoices(expense):
             remember_invoice_category(session, invoice, fields["category_id"])
     return refresh_expense(session, settings, expense)

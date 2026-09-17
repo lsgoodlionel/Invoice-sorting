@@ -8,11 +8,20 @@ from invoice_sorting.db.default_keywords import (
     KEYWORDS_REMOVED_IN,
     KEYWORDS_VERSION,
 )
-from invoice_sorting.db.models import AppSetting, Category, ChecklistRule
+from invoice_sorting.db.models import (
+    AppSetting,
+    Category,
+    ChecklistRule,
+    ItemMemory,
+    MerchantMemory,
+)
 
 YUAN = 100
 KEYWORDS_VERSION_KEY = "keywords_version"
 RULES_VERSION_KEY = "rules_version"
+MEMORY_VERSION_KEY = "classification_memory_version"
+# 版本 2：分类记忆只记录用户手动修改；旧版自动写入的记忆可能固化了错误分类，升级时清空一次
+MEMORY_VERSION = 2
 RULES_VERSION = 4
 BASE_RULES_VERSION = 1  # 未记录 rules_version 的旧库视为版本 1
 
@@ -298,4 +307,15 @@ def sync_default_rules(session: Session) -> None:
         for spec in specs:
             _append_rule(session, spec)
     session.merge(AppSetting(key=RULES_VERSION_KEY, value=str(RULES_VERSION)))
+    session.commit()
+
+
+def reset_polluted_memory(session: Session) -> None:
+    """旧版在确认导入、批量归属时自动写入分类记忆，会把错误建议固化；升级到版本 2 时清空一次。"""
+    stored = session.get(AppSetting, MEMORY_VERSION_KEY)
+    if stored is not None and stored.value == str(MEMORY_VERSION):
+        return
+    session.query(ItemMemory).delete()
+    session.query(MerchantMemory).delete()
+    session.merge(AppSetting(key=MEMORY_VERSION_KEY, value=str(MEMORY_VERSION)))
     session.commit()

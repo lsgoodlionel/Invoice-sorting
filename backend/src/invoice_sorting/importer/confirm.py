@@ -27,6 +27,8 @@ from invoice_sorting.expenses.service import (
     remember_invoice_category,
 )
 from invoice_sorting.importer.attach_fill import fill_attach_target
+from invoice_sorting.importer.group_summary import suggest_group_category
+from invoice_sorting.importer.items import item_from_attachment
 from invoice_sorting.importer.journal import FsJournal
 from invoice_sorting.importer.schemas import ConfirmGroup
 
@@ -124,8 +126,6 @@ def _assign(ctx: ConfirmContext, attachment: Attachment, expense: Expense) -> No
         attachment.evidence_data.confirmed = True
     if attachment.invoice_data is not None:
         attachment.invoice_data.confirmed = True
-        if expense.category_id is not None:
-            remember_invoice_category(ctx.session, attachment.invoice_data, expense.category_id)
 
 
 def _finish(
@@ -138,6 +138,23 @@ def _finish(
     if folder_before and after and folder_before != after:
         library = ctx.settings.library_dir
         ctx.journal.moved(library / folder_before, library / after)
+
+
+def _remember_if_user_changed(
+    ctx: ConfirmContext, attachments: list[Attachment], group: ConfirmGroup
+) -> None:
+    """用户在确认表中改了系统建议的分类时，才记住“商品/商家 → 分类”。"""
+    if group.category_id is None:
+        return
+    items = tuple(item_from_attachment(attachment) for attachment in attachments)
+    suggested = suggest_group_category(
+        ctx.session, items, group.merchant or "", group.summary or ""
+    )
+    if suggested == group.category_id:
+        return
+    for attachment in attachments:
+        if attachment.invoice_data is not None:
+            remember_invoice_category(ctx.session, attachment.invoice_data, group.category_id)
 
 
 def _create(ctx: ConfirmContext, attachments: list[Attachment], group: ConfirmGroup) -> None:
@@ -162,6 +179,7 @@ def _create(ctx: ConfirmContext, attachments: list[Attachment], group: ConfirmGr
     folder_before = expense.folder_path
     if folder_before:
         ctx.journal.created_dir(ctx.settings.library_dir / folder_before)
+    _remember_if_user_changed(ctx, attachments, group)
     _finish(ctx, expense, attachments, folder_before)
     ctx.result.created.append(expense.id)
 

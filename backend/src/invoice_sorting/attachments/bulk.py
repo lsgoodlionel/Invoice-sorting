@@ -16,7 +16,6 @@ from invoice_sorting.db.models import Attachment, Expense
 from invoice_sorting.expenses.service import (
     get_expense_or_404,
     refresh_expense,
-    remember_invoice_category,
 )
 
 MAX_LISTED = 5
@@ -82,8 +81,6 @@ def _assign_one(
     if target is None or invoice is None or attachment.kind != AttachmentKind.INVOICE:
         return
     invoice.confirmed = True
-    if target.category_id is not None:
-        remember_invoice_category(session, invoice, target.category_id)
 
 
 def bulk_assign(

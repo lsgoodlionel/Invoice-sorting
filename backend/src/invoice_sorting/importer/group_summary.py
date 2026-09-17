@@ -87,7 +87,7 @@ def _is_online(items: tuple[EvidenceItem, ...], merchant: str) -> bool:
     return is_detail_seller(merchant, ONLINE_PLATFORM_KEYWORDS)
 
 
-def _category_from_filenames(session: Session, items: tuple[EvidenceItem, ...]) -> int | None:
+def category_from_filenames(session: Session, items: tuple[EvidenceItem, ...]) -> int | None:
     for item in items:
         hints = evidence_records.safe_filename_hints(item.original_name)
         word = (hints.category_word or "").strip() if hints is not None else ""
@@ -104,11 +104,9 @@ def _category_from_filenames(session: Session, items: tuple[EvidenceItem, ...]) 
 def suggest_group_category(
     session: Session, items: tuple[EvidenceItem, ...], merchant: str, summary: str
 ) -> int | None:
-    from_name = _category_from_filenames(session, items)
-    if from_name is not None:
-        return from_name
     tax_category = _first(items, lambda item: item.tax_category) or ""
-    return suggest_category(session, merchant, summary, tax_category)
+    from_name = category_from_filenames(session, items)
+    return suggest_category(session, merchant, summary, tax_category, from_name)
 
 
 def build_summary(session: Session, items: tuple[EvidenceItem, ...]) -> GroupSummary:

@@ -1,4 +1,4 @@
-"""分类建议四级优先级：商家记忆 → 税收分类简称 → 关键词（越长越优先） → 其他。"""
+"""分类建议优先级：商品记忆 → 文件名 → 税收分类 → 商家记忆（非电商平台） → 关键词 → 其他。"""
 
 from sqlalchemy import select
 
@@ -11,12 +11,50 @@ def category_id(session, name: str) -> int:
     return session.scalar(select(Category.id).where(Category.name == name))
 
 
-def test_merchant_memory_has_highest_priority(session):
+def test_merchant_memory_used_when_tax_category_does_not_match(session):
     remember_merchant_category(session, "上海示例科技有限公司", category_id(session, "设备"))
 
-    result = suggest_category(session, " 上海示例科技有限公司 ", "鼠标", "计算机配套产品")
+    result = suggest_category(session, " 上海示例科技有限公司 ", "鼠标", "")
 
     assert result == category_id(session, "设备")
+
+
+def test_tax_category_beats_merchant_memory(session):
+    # 用户反馈：同一商家卖图书也卖电脑配件，商家记忆不能盖过发票上的 *印刷品*
+    remember_merchant_category(session, "上海示例科技有限公司", category_id(session, "易耗品"))
+
+    result = suggest_category(session, "上海示例科技有限公司", "系统之美", "印刷品")
+
+    assert result == category_id(session, "图书")
+
+
+def test_marketplace_sellers_are_not_remembered_or_used(session):
+    remember_merchant_category(session, "上海圆迈贸易有限公司", category_id(session, "易耗品"))
+
+    result = suggest_category(session, "上海圆迈贸易有限公司", "未知商品", "")
+
+    assert result == category_id(session, "其他")
+
+
+def test_filename_category_reflects_user_intent_before_tax_category(session):
+    office = category_id(session, "办公用品")
+    books = category_id(session, "图书")
+
+    # 用户把电池命名为“办公-…”：以文件名意图为准
+    assert (
+        suggest_category(session, "某店", "7号电池", "电池", filename_category_id=office) == office
+    )
+    # 没有文件名分类词时按税收分类
+    assert suggest_category(session, "某店", "系统之美", "印刷品") == books
+
+
+def test_explain_category_reports_basis(session):
+    from invoice_sorting.importer.classify import explain_category
+
+    suggestion = explain_category(session, "上海圆迈贸易有限公司", "系统之美", "印刷品")
+
+    assert suggestion.category_id == category_id(session, "图书")
+    assert suggestion.basis == "发票税收分类：印刷品"
 
 
 def test_memory_pointing_to_archived_category_is_ignored(session):

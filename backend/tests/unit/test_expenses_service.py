@@ -166,10 +166,10 @@ def test_soft_delete_moves_files_to_trash(session, settings, tmp_path, expense):
 def test_remember_merchant_category_upserts(session):
     first = category_id(session, "易耗品")
     second = category_id(session, "办公用品")
-    remember_merchant_category(session, "京东××店", first)
-    remember_merchant_category(session, "京东××店", second)
+    remember_merchant_category(session, "上海示例文具店", first)
+    remember_merchant_category(session, "上海示例文具店", second)
     remember_merchant_category(session, "  ", second)
-    memory = session.get(MerchantMemory, "京东××店")
+    memory = session.get(MerchantMemory, "上海示例文具店")
     assert memory.category_id == second
     assert session.scalars(select(MerchantMemory)).all() == [memory]
 
@@ -181,5 +181,5 @@ def test_changing_category_remembers_invoice_seller(session, settings, tmp_path,
 
     update_expense(session, settings, expense, category_id=category_id(session, "办公用品"))
 
-    memory = session.get(MerchantMemory, "北京京东世纪信息技术有限公司")
-    assert memory.category_id == category_id(session, "办公用品")
+    # 京东等综合电商平台什么都卖，不记“商家 → 分类”
+    assert session.get(MerchantMemory, "北京京东世纪信息技术有限公司") is None

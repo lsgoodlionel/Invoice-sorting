@@ -12,6 +12,7 @@ from invoice_sorting.checklist.regions import (
     is_detail_seller,
     is_nonlocal_region,
 )
+from invoice_sorting.common.platforms import ONLINE_PLATFORM_KEYWORDS
 from invoice_sorting.db.models import InvoiceData
 from invoice_sorting.importer.classify import suggest_category
 from invoice_sorting.parsers import ParsedInvoice
@@ -23,9 +24,6 @@ MISSING_DATE_WARNING = "未识别到开票日期，请手工填写"
 MISSING_SELLER_WARNING = "未识别到销售方，请手工填写商家"
 MISSING_NUMBER_WARNING = "未识别到发票号码，无法按号码判重"
 NONLOCAL_WARNING = "外地发票（{region}）：需附网购订单截图，已带明细平台可免"
-ONLINE_PLATFORM_KEYWORDS: tuple[str, ...] = (
-    "京东", "天猫", "淘宝", "当当", "拼多多", "圆迈", "苏宁", "抖音", "亚马逊", "唯品会",
-)  # fmt: skip
 
 
 @dataclass(frozen=True)

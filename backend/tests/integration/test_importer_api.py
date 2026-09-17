@@ -96,7 +96,8 @@ def test_t01_import_digital_invoice_and_create(client, session, settings, tmp_pa
     stored = settings.library_dir / detail["folder_path"] / f"发票_{SAME_LINE_NO}.pdf"
     assert stored.is_file()
     assert detail["timeline"][-1]["note"] == "导入凭证"
-    assert session.get(MerchantMemory, "上海示例科技有限公司") is not None
+    # 按系统建议的分类确认，不写入分类记忆（避免把错误建议固化）
+    assert session.get(MerchantMemory, "上海示例科技有限公司") is None
 
 
 def test_confirm_removes_processed_rows_from_session(client, tmp_path):

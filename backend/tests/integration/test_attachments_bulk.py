@@ -89,7 +89,8 @@ def test_bulk_assign_to_expense_confirms_invoice_and_updates_status(client, sess
     assert items[0]["invoice"]["confirmed"] is True
     detail = body(client.get(f"/api/expenses/{expense['id']}"))["data"]
     assert detail["status"] == "complete" and detail["attachment_count"] == 2
-    assert session.get(MerchantMemory, "上海文具店") is not None
+    # 批量归属不是用户对分类的明确修改，不写入分类记忆
+    assert session.get(MerchantMemory, "上海文具店") is None
     assert unassigned_ids(client) == {pending["other"]}
 
 
