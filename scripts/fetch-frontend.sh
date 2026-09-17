@@ -17,7 +17,7 @@ work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
 echo "==> 下载预构建前端（${URL}）" >&2
-if ! curl -fL --retry 5 --retry-all-errors --retry-delay 3 --connect-timeout 20 --max-time 900 \
+if ! curl -fL -# --retry 5 --retry-all-errors --retry-delay 3 --connect-timeout 20 --max-time 900 \
   -o "$work/frontend-dist.tar.gz" "$URL"; then
   echo "预构建前端下载失败" >&2
   exit 1
