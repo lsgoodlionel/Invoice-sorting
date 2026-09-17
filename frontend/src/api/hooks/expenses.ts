@@ -14,6 +14,8 @@ import { invalidateWorkflow } from './invalidate';
 import { queryKeys } from './keys';
 
 const SEARCH_PAGE_SIZE = 20;
+/** 后端 page_size 上限，加入批次时一次取全部未分批记录 */
+const UNBATCHED_PAGE_SIZE = 500;
 
 export const expensesApi = {
   list: (query: ExpenseQuery) => api.get<ExpenseListResult>('/expenses', { ...query }),
@@ -41,6 +43,16 @@ export function useExpenseSearch(q: string) {
     queryFn: async (): Promise<ExpenseSummary[]> =>
       (await expensesApi.list({ q: q || undefined, page_size: SEARCH_PAGE_SIZE })).items,
     placeholderData: keepPreviousData,
+  });
+}
+
+/** 未分批记录（用于“添加记录到批次”），仅在 enabled 时请求。 */
+export function useUnbatchedExpenses(enabled: boolean) {
+  const query: ExpenseQuery = { unbatched: true, page_size: UNBATCHED_PAGE_SIZE };
+  return useQuery({
+    queryKey: queryKeys.unbatchedExpenses,
+    queryFn: async (): Promise<ExpenseSummary[]> => (await expensesApi.list(query)).items,
+    enabled,
   });
 }
 

@@ -6,6 +6,7 @@ import { useCreateExpense } from '../api/hooks/expenses';
 import { todayInShanghai } from '../lib/period';
 import { CategorySelect } from './CategorySelect';
 import { MoneyInput } from './MoneyInput';
+import { ProjectSelect } from './ProjectSelect';
 
 interface QuickExpenseModalProps {
   opened: boolean;
@@ -18,9 +19,10 @@ interface Draft {
   cents: number | null;
   merchant: string;
   categoryId: number | null;
+  projectId: number | null;
 }
 
-const emptyDraft = (): Draft => ({ spentOn: todayInShanghai(), cents: null, merchant: '', categoryId: null });
+const emptyDraft = (): Draft => ({ spentOn: todayInShanghai(), cents: null, merchant: '', categoryId: null, projectId: null });
 
 export function QuickExpenseModal({ opened, onClose, onCreated }: QuickExpenseModalProps) {
   const [draft, setDraft] = useState<Draft>(emptyDraft);
@@ -41,6 +43,7 @@ export function QuickExpenseModal({ opened, onClose, onCreated }: QuickExpenseMo
         amount_cents: draft.cents,
         merchant: draft.merchant.trim(),
         category_id: draft.categoryId,
+        project_id: draft.projectId,
       },
       {
         onSuccess: (detail) => {
@@ -65,6 +68,7 @@ export function QuickExpenseModal({ opened, onClose, onCreated }: QuickExpenseMo
           <MoneyInput label="金额（元）" cents={draft.cents} onCentsChange={(cents) => update({ cents })} required data-autofocus />
           <TextInput label="商家" value={draft.merchant} onChange={(e) => update({ merchant: e.currentTarget.value })} required />
           <CategorySelect label="分类" value={draft.categoryId} onChange={(categoryId) => update({ categoryId })} clearable />
+          <ProjectSelect label="经费项目" value={draft.projectId} onChange={(projectId) => update({ projectId })} clearable />
           <Group justify="flex-end" mt="xs">
             <Button variant="subtle" onClick={onClose}>
               取消

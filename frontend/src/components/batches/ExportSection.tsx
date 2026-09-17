@@ -11,6 +11,7 @@ const LAYOUT_LABELS: Record<ExportLayout, string> = { by_expense: '按支出分�
 export function ExportSection({ batch }: { batch: BatchDetail }) {
   const [layout, setLayout] = useState<ExportLayout>('by_expense');
   const exportBatch = useExportBatch(batch.id);
+  const isEmpty = batch.item_count === 0 || batch.expenses.length === 0;
   return (
     <Stack gap="sm">
       <Group gap="lg" align="center">
@@ -20,10 +21,11 @@ export function ExportSection({ batch }: { batch: BatchDetail }) {
             <Radio value="by_kind" label={LAYOUT_LABELS.by_kind} />
           </Group>
         </Radio.Group>
-        <Button variant="filled" leftSection={<IconDownload size={16} />} disabled={batch.item_count === 0}
+        <Button variant={isEmpty ? 'default' : 'filled'} leftSection={<IconDownload size={16} />} disabled={isEmpty}
           loading={exportBatch.isPending} onClick={() => exportBatch.mutate(layout)}>
           生成资料包
         </Button>
+        {isEmpty && <Text size="sm" c="dimmed">先添加记录再打包</Text>}
       </Group>
       {batch.exports.length > 0 && (
         <Table className="ledger-table">

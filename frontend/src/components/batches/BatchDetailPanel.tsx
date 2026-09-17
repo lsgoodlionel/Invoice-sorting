@@ -5,8 +5,8 @@ import { useState, type ReactNode } from 'react';
 import { useBatchItems, useDeleteBatch, useReopenBatch } from '../../api/hooks/batches';
 import type { BatchDetail } from '../../api/types';
 import { formatCents } from '../../lib/money';
-import { BatchExpensesTable } from './BatchExpensesTable';
 import { BatchInfoForm } from './BatchInfoForm';
+import { BatchItemsSection } from './BatchItemsSection';
 import { BatchStatusBadge } from './BatchStatusBadge';
 import { ExportSection } from './ExportSection';
 import { ReceivedModal } from './ReceivedModal';
@@ -16,6 +16,7 @@ interface BatchDetailPanelProps {
   batch: BatchDetail;
   onOpenExpense: (id: number) => void;
   onDeleted: () => void;
+  onAddExpenses: () => void;
 }
 
 function Section({ label, children }: { label: string; children: ReactNode }) {
@@ -27,7 +28,7 @@ function Section({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-export function BatchDetailPanel({ batch, onOpenExpense, onDeleted }: BatchDetailPanelProps) {
+export function BatchDetailPanel({ batch, onOpenExpense, onDeleted, onAddExpenses }: BatchDetailPanelProps) {
   const [modal, setModal] = useState<'sent' | 'received' | null>(null);
   const items = useBatchItems();
   const remove = useDeleteBatch();
@@ -83,14 +84,14 @@ export function BatchDetailPanel({ batch, onOpenExpense, onDeleted }: BatchDetai
       <Section label="打包">
         <ExportSection batch={batch} />
       </Section>
-      <Section label={`记录 ${batch.item_count}`}>
-        <BatchExpensesTable
-          expenses={batch.expenses}
-          canRemove={isDraft}
-          onOpen={onOpenExpense}
-          onRemove={(id) => items.mutate({ id: batch.id, change: { remove: [id] } })}
-        />
-      </Section>
+      <BatchItemsSection
+        expenses={batch.expenses}
+        count={batch.item_count}
+        isDraft={isDraft}
+        onAdd={onAddExpenses}
+        onOpen={onOpenExpense}
+        onRemove={(id) => items.mutate({ id: batch.id, change: { remove: [id] } })}
+      />
       <SentModal batch={batch} opened={modal === 'sent'} onClose={() => setModal(null)} />
       <ReceivedModal batch={batch} opened={modal === 'received'} onClose={() => setModal(null)} />
     </Stack>

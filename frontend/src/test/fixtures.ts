@@ -1,4 +1,4 @@
-import type { Attachment, ChecklistItem, ExpenseDetail, ExpenseSummary, ImportRow } from '../api/types';
+import type { Attachment, BatchDetail, ChecklistItem, ExpenseDetail, ExpenseSummary, ImportRow, Project } from '../api/types';
 
 export function makeExpense(overrides: Partial<ExpenseSummary> = {}): ExpenseSummary {
   return {
@@ -85,4 +85,33 @@ export function makeImportRow(overrides: Partial<ImportRow> = {}): ImportRow {
     warnings: [],
     ...overrides,
   };
+}
+
+export function makeBatch(overrides: Partial<BatchDetail> = {}): BatchDetail {
+  return {
+    id: 5,
+    name: '9月第1批',
+    project_id: null,
+    project_name: null,
+    status: 'draft',
+    status_label: '待外发',
+    sent_on: null,
+    sent_via: '',
+    receiver: '',
+    external_no: '',
+    received_on: null,
+    received_cents: 0,
+    note: '',
+    created_at: '2026-09-15T10:00:00+08:00',
+    item_count: 0,
+    total_cents: 0,
+    missing_item_count: 0,
+    expenses: [],
+    exports: [],
+    ...overrides,
+  };
+}
+
+export function makeProject(overrides: Partial<Project> = {}): Project {
+  return { id: 1, code: 'KY-01', name: '科研A', owner: '', active: true, ...overrides };
 }

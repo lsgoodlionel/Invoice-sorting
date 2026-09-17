@@ -13,9 +13,6 @@ interface BatchExpensesTableProps {
 }
 
 export function BatchExpensesTable({ expenses, canRemove, onRemove, onOpen }: BatchExpensesTableProps) {
-  if (expenses.length === 0) {
-    return <Text size="sm" c="dimmed">批次里还没有记录。去清单页勾选记录后“加入批次”。</Text>;
-  }
   return (
     <div className="table-scroll">
       <Table className="ledger-table" miw={680}>

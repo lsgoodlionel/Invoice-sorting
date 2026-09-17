@@ -11,7 +11,7 @@ interface BatchListProps {
 
 export function BatchList({ batches, selectedId, onSelect }: BatchListProps) {
   if (batches.length === 0) {
-    return <Text size="sm" c="dimmed" p="sm">还没有批次。在清单页勾选记录后点“加入批次”，或点上方“新建批次”。</Text>;
+    return <Text size="sm" c="dimmed" p="sm">还没有批次。点上方“新建批次”，再从批次里“添加记录”。</Text>;
   }
   return (
     <Stack gap={0} role="list">

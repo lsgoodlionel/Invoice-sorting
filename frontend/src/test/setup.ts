@@ -32,3 +32,11 @@ class ResizeObserverStub {
   disconnect() {}
 }
 window.ResizeObserver = ResizeObserverStub as unknown as typeof ResizeObserver;
+
+// jsdom 未实现 document.fonts；Mantine Textarea autosize 会监听字体加载事件
+if (!('fonts' in document)) {
+  Object.defineProperty(document, 'fonts', {
+    configurable: true,
+    value: { addEventListener: () => undefined, removeEventListener: () => undefined, ready: Promise.resolve() },
+  });
+}

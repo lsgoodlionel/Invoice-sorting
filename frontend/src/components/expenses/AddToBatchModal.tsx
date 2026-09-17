@@ -1,8 +1,7 @@
 import { Alert, Button, Group, Modal, Radio, Select, Stack, TextInput } from '@mantine/core';
-import { notifications } from '@mantine/notifications';
 import { useEffect, useState } from 'react';
-import { useBatchItems, useBatchList, useCreateBatch } from '../../api/hooks/batches';
-import { ApiError } from '../../api/client';
+import { useBatchList, useCreateBatch } from '../../api/hooks/batches';
+import { useAddToBatch } from '../batches/useAddToBatch';
 
 interface AddToBatchModalProps {
   opened: boolean;
@@ -12,53 +11,34 @@ interface AddToBatchModalProps {
 }
 
 type Mode = 'existing' | 'new';
-const CONFLICT_STATUS = 409;
 
 export function AddToBatchModal({ opened, expenseIds, onClose, onDone }: AddToBatchModalProps) {
   const { data: drafts = [] } = useBatchList('draft');
   const [mode, setMode] = useState<Mode>('existing');
   const [batchId, setBatchId] = useState<number | null>(null);
   const [newName, setNewName] = useState('');
-  const [conflict, setConflict] = useState<{ batchId: number; message: string } | null>(null);
   const createBatch = useCreateBatch();
-  const changeItems = useBatchItems();
+  const addToBatch = useAddToBatch(onDone);
+  const { conflict, reset } = addToBatch;
 
   useEffect(() => {
     if (!opened) return;
-    setConflict(null);
+    reset();
     setMode(drafts.length ? 'existing' : 'new');
-  }, [opened, drafts.length]);
-
-  const addItems = (targetId: number, force: boolean) => {
-    changeItems.mutate(
-      { id: targetId, change: { add: [...expenseIds], force } },
-      {
-        onSuccess: (detail) => {
-          notifications.show({ color: 'ink', message: `已加入批次「${detail.name}」` });
-          setConflict(null);
-          onDone();
-        },
-        onError: (error) => {
-          if (error instanceof ApiError && error.status === CONFLICT_STATUS) {
-            setConflict({ batchId: targetId, message: error.message });
-          }
-        },
-      },
-    );
-  };
+  }, [opened, drafts.length, reset]);
 
   const submit = async () => {
-    if (mode === 'existing' && batchId !== null) return addItems(batchId, false);
+    if (mode === 'existing' && batchId !== null) return addToBatch.add(batchId, expenseIds);
     if (mode === 'new' && newName.trim()) {
       const created = await createBatch.mutateAsync({ name: newName.trim() });
       setMode('existing');
       setBatchId(created.id);
-      addItems(created.id, false);
+      addToBatch.add(created.id, expenseIds);
     }
   };
 
   const canSubmit = mode === 'existing' ? batchId !== null : newName.trim() !== '';
-  const isBusy = createBatch.isPending || changeItems.isPending;
+  const isBusy = createBatch.isPending || addToBatch.isPending;
 
   return (
     <Modal opened={opened} onClose={onClose} title={`加入批次（${expenseIds.length} 条）`}>
@@ -87,7 +67,7 @@ export function AddToBatchModal({ opened, expenseIds, onClose, onDone }: AddToBa
         <Group justify="flex-end">
           <Button variant="subtle" onClick={onClose}>取消</Button>
           {conflict ? (
-            <Button variant="filled" color="orange" loading={isBusy} onClick={() => addItems(conflict.batchId, true)}>
+            <Button variant="filled" color="orange" loading={isBusy} onClick={addToBatch.confirm}>
               仍然加入
             </Button>
           ) : (

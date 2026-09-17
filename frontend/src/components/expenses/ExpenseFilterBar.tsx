@@ -34,7 +34,7 @@ export const ExpenseFilterBar = forwardRef<HTMLInputElement, ExpenseFilterBarPro
         onDateBasisChange={(dateBasis) => onChange({ dateBasis })}
       />
       <CategorySelect w={130} placeholder="全部分类" clearable value={filters.categoryId} onChange={(categoryId) => onChange({ categoryId })} />
-      <ProjectSelect w={150} placeholder="全部项目" clearable value={filters.projectId} onChange={(projectId) => onChange({ projectId })} />
+      <ProjectSelect w={150} placeholder="全部项目" creatable={false} clearable value={filters.projectId} onChange={(projectId) => onChange({ projectId })} />
       <TextInput
         ref={searchRef}
         w={220}
