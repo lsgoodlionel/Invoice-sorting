@@ -22,6 +22,13 @@ dependencies = [
     "watchdog>=6.0.0",
 ]
 
+[project.optional-dependencies]
+# 截图/图片凭证文字识别（离线 OCR），服务器部署默认安装
+ocr = [
+    "rapidocr>=3.9",
+    "onnxruntime>=1.20",
+]
+
 [project.scripts]
 invoice-sorting = "invoice_sorting.main:run"
 
@@ -37,6 +44,12 @@ dev = [
     "reportlab>=5.0.1",
     "ruff>=0.16.8",
 ]
+
+# 默认使用清华 PyPI 镜像（国内下载快）；海外可设置 UV_DEFAULT_INDEX=https://pypi.org/simple 覆盖
+[[tool.uv.index]]
+name = "tuna"
+url = "https://pypi.tuna.tsinghua.edu.cn/simple"
+default = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

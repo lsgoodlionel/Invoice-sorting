@@ -31,7 +31,7 @@ def test_settings_get_and_put(client, settings):
 
 def test_categories_crud(client):
     categories = data(client.get("/api/categories"))
-    assert len(categories) == 10
+    assert len(categories) == 11
     assert set(categories[0]) == {
         "id",
         "name",
@@ -43,7 +43,7 @@ def test_categories_crud(client):
     }
 
     created = data(client.post("/api/categories", json={"name": "培训", "keywords": ["培训费"]}))
-    assert created["sort"] == 10
+    assert created["sort"] == 11
     assert created["color"] == "gray"
     assert client.post("/api/categories", json={"name": "培训"}).status_code == 409
     assert client.post("/api/categories", json={"name": "  "}).status_code == 422

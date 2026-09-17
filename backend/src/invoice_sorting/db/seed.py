@@ -3,14 +3,25 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from invoice_sorting.db.default_keywords import DEFAULT_KEYWORDS, KEYWORDS_VERSION
+from invoice_sorting.db.default_keywords import (
+    DEFAULT_KEYWORDS,
+    KEYWORDS_REMOVED_IN,
+    KEYWORDS_VERSION,
+)
 from invoice_sorting.db.models import AppSetting, Category, ChecklistRule
 
 YUAN = 100
 KEYWORDS_VERSION_KEY = "keywords_version"
 RULES_VERSION_KEY = "rules_version"
-RULES_VERSION = 2
+RULES_VERSION = 3
 BASE_RULES_VERSION = 1  # 未记录 rules_version 的旧库视为版本 1
+
+BOOK_CATEGORY: dict = {
+    "name": "图书",
+    "color": "sienna",
+    "route_hint": "单册或单套≥500元需图书馆验收后报销；<500元附购书清单或详细书名；"
+    "非书店购买附供货单位电脑小票，网购书籍附送货清单；单张或累计>3万元附合同。",
+}
 
 DEFAULT_CATEGORIES: list[dict] = [
     {
@@ -60,8 +71,12 @@ DEFAULT_CATEGORIES: list[dict] = [
         "route_hint": "工作餐附工作餐单（50元/人/餐）；"
         "会议附预算决算表、申请流程、签到表、通知或议程。",
     },
+    BOOK_CATEGORY,
     {"name": "其他", "color": "gray", "route_hint": ""},
 ]
+
+# 分类版本 → 该版本新增的默认分类名；已有数据库升级时补上（按名称判断，已存在则跳过）
+CATEGORIES_ADDED_IN: dict[int, tuple[str, ...]] = {3: ("图书",)}
 
 RuleSpec = tuple[str | None, str, str, dict, str]
 
@@ -72,6 +87,23 @@ NONLOCAL_ORDER_RULE: RuleSpec = (
     {"is_nonlocal": True, "detail_platform": False},
     "外地发票需附网购订单截图（京东、当当、圆迈等已带明细平台可免）；"
     "非网购的外地购品需随差旅报销并说明途中购买必要性",
+)
+
+BOOK_RULES: tuple[RuleSpec, ...] = (
+    (
+        "图书",
+        "order",
+        "required",
+        {},
+        "附购书清单或详细书名；网购书籍附送货清单/订单，月结附结算清单",
+    ),
+    (
+        "图书",
+        "acceptance",
+        "suggested",
+        {"amount_gte": 500 * YUAN},
+        "单册或单套≥500元需图书馆验收后报销",
+    ),
 )
 
 # (分类名 或 None=通用, 附件类型, 级别, 条件, 提示)
@@ -106,6 +138,7 @@ DEFAULT_RULES: list[RuleSpec] = [
     ("软件服务", "order", "required", {}, "附订单"),
     ("软件服务", "software_form", "required", {}, "附软件服务报账单"),
     ("软件服务", "acceptance", "required", {}, "审批后打印验收单"),
+    *BOOK_RULES,
     ("印刷快递", "order", "suggested", {}, "打印费附明细（票面已开明细可免）"),
     ("差旅交通", "itinerary", "required", {}, "附行程单，需与出差单对应"),
     ("餐饮会议", "meal_form", "suggested", {}, "工作餐附工作餐单，50元/人/餐"),
@@ -113,7 +146,7 @@ DEFAULT_RULES: list[RuleSpec] = [
 ]
 
 # 规则版本 → 该版本新增的默认规则；已有数据库升级时只追加这些规则
-RULES_ADDED_IN: dict[int, tuple[RuleSpec, ...]] = {2: (NONLOCAL_ORDER_RULE,)}
+RULES_ADDED_IN: dict[int, tuple[RuleSpec, ...]] = {2: (NONLOCAL_ORDER_RULE,), 3: BOOK_RULES}
 
 
 def seed_defaults(session: Session) -> None:
@@ -149,13 +182,42 @@ def sync_default_keywords(session: Session) -> None:
     stored = session.get(AppSetting, KEYWORDS_VERSION_KEY)
     if stored is not None and stored.value == str(KEYWORDS_VERSION):
         return
+    version = int(stored.value) if stored is not None and stored.value.isdigit() else 1
+    _add_missing_categories(session, version)
     for category in session.scalars(select(Category)):
-        existing = list(category.keywords or [])
+        removed = _removed_keywords(category.name, version)
+        existing = [kw for kw in category.keywords or [] if kw not in removed]
         additions = [kw for kw in DEFAULT_KEYWORDS.get(category.name, ()) if kw not in existing]
-        if additions:
+        if additions or len(existing) != len(category.keywords or []):
             category.keywords = existing + additions
     session.merge(AppSetting(key=KEYWORDS_VERSION_KEY, value=str(KEYWORDS_VERSION)))
     session.commit()
+
+
+def _add_missing_categories(session: Session, version: int) -> None:
+    names = {
+        name
+        for added_in, items in CATEGORIES_ADDED_IN.items()
+        if added_in > version
+        for name in items
+    }
+    existing = set(session.scalars(select(Category.name)))
+    max_sort = max(session.scalars(select(Category.sort)), default=0)
+    for data in DEFAULT_CATEGORIES:
+        if data["name"] in names and data["name"] not in existing:
+            max_sort += 1
+            keywords = list(DEFAULT_KEYWORDS.get(data["name"], ()))
+            session.add(Category(sort=max_sort, keywords=keywords, **data))
+    session.flush()
+
+
+def _removed_keywords(category_name: str, version: int) -> set[str]:
+    return {
+        keyword
+        for removed_in, by_category in KEYWORDS_REMOVED_IN.items()
+        if removed_in > version
+        for keyword in by_category.get(category_name, ())
+    }
 
 
 def _stored_rules_version(session: Session) -> int:
