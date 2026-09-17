@@ -62,6 +62,7 @@ export function BatchDetailPanel({ batch, onOpenExpense, onDeleted, onAddExpense
             共 {batch.item_count} 条 · {formatCents(batch.total_cents)}
             {batch.sent_on && ` · 外发 ${batch.sent_on}${batch.receiver ? ` 至 ${batch.receiver}` : ''}`}
             {batch.received_on && ` · 到账 ${batch.received_on} ${formatCents(batch.received_cents)}`}
+            {batch.created_by && ` · 创建人：${batch.created_by.display_name}`}
           </Text>
         </Stack>
         <Group gap="xs" wrap="nowrap">

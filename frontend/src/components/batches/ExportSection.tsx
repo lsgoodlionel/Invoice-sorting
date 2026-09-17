@@ -30,6 +30,7 @@ function ExportHistoryRow({ record }: { record: ExportRecord }) {
       <Table.Td><Anchor href={record.url || `/api/exports/${record.id}/file`} size="sm" download={record.file_name}>{record.file_name}</Anchor></Table.Td>
       <Table.Td><Text size="xs">{LAYOUT_LABELS[record.layout]}</Text></Table.Td>
       <Table.Td ta="right" className="num">{record.item_count} · {formatCents(record.total_cents)}</Table.Td>
+      <Table.Td><Text size="xs" truncate maw={96}>{record.created_by?.display_name ?? '—'}</Text></Table.Td>
       <Table.Td w={40}>
         <Tooltip label="删除资料包">
           <ActionIcon variant="subtle" color="red" aria-label={`删除资料包 ${record.file_name}`} loading={remove.isPending} onClick={confirmDelete}>
@@ -66,7 +67,7 @@ export function ExportSection({ batch }: { batch: BatchDetail }) {
       {batch.exports.length > 0 && (
         <Table className="ledger-table">
           <Table.Thead>
-            <Table.Tr><Table.Th>时间</Table.Th><Table.Th>文件</Table.Th><Table.Th>结构</Table.Th><Table.Th ta="right">条数 · 金额</Table.Th><Table.Th /></Table.Tr>
+            <Table.Tr><Table.Th>时间</Table.Th><Table.Th>文件</Table.Th><Table.Th>结构</Table.Th><Table.Th ta="right">条数 · 金额</Table.Th><Table.Th>生成人</Table.Th><Table.Th /></Table.Tr>
           </Table.Thead>
           <Table.Tbody>
             {batch.exports.map((record) => <ExportHistoryRow key={record.id} record={record} />)}

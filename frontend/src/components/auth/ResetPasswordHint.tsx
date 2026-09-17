@@ -38,7 +38,7 @@ export function ResetPasswordHint() {
   return (
     <Stack gap={6} className="auth-footnote">
       <Text size="xs" c="dimmed">
-        忘记密码？在服务器执行重置命令，之后重新打开网页设置新密码：
+        忘记密码请联系管理员重置；管理员 admin 忘记密码时在服务器执行：
       </Text>
       {RESET_COMMANDS.map((item) => (
         <CommandLine key={item.label} label={item.label} command={item.command} />

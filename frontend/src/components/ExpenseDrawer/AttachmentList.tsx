@@ -1,12 +1,15 @@
 import { ActionIcon, Collapse, Group, Select, Stack, Text, Tooltip } from '@mantine/core';
+import dayjs from 'dayjs';
 import { modals } from '@mantine/modals';
 import { IconArrowBackUp, IconEye, IconTrash } from '@tabler/icons-react';
 import { useState } from 'react';
 import { useDeleteAttachment, useUpdateAttachment } from '../../api/hooks/attachments';
 import type { Attachment, AttachmentKind } from '../../api/types';
 import { evidenceParts, isEvidenceRecognized } from '../../lib/evidence';
+import { uploaderName } from '../../lib/operator';
 import { ATTACHMENT_KIND_OPTIONS } from '../../lib/status';
 import { AttachmentPreview } from '../AttachmentPreview';
+import { useCurrentUser } from '../auth/CurrentUserContext';
 import { RegionBadge } from '../RegionBadge';
 
 const KB = 1024;
@@ -32,6 +35,18 @@ function EvidenceLine({ attachment }: { attachment: Attachment }) {
   const { evidence } = attachment;
   const parts = evidenceParts({ ...evidence, merchant: '', item_name: '' });
   return <Text size="xs" c="dimmed" className="num" data-testid={`evidence-${attachment.id}`}>{parts.join(' · ')}</Text>;
+}
+
+/** “上传：张三 · MM-DD HH:mm”；关闭认证时无上传人，只显示时间。 */
+function UploaderLine({ attachment }: { attachment: Attachment }) {
+  const { authEnabled } = useCurrentUser();
+  const time = dayjs(attachment.created_at).format('MM-DD HH:mm');
+  const label = authEnabled ? `上传：${uploaderName(attachment.uploaded_by)} · ${time}` : `上传 · ${time}`;
+  return (
+    <Text size="xs" c="dimmed" data-testid={`attachment-uploader-${attachment.id}`}>
+      <span className="num">{label}</span>
+    </Text>
+  );
 }
 
 function AttachmentRow({ attachment }: { attachment: Attachment }) {
@@ -74,6 +89,7 @@ function AttachmentRow({ attachment }: { attachment: Attachment }) {
           <ActionIcon variant="subtle" color="red" aria-label="删除附件" onClick={confirmDelete}><IconTrash size={16} /></ActionIcon>
         </Tooltip>
       </Group>
+      <UploaderLine attachment={attachment} />
       <InvoiceLine attachment={attachment} />
       <EvidenceLine attachment={attachment} />
       <Collapse expanded={isPreviewOpen}>{isPreviewOpen && <AttachmentPreview attachment={attachment} />}</Collapse>

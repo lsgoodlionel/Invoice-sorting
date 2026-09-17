@@ -40,6 +40,19 @@ function AmountCell({ expense }: { expense: ExpenseSummary }) {
   );
 }
 
+/** 摘要行：摘要 + 宽屏时小字“创建：张三”（不占额外列宽）。 */
+function SummaryLine({ expense }: { expense: ExpenseSummary }) {
+  if (!expense.summary && !expense.created_by) return null;
+  return (
+    <Group gap={8} wrap="nowrap">
+      {expense.summary && <Text size="xs" c="dimmed" truncate style={{ minWidth: 0 }}>{expense.summary}</Text>}
+      {expense.created_by && (
+        <Text size="xs" c="dimmed" visibleFrom="md" className="expense-creator" truncate>创建：{expense.created_by.display_name}</Text>
+      )}
+    </Group>
+  );
+}
+
 /** 清单行：点击打开详情；拖入文件即上传到该记录。 */
 export function ExpenseRow({ expense, isSelected, onToggle, onOpen, onDropFiles }: ExpenseRowProps) {
   const { isOver, handlers } = useFileDropTarget((files) => onDropFiles(expense.id, files));
@@ -68,7 +81,7 @@ export function ExpenseRow({ expense, isSelected, onToggle, onOpen, onDropFiles 
         {isOver ? (
           <Text size="xs" className="drop-hint">松开上传到此记录</Text>
         ) : (
-          expense.summary && <Text size="xs" c="dimmed" truncate>{expense.summary}</Text>
+          <SummaryLine expense={expense} />
         )}
       </Table.Td>
       <Table.Td><CategoryDot color={expense.category_color} name={expense.category_name} /></Table.Td>

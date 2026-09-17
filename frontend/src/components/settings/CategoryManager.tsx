@@ -34,7 +34,8 @@ function CategoryModal({ editing, onClose }: { editing: Category | 'new' | null;
   );
 }
 
-export function CategoryManager() {
+/** readOnly：非管理员只读，隐藏新增、编辑与归档。 */
+export function CategoryManager({ readOnly = false }: { readOnly?: boolean }) {
   const { data = [] } = useCategories();
   const archive = useArchiveCategory();
   const [editing, setEditing] = useState<Category | 'new' | null>(null);
@@ -47,7 +48,7 @@ export function CategoryManager() {
     });
   return (
     <Stack gap="xs">
-      <Group justify="flex-end"><Button size="xs" variant="outline" onClick={() => setEditing('new')}>新增分类</Button></Group>
+      {!readOnly && <Group justify="flex-end"><Button size="xs" variant="outline" onClick={() => setEditing('new')}>新增分类</Button></Group>}
       <div className="table-scroll">
         <Table className="ledger-table" miw={640}>
           <Table.Thead><Table.Tr><Table.Th>名称</Table.Th><Table.Th>关键词</Table.Th><Table.Th>办理路径</Table.Th><Table.Th /></Table.Tr></Table.Thead>
@@ -58,10 +59,12 @@ export function CategoryManager() {
                 <Table.Td><Text size="xs" c="dimmed" truncate maw={260}>{category.keywords.join('、')}</Text></Table.Td>
                 <Table.Td><Text size="xs" c="dimmed" truncate maw={200}>{category.route_hint}</Text></Table.Td>
                 <Table.Td>
-                  <Group gap={4} justify="flex-end" wrap="nowrap">
-                    <Button size="compact-xs" variant="subtle" onClick={() => setEditing(category)}>编辑</Button>
-                    {!category.archived && <Button size="compact-xs" variant="subtle" color="red" onClick={() => confirmArchive(category)}>归档</Button>}
-                  </Group>
+                  {!readOnly && (
+                    <Group gap={4} justify="flex-end" wrap="nowrap">
+                      <Button size="compact-xs" variant="subtle" onClick={() => setEditing(category)}>编辑</Button>
+                      {!category.archived && <Button size="compact-xs" variant="subtle" color="red" onClick={() => confirmArchive(category)}>归档</Button>}
+                    </Group>
+                  )}
                 </Table.Td>
               </Table.Tr>
             ))}

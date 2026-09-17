@@ -200,4 +200,15 @@ describe('UnassignedSection', () => {
     expect(calls.filter((c) => c.url.includes('/candidates'))).toHaveLength(2);
     expect(screen.queryByRole('button', { name: '查看建议' })).not.toBeInTheDocument();
   });
+
+  test('shows uploader column with inbox for automatic imports', async () => {
+    mockFetch({
+      'GET /api/attachments/unassigned': [{ ...invoice, uploaded_by: { id: 2, display_name: '张三' } }, order],
+      'GET /api/expenses': { items: [], total: 0, total_cents: 0, status_counts: {} },
+    });
+    await renderSection();
+    expect(screen.getByRole('columnheader', { name: '上传人' })).toBeInTheDocument();
+    expect(within(screen.getByTestId('unassigned-row-11')).getByText('张三')).toBeInTheDocument();
+    expect(within(screen.getByTestId('unassigned-row-12')).getByText('收件箱')).toBeInTheDocument();
+  });
 });

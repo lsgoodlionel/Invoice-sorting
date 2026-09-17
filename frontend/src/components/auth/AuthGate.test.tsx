@@ -5,10 +5,11 @@ import { Route, Routes } from 'react-router';
 import { describe, expect, test, vi } from 'vitest';
 import { api } from '../../api/client';
 import { createQueryClient } from '../../queryClient';
-import { AUTHENTICATED, AUTH_DISABLED, NEEDS_LOGIN, NEEDS_SETUP, authStatusRoute } from '../../test/authStatus';
+import { AUTHENTICATED, AUTHENTICATED_MEMBER, AUTH_DISABLED, NEEDS_LOGIN, NEEDS_SETUP, authStatusRoute } from '../../test/authStatus';
 import { mockFetch } from '../../test/fetchMock';
 import { renderWithProviders } from '../../test/render';
 import { AuthGate } from './AuthGate';
+import { useCurrentUser } from './CurrentUserContext';
 
 const renderGate = (route = '/') =>
   renderWithProviders(
@@ -104,7 +105,7 @@ describe('global 401 handling', () => {
       'GET /api/auth/status': status.route,
       'POST /api/auth/login': () => {
         status.set(AUTHENTICATED);
-        return { data: { authenticated: true } };
+        return { data: { authenticated: true, user: AUTHENTICATED.user } };
       },
     });
     renderWithProviders(
@@ -118,5 +119,37 @@ describe('global 401 handling', () => {
     );
     await user.type(await screen.findByLabelText('密码'), 'correct-password{Enter}');
     await waitFor(() => expect(screen.getByText('批次页')).toBeInTheDocument());
+  });
+});
+
+function CurrentUserProbe() {
+  const { user, isAdmin, authEnabled } = useCurrentUser();
+  return <div>{`用户:${user?.display_name ?? '无'} 管理员:${isAdmin} 认证:${authEnabled}`}</div>;
+}
+
+describe('current user context', () => {
+  const renderProbe = () =>
+    renderWithProviders(
+      <AuthGate>
+        <CurrentUserProbe />
+      </AuthGate>,
+    );
+
+  test('provides admin user', async () => {
+    mockFetch({ 'GET /api/auth/status': AUTHENTICATED });
+    renderProbe();
+    expect(await screen.findByText('用户:管理员 管理员:true 认证:true')).toBeInTheDocument();
+  });
+
+  test('provides member user as non-admin', async () => {
+    mockFetch({ 'GET /api/auth/status': AUTHENTICATED_MEMBER });
+    renderProbe();
+    expect(await screen.findByText('用户:张三 管理员:false 认证:true')).toBeInTheDocument();
+  });
+
+  test('treats everyone as admin when auth is disabled', async () => {
+    mockFetch({ 'GET /api/auth/status': AUTH_DISABLED });
+    renderProbe();
+    expect(await screen.findByText('用户:无 管理员:true 认证:false')).toBeInTheDocument();
   });
 });

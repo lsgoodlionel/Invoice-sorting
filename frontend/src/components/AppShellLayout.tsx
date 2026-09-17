@@ -10,8 +10,7 @@ import {
 } from '@tabler/icons-react';
 import { useMemo } from 'react';
 import { NavLink as RouterNavLink, Outlet } from 'react-router';
-import { useAuthStatus } from '../api/hooks/auth';
-import { LogoutButton } from './auth/LogoutButton';
+import { NavUserFooter } from './auth/NavUserFooter';
 import { DashboardBar } from './DashboardBar';
 import { QuickAddContext } from './QuickAddContext';
 import { QuickExpenseModal } from './QuickExpenseModal';
@@ -34,7 +33,6 @@ const NAVBAR_WIDTH = 176;
 const HEADER_HEIGHT = 48;
 
 function SideNav({ onNavigate }: { onNavigate: () => void }) {
-  const { data: authStatus } = useAuthStatus();
   return (
     <Stack gap={2} p="xs" h="100%">
       <Text fw={700} size="lg" px="sm" py="md" style={{ letterSpacing: '0.08em' }}>
@@ -58,9 +56,7 @@ function SideNav({ onNavigate }: { onNavigate: () => void }) {
       <Text size="xs" c="dimmed" px="sm" mt="xl">
         <Kbd size="xs">N</Kbd> 记一笔　<Kbd size="xs">/</Kbd> 搜索
       </Text>
-      {authStatus?.auth_enabled && (
-        <LogoutButton variant="subtle" color="gray" size="xs" justify="flex-start" mt="auto" mb="xs" className="nav-logout" />
-      )}
+      <NavUserFooter />
     </Stack>
   );
 }

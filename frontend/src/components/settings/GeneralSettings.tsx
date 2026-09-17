@@ -56,7 +56,8 @@ function BackupButton() {
   );
 }
 
-export function GeneralSettings() {
+/** readOnly：非管理员只读（输入框禁用，隐藏保存与备份）。 */
+export function GeneralSettings({ readOnly = false }: { readOnly?: boolean }) {
   const { data } = useSettings();
   const update = useUpdateSettings();
   const [form, setForm] = useState<SettingsForm>(EMPTY_FORM);
@@ -70,31 +71,35 @@ export function GeneralSettings() {
     update.mutate(toPayload(form), { onSuccess: () => notifications.show({ color: 'ink', message: '设置已保存' }) });
 
   return (
-    <Stack gap="sm">
-      <SimpleGrid cols={{ base: 1, md: 3 }} spacing="sm">
-        <TextInput label="购方抬头" description="用于校验发票购买方名称" value={form.buyerName} onChange={(e) => patch({ buyerName: e.currentTarget.value })} />
-        <TextInput label="购方税号" value={form.buyerTaxId} classNames={{ input: 'num' }} onChange={(e) => patch({ buyerTaxId: e.currentTarget.value })} />
-        <NumberInput
-          label="超期提醒天数"
-          description="已外发超过该天数未到账时提醒"
-          min={MIN_OVERDUE_DAYS}
-          max={MAX_OVERDUE_DAYS}
-          allowDecimal={false}
-          value={form.overdueDays}
-          onChange={(value) => typeof value === 'number' && patch({ overdueDays: value })}
-        />
-      </SimpleGrid>
-      <RegionSettingsFields localRegion={form.localRegion} detailPlatforms={form.detailPlatforms} onChange={patch} />
-      <Group justify="space-between" align="flex-end">
-        <Stack gap={2}>
-          <Text size="xs" c="dimmed">数据目录：<span className="num">{data?.data_dir ?? '—'}</span></Text>
-          <Text size="xs" c="dimmed">收件箱：<span className="num">{data?.inbox_dir ?? '—'}</span>（可把发票直接放进该文件夹，程序会自动导入）</Text>
-        </Stack>
-        <Group gap="xs">
-          <BackupButton />
-          <Button variant="filled" onClick={save} loading={update.isPending}>保存设置</Button>
+    <fieldset disabled={readOnly} className="plain-fieldset">
+      <Stack gap="sm">
+        <SimpleGrid cols={{ base: 1, md: 3 }} spacing="sm">
+          <TextInput label="购方抬头" description="用于校验发票购买方名称" value={form.buyerName} onChange={(e) => patch({ buyerName: e.currentTarget.value })} />
+          <TextInput label="购方税号" value={form.buyerTaxId} classNames={{ input: 'num' }} onChange={(e) => patch({ buyerTaxId: e.currentTarget.value })} />
+          <NumberInput
+            label="超期提醒天数"
+            description="已外发超过该天数未到账时提醒"
+            min={MIN_OVERDUE_DAYS}
+            max={MAX_OVERDUE_DAYS}
+            allowDecimal={false}
+            value={form.overdueDays}
+            onChange={(value) => typeof value === 'number' && patch({ overdueDays: value })}
+          />
+        </SimpleGrid>
+        <RegionSettingsFields localRegion={form.localRegion} detailPlatforms={form.detailPlatforms} onChange={patch} />
+        <Group justify="space-between" align="flex-end">
+          <Stack gap={2}>
+            <Text size="xs" c="dimmed">数据目录：<span className="num">{data?.data_dir ?? '—'}</span></Text>
+            <Text size="xs" c="dimmed">收件箱：<span className="num">{data?.inbox_dir ?? '—'}</span>（可把发票直接放进该文件夹，程序会自动导入）</Text>
+          </Stack>
+          {!readOnly && (
+            <Group gap="xs">
+              <BackupButton />
+              <Button variant="filled" onClick={save} loading={update.isPending}>保存设置</Button>
+            </Group>
+          )}
         </Group>
-      </Group>
-    </Stack>
+      </Stack>
+    </fieldset>
   );
 }

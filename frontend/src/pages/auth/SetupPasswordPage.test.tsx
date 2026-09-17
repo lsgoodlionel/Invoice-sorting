@@ -17,7 +17,9 @@ describe('SetupPasswordPage', () => {
   test('shows guidance, security note and autocomplete attributes', async () => {
     mockFetch({ 'GET /api/auth/status': NEEDS_SETUP });
     renderGate();
-    expect(await screen.findByText(/首次使用请设置登录密码/)).toBeInTheDocument();
+    expect(await screen.findByText(/为管理员账户 admin 设置初始密码/)).toBeInTheDocument();
+    expect(screen.getByText(/设置后可在「设置 → 用户管理」中添加其他用户/)).toBeInTheDocument();
+    expect(screen.getByLabelText('用户名')).toHaveValue('admin');
     expect(screen.getByText('尚未设置密码前任何人打开此页面都可以设置，请尽快完成。')).toBeInTheDocument();
     expect(screen.getByLabelText('新密码')).toHaveAttribute('autocomplete', 'new-password');
     expect(screen.getByLabelText('确认密码')).toHaveAttribute('autocomplete', 'new-password');
@@ -48,7 +50,7 @@ describe('SetupPasswordPage', () => {
       'GET /api/auth/status': status.route,
       'POST /api/auth/setup': () => {
         status.set(AUTHENTICATED);
-        return { data: { authenticated: true } };
+        return { data: { authenticated: true, user: AUTHENTICATED.user } };
       },
     });
     renderGate();

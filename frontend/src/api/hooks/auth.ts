@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 import { api } from '../client';
-import type { AuthResult, AuthStatus, ChangePasswordInput } from '../types';
+import type { AuthResult, AuthStatus, ChangePasswordInput, LoginInput } from '../types';
 import { queryKeys } from './keys';
 
 const AUTH_STATUS_STALE_MS = 60_000;
@@ -9,7 +9,7 @@ const AUTH_STATUS_STALE_MS = 60_000;
 export const authApi = {
   status: () => api.get<AuthStatus>('/auth/status'),
   setup: (password: string) => api.post<AuthResult>('/auth/setup', { password }),
-  login: (password: string) => api.post<AuthResult>('/auth/login', { password }),
+  login: (input: LoginInput) => api.post<AuthResult>('/auth/login', input),
   logout: () => api.post<null>('/auth/logout'),
   changePassword: (input: ChangePasswordInput) => api.post<null>('/auth/password', input),
 };

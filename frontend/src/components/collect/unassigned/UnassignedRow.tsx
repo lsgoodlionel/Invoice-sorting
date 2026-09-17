@@ -3,6 +3,7 @@ import { modals } from '@mantine/modals';
 import { IconTrash } from '@tabler/icons-react';
 import { attachmentsApi, useDeleteAttachment, useUpdateAttachment } from '../../../api/hooks/attachments';
 import type { Attachment, AttachmentKind } from '../../../api/types';
+import { uploaderName } from '../../../lib/operator';
 import { ATTACHMENT_KIND_OPTIONS } from '../../../lib/status';
 import { CandidateSuggestion } from './CandidateSuggestion';
 import { RecognitionSummary } from './RecognitionSummary';
@@ -46,6 +47,9 @@ export function UnassignedRow({ attachment, isSelected, onToggle, onAssign, onPr
         <Select size="xs" w={130} aria-label="附件类型" data={ATTACHMENT_KIND_OPTIONS} value={attachment.kind} allowDeselect={false} onChange={changeKind} />
       </Table.Td>
       <Table.Td><RecognitionSummary attachment={attachment} /></Table.Td>
+      <Table.Td>
+        <Text size="xs" c={attachment.uploaded_by ? undefined : 'dimmed'} truncate maw={96}>{uploaderName(attachment.uploaded_by)}</Text>
+      </Table.Td>
       <CandidateSuggestion attachmentId={attachment.id} />
       <Table.Td>
         <Group gap={4} wrap="nowrap" justify="flex-end">

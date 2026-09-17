@@ -7,7 +7,8 @@ import { describeCondition } from '../../lib/rules';
 import { ATTACHMENT_KIND_LABELS } from '../../lib/status';
 import { RuleModal } from './RuleModal';
 
-export function RuleManager() {
+/** readOnly：非管理员只读，隐藏新增、编辑与删除。 */
+export function RuleManager({ readOnly = false }: { readOnly?: boolean }) {
   const { data: rules = [] } = useChecklistRules();
   const { data: categories = [] } = useCategories();
   const remove = useRemoveRule();
@@ -25,7 +26,7 @@ export function RuleManager() {
     <Stack gap="xs">
       <Group justify="space-between">
         <Text size="xs" c="dimmed">规则只做提醒，以学校现行规定为准。</Text>
-        <Button size="xs" variant="outline" onClick={() => setEditing('new')}>新增规则</Button>
+        {!readOnly && <Button size="xs" variant="outline" onClick={() => setEditing('new')}>新增规则</Button>}
       </Group>
       <div className="table-scroll">
         <Table className="ledger-table" miw={720}>
@@ -39,10 +40,12 @@ export function RuleManager() {
                 <Table.Td><Text size="xs" className="num">{describeCondition(rule.condition)}</Text></Table.Td>
                 <Table.Td><Text size="xs" c="dimmed" truncate maw={240} title={rule.hint}>{rule.hint}</Text></Table.Td>
                 <Table.Td>
-                  <Group gap={4} justify="flex-end" wrap="nowrap">
-                    <Button size="compact-xs" variant="subtle" onClick={() => setEditing(rule)}>编辑</Button>
-                    <Button size="compact-xs" variant="subtle" color="red" onClick={() => confirmRemove(rule)}>删除</Button>
-                  </Group>
+                  {!readOnly && (
+                    <Group gap={4} justify="flex-end" wrap="nowrap">
+                      <Button size="compact-xs" variant="subtle" onClick={() => setEditing(rule)}>编辑</Button>
+                      <Button size="compact-xs" variant="subtle" color="red" onClick={() => confirmRemove(rule)}>删除</Button>
+                    </Group>
+                  )}
                 </Table.Td>
               </Table.Tr>
             ))}

@@ -11,7 +11,7 @@ interface UnassignedTableProps {
   onPreview: (attachment: Attachment) => void;
 }
 
-const TABLE_MIN_WIDTH = 1180;
+const TABLE_MIN_WIDTH = 1260;
 
 export function UnassignedTable({ items, selectedIds, onToggle, onToggleAll, onAssign, onPreview }: UnassignedTableProps) {
   const selectedCount = selectedIds.length;
@@ -34,6 +34,7 @@ export function UnassignedTable({ items, selectedIds, onToggle, onToggleAll, onA
             <Table.Th>文件名</Table.Th>
             <Table.Th>类型</Table.Th>
             <Table.Th>识别信息</Table.Th>
+            <Table.Th>上传人</Table.Th>
             <Table.Th>建议</Table.Th>
             <Table.Th />
           </Table.Tr>

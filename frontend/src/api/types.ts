@@ -23,6 +23,46 @@ export type ExportLayout = 'by_expense' | 'by_kind';
 export type DateBasis = 'spent' | 'invoiced' | 'sent' | 'received';
 export type StatsGroupBy = 'category' | 'project' | 'merchant' | 'month';
 
+// —— 用户与操作人 ——
+export type UserRole = 'admin' | 'member';
+
+export interface CurrentUser {
+  id: number;
+  username: string;
+  display_name: string;
+  role: UserRole;
+}
+
+/** 上传人/操作人展示；null 表示收件箱自动处理、系统或关闭认证 */
+export interface UserRef {
+  id: number;
+  display_name: string;
+}
+
+export interface User {
+  id: number;
+  username: string;
+  display_name: string;
+  role: UserRole;
+  is_active: boolean;
+  has_password: boolean;
+  created_at: string;
+  last_login_at: string | null;
+}
+
+export interface UserCreate {
+  username: string;
+  display_name?: string;
+  password: string;
+  role: UserRole;
+}
+
+export interface UserPatch {
+  display_name?: string;
+  role?: UserRole;
+  is_active?: boolean;
+}
+
 export interface ApiEnvelope<T> {
   ok: boolean;
   data: T | null;
@@ -103,6 +143,8 @@ export interface Attachment {
   evidence: EvidenceData | null;
   /** 文件名键（用于同组判断） */
   file_key: string;
+  /** 上传人；收件箱自动导入为 null */
+  uploaded_by: UserRef | null;
 }
 
 export interface ChecklistItem {
@@ -122,6 +164,8 @@ export interface StatusEvent {
   is_manual: boolean;
   note: string;
   at: string;
+  /** 操作人；自动推进时为触发变化的用户，收件箱为 null */
+  actor: UserRef | null;
 }
 
 export interface ExpenseSummary {
@@ -151,6 +195,7 @@ export interface ExpenseSummary {
   currency: string;
   /** 原币金额（分）；CNY 时为 null */
   original_amount_cents: number | null;
+  created_by: UserRef | null;
 }
 
 export interface ExpenseDetail extends ExpenseSummary {
@@ -235,6 +280,7 @@ export interface Batch {
   item_count: number;
   total_cents: number;
   missing_item_count: number;
+  created_by: UserRef | null;
 }
 
 export interface ExportRecord {
@@ -246,6 +292,7 @@ export interface ExportRecord {
   item_count: number;
   total_cents: number;
   created_at: string;
+  created_by: UserRef | null;
 }
 
 export interface BatchDetail extends Batch {
@@ -510,10 +557,17 @@ export interface AuthStatus {
   auth_enabled: boolean;
   password_set: boolean;
   authenticated: boolean;
+  user: CurrentUser | null;
 }
 
 export interface AuthResult {
   authenticated: true;
+  user: CurrentUser;
+}
+
+export interface LoginInput {
+  username: string;
+  password: string;
 }
 
 export interface ChangePasswordInput {

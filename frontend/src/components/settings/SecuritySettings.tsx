@@ -1,10 +1,12 @@
 import { Group, Stack, Text } from '@mantine/core';
 import { useAuthStatus } from '../../api/hooks/auth';
+import { useCurrentUser } from '../auth/CurrentUserContext';
 import { LogoutButton } from '../auth/LogoutButton';
 import { ChangePasswordForm } from './ChangePasswordForm';
 
 export function SecuritySettings() {
   const { data } = useAuthStatus();
+  const { user } = useCurrentUser();
   if (!data) return null;
 
   if (!data.auth_enabled) {
@@ -17,6 +19,12 @@ export function SecuritySettings() {
 
   return (
     <Stack gap="lg">
+      {user && (
+        <Text size="sm">
+          当前登录：{user.display_name}
+          <Text span size="sm" c="dimmed" className="num">（{user.username}）</Text>
+        </Text>
+      )}
       <ChangePasswordForm />
       <Group gap="sm" align="center">
         <LogoutButton variant="outline" color="red" />

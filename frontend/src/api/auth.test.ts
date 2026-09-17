@@ -30,7 +30,7 @@ describe('401 handling', () => {
   test('wrong password on login does not emit unauthorized event', async () => {
     mockFetch({ 'POST /api/auth/login': () => ({ status: 401, error: '密码错误' }) });
     const listener = listen();
-    await expect(authApi.login('wrongpass')).rejects.toThrow('密码错误');
+    await expect(authApi.login({ username: 'admin', password: 'wrongpass' })).rejects.toThrow('密码错误');
     expect(listener).not.toHaveBeenCalled();
   });
 
@@ -46,7 +46,7 @@ describe('401 handling', () => {
 
 describe('authApi', () => {
   test('sends contract payloads', async () => {
-    const status = { auth_enabled: true, password_set: true, authenticated: false };
+    const status = { auth_enabled: true, password_set: true, authenticated: false, user: null };
     const { calls } = mockFetch({
       'GET /api/auth/status': status,
       'POST /api/auth/setup': { authenticated: true },
@@ -56,13 +56,13 @@ describe('authApi', () => {
     });
     await expect(authApi.status()).resolves.toEqual(status);
     await authApi.setup('password1');
-    await authApi.login('password1');
+    await authApi.login({ username: 'zhangsan', password: 'password1' });
     await authApi.logout();
     await authApi.changePassword({ current_password: 'old-pass1', new_password: 'new-pass1' });
     expect(calls.map((c) => [c.method, c.url, c.body])).toEqual([
       ['GET', '/api/auth/status', undefined],
       ['POST', '/api/auth/setup', { password: 'password1' }],
-      ['POST', '/api/auth/login', { password: 'password1' }],
+      ['POST', '/api/auth/login', { username: 'zhangsan', password: 'password1' }],
       ['POST', '/api/auth/logout', undefined],
       ['POST', '/api/auth/password', { current_password: 'old-pass1', new_password: 'new-pass1' }],
     ]);

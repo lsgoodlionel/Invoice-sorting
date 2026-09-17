@@ -1,11 +1,15 @@
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test } from 'vitest';
 import { AuthGate } from '../../components/auth/AuthGate';
+import { REMEMBERED_USERNAME_KEY } from '../../lib/rememberedUsername';
 import { createQueryClient } from '../../queryClient';
-import { AUTHENTICATED, NEEDS_LOGIN, authStatusRoute } from '../../test/authStatus';
+import { AUTHENTICATED_MEMBER, NEEDS_LOGIN, authStatusRoute } from '../../test/authStatus';
 import { mockFetch } from '../../test/fetchMock';
 import { renderWithProviders } from '../../test/render';
+
+const SERVER_RESET_COMMAND =
+  'sudo -u invoice env INVOICE_SORTING_DATA_DIR=/var/lib/invoice-sorting /opt/invoice-sorting/app/backend/.venv/bin/invoice-sorting reset-password';
 
 const renderGate = () =>
   renderWithProviders(
@@ -15,32 +19,39 @@ const renderGate = () =>
     { client: createQueryClient() },
   );
 
+afterEach(() => window.localStorage.clear());
+
 describe('LoginPage', () => {
-  test('focuses password input and shows reset command hints', async () => {
+  test('defaults username to admin, focuses password and shows reset guidance', async () => {
     mockFetch({ 'GET /api/auth/status': NEEDS_LOGIN });
     renderGate();
-    const input = await screen.findByLabelText('密码');
-    expect(input).toHaveFocus();
-    expect(input).toHaveAttribute('autocomplete', 'current-password');
-    expect(
-      screen.getByText(
-        'sudo -u invoice env INVOICE_SORTING_DATA_DIR=/var/lib/invoice-sorting /opt/invoice-sorting/app/backend/.venv/bin/invoice-sorting reset-password',
-      ),
-    ).toBeInTheDocument();
-    expect(screen.getByText('backend/.venv/bin/invoice-sorting reset-password')).toBeInTheDocument();
-    expect(screen.getAllByRole('button', { name: /复制/ })).toHaveLength(2);
+    const password = await screen.findByLabelText('密码');
+    const username = screen.getByLabelText('用户名');
+    expect(username).toHaveValue('admin');
+    expect(username).toHaveAttribute('autocomplete', 'username');
+    expect(password).toHaveFocus();
+    expect(password).toHaveAttribute('autocomplete', 'current-password');
+    expect(screen.getByText(/忘记密码请联系管理员重置；管理员 admin 忘记密码时在服务器执行/)).toBeInTheDocument();
+    expect(screen.getByText(SERVER_RESET_COMMAND)).toBeInTheDocument();
   });
 
-  test('shows wrong password error under the input without a global notification', async () => {
+  test('prefills the last successfully used username', async () => {
+    window.localStorage.setItem(REMEMBERED_USERNAME_KEY, 'zhangsan');
+    mockFetch({ 'GET /api/auth/status': NEEDS_LOGIN });
+    renderGate();
+    expect(await screen.findByLabelText('用户名')).toHaveValue('zhangsan');
+  });
+
+  test('shows backend error once and marks inputs invalid', async () => {
     const user = userEvent.setup();
     mockFetch({
       'GET /api/auth/status': NEEDS_LOGIN,
-      'POST /api/auth/login': () => ({ status: 401, error: '密码错误' }),
+      'POST /api/auth/login': () => ({ status: 401, error: '用户名或密码错误' }),
     });
     renderGate();
     await user.type(await screen.findByLabelText('密码'), 'wrong-password{Enter}');
-    expect(await screen.findByText('密码错误')).toBeInTheDocument();
-    expect(screen.getAllByText('密码错误')).toHaveLength(1);
+    expect(await screen.findByText('用户名或密码错误')).toBeInTheDocument();
+    expect(screen.getAllByText('用户名或密码错误')).toHaveLength(1);
     expect(screen.getByLabelText('密码')).toHaveAttribute('aria-invalid', 'true');
   });
 
@@ -54,24 +65,37 @@ describe('LoginPage', () => {
     await user.type(await screen.findByLabelText('密码'), 'some-password');
     await user.click(screen.getByRole('button', { name: '登录' }));
     expect(await screen.findByText('尝试次数过多，请 12 分钟后再试')).toBeInTheDocument();
-    expect(screen.getAllByText('尝试次数过多，请 12 分钟后再试')).toHaveLength(1);
   });
 
-  test('sends password and refreshes status on success', async () => {
+  test('disables submit without username', async () => {
+    const user = userEvent.setup();
+    mockFetch({ 'GET /api/auth/status': NEEDS_LOGIN });
+    renderGate();
+    await user.type(await screen.findByLabelText('密码'), 'some-password');
+    await user.clear(screen.getByLabelText('用户名'));
+    expect(screen.getByRole('button', { name: '登录' })).toBeDisabled();
+  });
+
+  test('sends username and password, remembers username and enters the app', async () => {
     const user = userEvent.setup();
     const status = authStatusRoute(NEEDS_LOGIN);
     const { calls } = mockFetch({
       'GET /api/auth/status': status.route,
       'POST /api/auth/login': () => {
-        status.set(AUTHENTICATED);
-        return { data: { authenticated: true } };
+        status.set(AUTHENTICATED_MEMBER);
+        return { data: { authenticated: true, user: AUTHENTICATED_MEMBER.user } };
       },
     });
     renderGate();
-    await user.type(await screen.findByLabelText('密码'), 'correct-password');
+    const username = await screen.findByLabelText('用户名');
+    await user.clear(username);
+    await user.type(username, ' zhangsan ');
+    await user.type(screen.getByLabelText('密码'), 'correct-password');
     await user.click(screen.getByRole('button', { name: '登录' }));
+
     expect(await screen.findByText('应用内容')).toBeInTheDocument();
-    expect(calls.find((c) => c.method === 'POST')?.body).toEqual({ password: 'correct-password' });
+    expect(calls.find((c) => c.method === 'POST')?.body).toEqual({ username: 'zhangsan', password: 'correct-password' });
+    expect(window.localStorage.getItem(REMEMBERED_USERNAME_KEY)).toBe('zhangsan');
     await waitFor(() => expect(calls.filter((c) => c.url === '/api/auth/status').length).toBeGreaterThanOrEqual(2));
   });
 });

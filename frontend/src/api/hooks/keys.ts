@@ -19,6 +19,7 @@ export const queryKeys = {
   projects: ['projects'] as const,
   checklistRules: ['checklist-rules'] as const,
   authStatus: ['auth', 'status'] as const,
+  users: ['users'] as const,
 };
 
 /** 任何支出/附件/批次写操作后需要刷新的查询前缀。 */

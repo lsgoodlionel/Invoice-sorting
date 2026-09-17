@@ -38,6 +38,14 @@ describe('describeError', () => {
     expect(guide.message).toContain('必须大于等于 0');
   });
 
+  test('forbidden (403) explains admin permission is required', () => {
+    const guide = describeError(new ApiError('需要管理员权限', 403), 'save');
+    expect(guide.kind).toBe('forbidden');
+    expect(guide.title).toBe('没有权限');
+    expect(guide.message).toBe('该操作需要管理员权限，请联系管理员（admin）');
+    expect(guide.shouldRefresh).toBe(false);
+  });
+
   test('too large upload explains the limit', () => {
     const guide = describeError(new ApiError('文件过大', 413), 'save');
     expect(guide.kind).toBe('input');

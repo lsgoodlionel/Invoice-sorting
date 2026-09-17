@@ -42,4 +42,9 @@ describe('BatchDetailPanel', () => {
     renderPanel(makeBatch({ status: 'sent', item_count: 1, expenses: [makeExpense({ status: 'sent' })] }));
     expect(screen.queryByRole('button', { name: '添加记录' })).not.toBeInTheDocument();
   });
+
+  test('shows batch creator', () => {
+    renderPanel(makeBatch({ created_by: { id: 2, display_name: '张三' } }));
+    expect(screen.getByText(/创建人：张三/)).toBeInTheDocument();
+  });
 });

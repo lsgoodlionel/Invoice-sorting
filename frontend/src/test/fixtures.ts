@@ -10,6 +10,8 @@ import type {
   InvoiceData,
   MatchCandidate,
   Project,
+  StatusEvent,
+  User,
 } from '../api/types';
 
 export function makeExpense(overrides: Partial<ExpenseSummary> = {}): ExpenseSummary {
@@ -37,6 +39,7 @@ export function makeExpense(overrides: Partial<ExpenseSummary> = {}): ExpenseSum
     invoice_exempt: false,
     currency: 'CNY',
     original_amount_cents: null,
+    created_by: null,
     ...overrides,
   };
 }
@@ -56,6 +59,7 @@ export function makeAttachment(overrides: Partial<Attachment> = {}): Attachment 
     invoice: null,
     evidence: null,
     file_key: '',
+    uploaded_by: null,
     ...overrides,
   };
 }
@@ -199,6 +203,7 @@ export function makeBatch(overrides: Partial<BatchDetail> = {}): BatchDetail {
     item_count: 0,
     total_cents: 0,
     missing_item_count: 0,
+    created_by: null,
     expenses: [],
     exports: [],
     ...overrides,
@@ -207,4 +212,31 @@ export function makeBatch(overrides: Partial<BatchDetail> = {}): BatchDetail {
 
 export function makeProject(overrides: Partial<Project> = {}): Project {
   return { id: 1, code: 'KY-01', name: '科研A', owner: '', active: true, ...overrides };
+}
+
+export function makeUser(overrides: Partial<User> = {}): User {
+  return {
+    id: 2,
+    username: 'zhangsan',
+    display_name: '张三',
+    role: 'member',
+    is_active: true,
+    has_password: true,
+    created_at: '2026-09-01T09:00:00+08:00',
+    last_login_at: '2026-09-15T10:05:00+08:00',
+    ...overrides,
+  };
+}
+
+export function makeStatusEvent(overrides: Partial<StatusEvent> = {}): StatusEvent {
+  return {
+    id: 1,
+    from_status: null,
+    to_status: 'spent',
+    is_manual: false,
+    note: '',
+    at: '2026-09-15T10:00:00+08:00',
+    actor: null,
+    ...overrides,
+  };
 }

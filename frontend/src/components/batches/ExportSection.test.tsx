@@ -16,6 +16,7 @@ const record: ExportRecord = {
   item_count: 1,
   total_cents: 96000,
   created_at: '2026-09-17T14:00:00+08:00',
+  created_by: null,
 };
 
 describe('ExportSection', () => {
@@ -41,5 +42,13 @@ describe('ExportSection', () => {
     await user.click(within(dialog).getByRole('button', { name: '删除' }));
 
     await waitFor(() => expect(calls.find((call) => call.method === 'DELETE')?.url).toBe('/api/exports/8'));
+  });
+
+  test('shows who generated each package', () => {
+    mockFetch({});
+    const batch = makeBatch({ item_count: 1, expenses: [makeExpense()], exports: [{ ...record, created_by: { id: 2, display_name: '张三' } }] });
+    renderWithProviders(<ExportSection batch={batch} />);
+    expect(screen.getByRole('columnheader', { name: '生成人' })).toBeInTheDocument();
+    expect(screen.getByRole('cell', { name: '张三' })).toBeInTheDocument();
   });
 });
