@@ -26,3 +26,6 @@ coverage/
 *.db
 *.db-wal
 *.db-shm
+
+# 本地工具配置
+.claude/
