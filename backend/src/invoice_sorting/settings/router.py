@@ -6,10 +6,12 @@ from fastapi import APIRouter, Request
 
 from invoice_sorting.common.errors import ok
 from invoice_sorting.config import Settings
+from invoice_sorting.expenses.recompute import refresh_open_expenses
 from invoice_sorting.settings import catalog, rules
 from invoice_sorting.settings.deps import ConfigDep, SessionDep
 from invoice_sorting.settings.schemas import AppSettingsUpdate, present_values
 from invoice_sorting.settings.service import (
+    REGION_KEYS,
     backup_database,
     get_app_settings,
     update_app_settings,
@@ -33,7 +35,10 @@ def read_settings(session: SessionDep, config: ConfigDep) -> dict[str, Any]:
 def write_settings(
     body: AppSettingsUpdate, session: SessionDep, config: ConfigDep
 ) -> dict[str, Any]:
+    before = get_app_settings(session)
     values = update_app_settings(session, **present_values(body))
+    if any(before[key] != values[key] for key in REGION_KEYS):
+        refresh_open_expenses(session, config)
     session.commit()
     return ok(_with_paths(values, config))
 

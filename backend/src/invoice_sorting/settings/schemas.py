@@ -11,6 +11,8 @@ PROJECT_NAME_MAX = 100
 COLOR_MAX = 20
 TEXT_MAX = 2000
 MAX_OVERDUE_DAYS = 3650
+REGION_MAX = 20
+MAX_PLATFORMS = 50
 
 StrictCents = Annotated[int, Field(ge=0, strict=True)]
 STRICT_FORBID = ConfigDict(extra="forbid", str_strip_whitespace=True)
@@ -22,6 +24,10 @@ class AppSettingsUpdate(BaseModel):
     buyer_name: str | None = Field(default=None, max_length=200)
     buyer_tax_id: str | None = Field(default=None, max_length=50)
     overdue_days: Annotated[int, Field(ge=1, le=MAX_OVERDUE_DAYS, strict=True)] | None = None
+    local_region: str | None = Field(default=None, max_length=REGION_MAX)
+    detail_platforms: list[Annotated[str, Field(max_length=NAME_MAX)]] | None = Field(
+        default=None, max_length=MAX_PLATFORMS
+    )
 
 
 class CategoryCreate(BaseModel):
@@ -67,6 +73,8 @@ class RuleCondition(BaseModel):
     amount_gte: StrictCents | None = None
     amount_lt: StrictCents | None = None
     is_online: StrictBool | None = None
+    is_nonlocal: StrictBool | None = None
+    detail_platform: StrictBool | None = None
 
     def to_json(self) -> dict[str, Any]:
         return self.model_dump(exclude_none=True)

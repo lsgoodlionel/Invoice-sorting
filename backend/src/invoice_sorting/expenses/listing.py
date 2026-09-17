@@ -11,6 +11,7 @@ from invoice_sorting.common.errors import AppError
 from invoice_sorting.db.models import Attachment, Expense
 from invoice_sorting.expenses.queries import ExpenseFilter, build_expense_query
 from invoice_sorting.expenses.serializers import serialize_expense_summary
+from invoice_sorting.settings.service import region_policy
 
 SUMMARY_LOAD_OPTIONS = (
     selectinload(Expense.category),
@@ -54,8 +55,9 @@ def list_expenses(
     rows = session.scalars(
         query.options(*SUMMARY_LOAD_OPTIONS).offset((page - 1) * page_size).limit(page_size)
     )
+    policy = region_policy(session)
     return {
-        "items": [serialize_expense_summary(expense) for expense in rows],
+        "items": [serialize_expense_summary(expense, policy) for expense in rows],
         "total": int(total),
         "total_cents": int(total_cents),
         "status_counts": _status_counts(session, filters),

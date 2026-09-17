@@ -68,6 +68,7 @@ def test_t01_import_digital_invoice_and_create(client, session, settings, tmp_pa
         "merchant": "上海示例科技有限公司",
         "summary": "鼠标",
         "category_id": category_id(session, "易耗品"),
+        "is_online": False,
     }
     attachment = row["attachment"]
     assert attachment["kind"] == "invoice" and attachment["expense_id"] is None

@@ -52,6 +52,16 @@ def _add_column_sql(engine: Engine, table: str, column: Column) -> str:
     return prefix
 
 
+def ensure_transaction(session: Session) -> None:
+    """pysqlite 在首条写语句前不会 BEGIN，此时 SAVEPOINT 的 RELEASE 会直接提交。
+
+    使用 session.begin_nested() 做“单条失败只回滚该条”之前先调用，保证外层事务真实存在。
+    """
+    driver = session.connection().connection.driver_connection
+    if driver is not None and not driver.in_transaction:
+        driver.execute("BEGIN")
+
+
 def make_session_factory(engine: Engine) -> sessionmaker[Session]:
     return sessionmaker(bind=engine, expire_on_commit=False)
 

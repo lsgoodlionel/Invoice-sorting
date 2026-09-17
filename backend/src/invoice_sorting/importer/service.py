@@ -16,6 +16,7 @@ from invoice_sorting.attachments.storage import (
     relocate_attachment,
     store_file,
 )
+from invoice_sorting.checklist.regions import RegionPolicy
 from invoice_sorting.common.constants import AttachmentKind
 from invoice_sorting.common.errors import AppError
 from invoice_sorting.config import Settings
@@ -28,7 +29,7 @@ from invoice_sorting.importer.suggestions import (
     invoice_data_from,
 )
 from invoice_sorting.parsers import ParsedInvoice, parse_invoice_file
-from invoice_sorting.settings.service import buyer_identity
+from invoice_sorting.settings.service import buyer_identity, region_policy
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +75,7 @@ class _Context:
     session: Session
     settings: Settings
     buyer: tuple[str, str]
+    policy: RegionPolicy
     result: ImportResult
 
 
@@ -107,7 +109,7 @@ def _register_invoice(ctx: _Context, attachment: Attachment, parsed: ParsedInvoi
     match = find_spent_match(
         session, suggestion.amount_cents, suggestion.spent_on, suggestion.merchant
     )
-    warnings = build_warnings(parsed, attachment.invoice_data, ctx.buyer)
+    warnings = build_warnings(parsed, attachment.invoice_data, ctx.buyer, ctx.policy)
     ctx.result.rows.append(ImportRow(uuid.uuid4().hex, attachment, suggestion, match, warnings))
 
 
@@ -139,7 +141,9 @@ def import_files(
     session: Session, settings: Settings, paths: list[tuple[Path, str]]
 ) -> ImportResult:
     """导入 (源文件路径, 原始文件名) 列表；源文件不改动。调用方负责提交事务。"""
-    ctx = _Context(session, settings, buyer_identity(session), ImportResult())
+    ctx = _Context(
+        session, settings, buyer_identity(session), region_policy(session), ImportResult()
+    )
     for index, (src, name) in enumerate(paths):
         _import_one(ctx, index, src, name)
     return ctx.result

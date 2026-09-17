@@ -45,6 +45,7 @@ class ChecklistRule(Base):
 
     condition 为 JSON，支持键（全部满足才触发，空对象表示总是触发）：
       amount_gte: int（分）  amount_lt: int（分）  is_online: bool
+      is_nonlocal: bool（外地发票）  detail_platform: bool（销售方属于已带明细平台）
     """
 
     __tablename__ = "checklist_rule"

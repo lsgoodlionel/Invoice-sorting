@@ -5,6 +5,12 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
+from invoice_sorting.checklist.regions import (
+    DEFAULT_POLICY,
+    RegionPolicy,
+    is_detail_seller,
+    is_nonlocal_region,
+)
 from invoice_sorting.common.constants import AttachmentKind
 from invoice_sorting.db.models import TZ, Attachment, InvoiceData
 
@@ -47,7 +53,11 @@ def is_buyer_mismatch(invoice: InvoiceData, buyer: tuple[str, str] | None) -> bo
     )
 
 
-def serialize_invoice(invoice: InvoiceData, buyer: tuple[str, str] | None = None) -> dict[str, Any]:
+def serialize_invoice(
+    invoice: InvoiceData,
+    buyer: tuple[str, str] | None = None,
+    policy: RegionPolicy = DEFAULT_POLICY,
+) -> dict[str, Any]:
     return {
         "invoice_no": invoice.invoice_no,
         "issued_on": iso_date(invoice.issued_on),
@@ -59,6 +69,11 @@ def serialize_invoice(invoice: InvoiceData, buyer: tuple[str, str] | None = None
         "buyer_tax_id": invoice.buyer_tax_id or "",
         "item_summary": invoice.item_summary or "",
         "invoice_type": invoice.invoice_type or "",
+        "tax_category": invoice.tax_category or "",
+        "region_name": invoice.region_name or "",
+        "is_nonlocal": is_nonlocal_region(invoice.region_name, policy.local_region),
+        "order_no": invoice.order_no or "",
+        "detail_platform": is_detail_seller(invoice.seller_name, policy.detail_platforms),
         "parser": invoice.parser or "",
         "confirmed": bool(invoice.confirmed),
         "buyer_mismatch": is_buyer_mismatch(invoice, buyer),
@@ -66,7 +81,9 @@ def serialize_invoice(invoice: InvoiceData, buyer: tuple[str, str] | None = None
 
 
 def serialize_attachment(
-    attachment: Attachment, buyer: tuple[str, str] | None = None
+    attachment: Attachment,
+    buyer: tuple[str, str] | None = None,
+    policy: RegionPolicy = DEFAULT_POLICY,
 ) -> dict[str, Any]:
     invoice = attachment.invoice_data
     return {
@@ -80,5 +97,5 @@ def serialize_attachment(
         "size": attachment.size,
         "created_at": iso_datetime(attachment.created_at),
         "url": f"/api/attachments/{attachment.id}/file",
-        "invoice": serialize_invoice(invoice, buyer) if invoice is not None else None,
+        "invoice": serialize_invoice(invoice, buyer, policy) if invoice is not None else None,
     }

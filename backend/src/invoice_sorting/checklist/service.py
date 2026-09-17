@@ -1,27 +1,44 @@
 """凭证清单：按分类模板与条件计算清单项，并与附件同步（蓝图 4.2 / 11）。"""
 
+from collections.abc import Callable
 from typing import Any
 
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
+from invoice_sorting.checklist.regions import (
+    DEFAULT_POLICY,
+    RegionPolicy,
+    is_detail_platform,
+    is_nonlocal,
+)
 from invoice_sorting.common.constants import ChecklistLevel, ChecklistState
 from invoice_sorting.db.models import Attachment, ChecklistItem, ChecklistRule, Expense
+from invoice_sorting.settings.service import region_policy
 
 HINT_SEPARATOR = "；"
 LEVEL_STRENGTH = {ChecklistLevel.REQUIRED: 2, ChecklistLevel.SUGGESTED: 1}
 
 
-def condition_matches(condition: dict[str, Any] | None, expense: Expense) -> bool:
-    """condition 中所有键都满足才触发；空条件总是触发。"""
+def _flag_matches(condition: dict[str, Any], key: str, actual: Callable[[], bool]) -> bool:
+    return key not in condition or actual() == bool(condition[key])
+
+
+def condition_matches(
+    condition: dict[str, Any] | None, expense: Expense, policy: RegionPolicy = DEFAULT_POLICY
+) -> bool:
+    """condition 中所有键都满足才触发；空条件总是触发。policy 提供本地地区与明细平台。"""
     condition = condition or {}
     if "amount_gte" in condition and expense.amount_cents < int(condition["amount_gte"]):
         return False
     if "amount_lt" in condition and expense.amount_cents >= int(condition["amount_lt"]):
         return False
-    if "is_online" in condition and bool(expense.is_online) != bool(condition["is_online"]):
-        return False
-    return True
+    flags = (
+        ("is_online", lambda: bool(expense.is_online)),
+        ("is_nonlocal", lambda: is_nonlocal(expense, policy.local_region)),
+        ("detail_platform", lambda: is_detail_platform(expense, policy.detail_platforms)),
+    )
+    return all(_flag_matches(condition, key, actual) for key, actual in flags)
 
 
 def _merge(first: ChecklistRule, second: ChecklistRule) -> ChecklistRule:
@@ -49,9 +66,10 @@ def evaluate_rules(session: Session, expense: Expense) -> list[ChecklistRule]:
     if expense.category_id is not None:
         category_filter = or_(category_filter, ChecklistRule.category_id == expense.category_id)
     rules = session.scalars(select(ChecklistRule).where(category_filter).order_by(ChecklistRule.id))
+    policy = region_policy(session)
     merged: dict[str, ChecklistRule] = {}
     for rule in rules:
-        if not condition_matches(rule.condition, expense):
+        if not condition_matches(rule.condition, expense, policy):
             continue
         kind = rule.attachment_kind
         merged[kind] = _merge(merged[kind], rule) if kind in merged else rule

@@ -3,11 +3,15 @@
 from pathlib import Path
 from typing import Any
 
+from sqlalchemy.orm import object_session
+
 from invoice_sorting.attachments.serializers import iso_date, iso_datetime
+from invoice_sorting.checklist.regions import DEFAULT_POLICY
 from invoice_sorting.checklist.service import required_missing_count
 from invoice_sorting.common.constants import BATCH_STATUS_LABELS, BatchStatus
 from invoice_sorting.db.models import Batch, Expense, ExportRecord
 from invoice_sorting.expenses.serializers import serialize_expense_summary
+from invoice_sorting.settings.service import region_policy
 
 
 def active_expenses(batch: Batch) -> list[Expense]:
@@ -62,8 +66,11 @@ def serialize_export_record(record: ExportRecord) -> dict[str, Any]:
 
 def serialize_batch_detail(batch: Batch) -> dict[str, Any]:
     exports = sorted(batch.exports, key=lambda record: record.id, reverse=True)
+    session = object_session(batch)
+    policy = region_policy(session) if session is not None else DEFAULT_POLICY
+    expenses = active_expenses(batch)
     return {
         **serialize_batch(batch),
-        "expenses": [serialize_expense_summary(expense) for expense in active_expenses(batch)],
+        "expenses": [serialize_expense_summary(expense, policy) for expense in expenses],
         "exports": [serialize_export_record(record) for record in exports],
     }

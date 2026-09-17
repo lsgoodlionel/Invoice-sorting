@@ -18,6 +18,8 @@ def test_settings_get_and_put(client, settings):
         "buyer_name": "",
         "buyer_tax_id": "",
         "overdue_days": 30,
+        "local_region": "上海",
+        "detail_platforms": ["京东", "当当", "圆迈"],
         "data_dir": str(settings.data_dir),
         "inbox_dir": str(settings.inbox_dir),
     }

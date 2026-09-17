@@ -13,9 +13,8 @@ from watchdog.observers import Observer
 
 from invoice_sorting.config import Settings
 from invoice_sorting.db.models import now
-from invoice_sorting.importer.confirm import confirm_rows
-from invoice_sorting.importer.schemas import ConfirmRow
-from invoice_sorting.importer.service import ImportResult, ImportRow, import_files
+from invoice_sorting.importer.auto_confirm import auto_confirm_rows
+from invoice_sorting.importer.service import ImportResult, import_files
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +23,6 @@ TEMP_SUFFIXES = (".crdownload", ".part", ".tmp", ".download")
 STABLE_INTERVAL_SECONDS = 1.0
 POLL_SECONDS = 5.0
 JOIN_TIMEOUT_SECONDS = 5.0
-UNKNOWN_MERCHANT = "未知商家"
 UNEXPECTED_ERROR = "导入时发生意外错误，请手工导入"
 
 
@@ -54,35 +52,18 @@ def _stable_files(inbox: Path, interval: float) -> list[Path]:
     return [path for path, size in first.items() if size is not None and _size(path) == size]
 
 
-def _auto_row(row: ImportRow) -> ConfirmRow | None:
-    """有匹配 → 挂接；金额与日期都识别到 → 新建；否则留在待归属。"""
-    suggestion = row.suggestion
-    common = {
-        "row_id": row.row_id,
-        "spent_on": suggestion.spent_on,
-        "amount_cents": suggestion.amount_cents,
-        "merchant": suggestion.merchant or UNKNOWN_MERCHANT,
-        "summary": suggestion.summary,
-        "category_id": suggestion.category_id,
-    }
-    if row.match is not None:
-        return ConfirmRow(action="attach", expense_id=row.match.id, **common)
-    if suggestion.amount_cents is not None and suggestion.spent_on is not None:
-        return ConfirmRow(action="create", **common)
-    return None
-
-
 def _auto_confirm(session: Session, settings: Settings, result: ImportResult) -> None:
-    rows = [confirm for confirm in map(_auto_row, result.rows) if confirm is not None]
-    if not rows:
+    if not result.rows:
         return
-    refs = {row.row_id: row.attachment.id for row in result.rows}
     try:
-        confirm_rows(session, settings, refs, rows)
+        outcome = auto_confirm_rows(session, settings, result.rows)
         session.commit()
     except Exception:
         session.rollback()
         logger.exception("收件箱自动确认失败，发票保留在待归属")
+        return
+    for skipped in outcome.skipped:
+        logger.info("收件箱发票留在待归属：%s（%s）", skipped["original_name"], skipped["reason"])
 
 
 def _import_path(factory: sessionmaker[Session], settings: Settings, path: Path) -> str | None:

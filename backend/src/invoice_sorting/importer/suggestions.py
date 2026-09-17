@@ -6,6 +6,12 @@ from datetime import date
 from sqlalchemy.orm import Session
 
 from invoice_sorting.attachments.serializers import is_buyer_mismatch
+from invoice_sorting.checklist.regions import (
+    DEFAULT_POLICY,
+    RegionPolicy,
+    is_detail_seller,
+    is_nonlocal_region,
+)
 from invoice_sorting.db.models import InvoiceData
 from invoice_sorting.importer.classify import suggest_category
 from invoice_sorting.parsers import ParsedInvoice
@@ -16,6 +22,10 @@ MISSING_AMOUNT_WARNING = "未识别到金额，请手工填写"
 MISSING_DATE_WARNING = "未识别到开票日期，请手工填写"
 MISSING_SELLER_WARNING = "未识别到销售方，请手工填写商家"
 MISSING_NUMBER_WARNING = "未识别到发票号码，无法按号码判重"
+NONLOCAL_WARNING = "外地发票（{region}）：需附网购订单截图，已带明细平台可免"
+ONLINE_PLATFORM_KEYWORDS: tuple[str, ...] = (
+    "京东", "天猫", "淘宝", "当当", "拼多多", "圆迈", "苏宁", "抖音", "亚马逊", "唯品会",
+)  # fmt: skip
 
 
 @dataclass(frozen=True)
@@ -25,6 +35,7 @@ class Suggestion:
     merchant: str
     summary: str
     category_id: int | None
+    is_online: bool = False
 
 
 def invoice_data_from(parsed: ParsedInvoice) -> InvoiceData:
@@ -39,6 +50,9 @@ def invoice_data_from(parsed: ParsedInvoice) -> InvoiceData:
         buyer_tax_id=parsed.buyer_tax_id or "",
         item_summary=parsed.item_summary or "",
         invoice_type=parsed.invoice_type or "",
+        tax_category=parsed.tax_category or "",
+        region_name=parsed.region_name or "",
+        order_no=parsed.order_no or "",
         parser=parsed.parser or "",
         confirmed=False,
         raw_text=(parsed.raw_text or "")[:RAW_TEXT_LIMIT],
@@ -54,6 +68,11 @@ def suggested_spent_on(parsed: ParsedInvoice) -> date | None:
         return parsed.issued_on
 
 
+def is_online_purchase(order_no: str | None, seller_name: str | None) -> bool:
+    """有订单号，或销售方名称包含电商平台关键词。"""
+    return bool((order_no or "").strip()) or is_detail_seller(seller_name, ONLINE_PLATFORM_KEYWORDS)
+
+
 def build_suggestion(session: Session, parsed: ParsedInvoice) -> Suggestion:
     return Suggestion(
         spent_on=suggested_spent_on(parsed),
@@ -63,15 +82,45 @@ def build_suggestion(session: Session, parsed: ParsedInvoice) -> Suggestion:
         category_id=suggest_category(
             session, parsed.seller_name, parsed.item_summary, parsed.tax_category
         ),
+        is_online=is_online_purchase(parsed.order_no, parsed.seller_name),
     )
 
 
+def suggestion_from_invoice(session: Session, invoice: InvoiceData) -> Suggestion:
+    """由已入库的发票数据生成建议（用于待归属发票批量生成记录）。"""
+    return Suggestion(
+        spent_on=invoice.issued_on,
+        amount_cents=invoice.total_cents,
+        merchant=invoice.seller_name or "",
+        summary=invoice.item_summary or "",
+        category_id=suggest_category(
+            session, invoice.seller_name, invoice.item_summary, invoice.tax_category
+        ),
+        is_online=is_online_purchase(invoice.order_no, invoice.seller_name),
+    )
+
+
+def nonlocal_warning(invoice: InvoiceData, policy: RegionPolicy) -> str | None:
+    """外地发票且销售方不属于已带明细平台时，提示需附订单截图。"""
+    if not is_nonlocal_region(invoice.region_name, policy.local_region):
+        return None
+    if is_detail_seller(invoice.seller_name, policy.detail_platforms):
+        return None
+    return NONLOCAL_WARNING.format(region=invoice.region_name)
+
+
 def build_warnings(
-    parsed: ParsedInvoice, invoice: InvoiceData, buyer: tuple[str, str] | None
+    parsed: ParsedInvoice,
+    invoice: InvoiceData,
+    buyer: tuple[str, str] | None,
+    policy: RegionPolicy = DEFAULT_POLICY,
 ) -> list[str]:
     warnings = list(parsed.warnings)
     if is_buyer_mismatch(invoice, buyer):
         warnings.append(BUYER_MISMATCH_WARNING)
+    nonlocal_message = nonlocal_warning(invoice, policy)
+    if nonlocal_message:
+        warnings.append(nonlocal_message)
     missing = (
         (parsed.total_cents is None, MISSING_AMOUNT_WARNING),
         (suggested_spent_on(parsed) is None, MISSING_DATE_WARNING),

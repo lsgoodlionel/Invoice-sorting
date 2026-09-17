@@ -44,13 +44,14 @@ DETAIL_KEYS = {
     "missing_count", "batch_id", "batch_name", "attachment_count", "invoice_no", "pay_method",
     "is_online", "note", "void_reason", "sent_on", "reimbursed_on", "reimbursed_cents",
     "folder_path", "route_hint", "attachments", "checklist", "timeline", "created_at",
-    "updated_at",
+    "updated_at", "region_name", "is_nonlocal",
 }  # fmt: skip
 
 
 def test_create_returns_detail_shape(client):
     detail = create(client, category_id=category_id(client, "易耗品"), summary="鼠标×2")
     assert set(detail) == DETAIL_KEYS
+    assert detail["region_name"] == "" and detail["is_nonlocal"] is False
     assert detail["status"] == "spent"
     assert detail["status_label"] == "已支出"
     assert detail["category_name"] == "易耗品"

@@ -17,7 +17,7 @@ from invoice_sorting.common.constants import (
 from invoice_sorting.db.models import Attachment, Batch, ChecklistItem, Expense
 from invoice_sorting.expenses.listing import SUMMARY_LOAD_OPTIONS
 from invoice_sorting.expenses.serializers import serialize_expense_summary
-from invoice_sorting.settings.service import get_app_settings
+from invoice_sorting.settings.service import get_app_settings, region_policy
 from invoice_sorting.stats.service import StatsQuery, compute_totals, load_entries
 
 MISSING_LIMIT = 20
@@ -90,11 +90,12 @@ def _unassigned_count(session: Session) -> int:
 def build_dashboard(session: Session, today: date) -> dict[str, Any]:
     start, end = month_bounds(today)
     month_entries = load_entries(session, StatsQuery(start=start, end=end))
+    policy = region_policy(session)
     return {
-        "missing": [serialize_expense_summary(e) for e in _missing_expenses(session)],
+        "missing": [serialize_expense_summary(e, policy) for e in _missing_expenses(session)],
         "overdue": [serialize_batch(batch) for batch in _overdue_batches(session, today)],
         "spent_without_invoice": [
-            serialize_expense_summary(e) for e in _spent_without_invoice(session, today)
+            serialize_expense_summary(e, policy) for e in _spent_without_invoice(session, today)
         ],
         "unassigned_count": _unassigned_count(session),
         "month_totals": compute_totals([entry.expense for entry in month_entries]),

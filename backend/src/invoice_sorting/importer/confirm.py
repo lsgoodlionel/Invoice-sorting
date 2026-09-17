@@ -99,6 +99,7 @@ def _create(ctx: _Context, attachment: Attachment, row: ConfirmRow) -> None:
         summary=row.summary or "",
         category_id=row.category_id,
         project_id=row.project_id,
+        is_online=bool(row.is_online),
     )
     folder_before = expense.folder_path
     if folder_before:

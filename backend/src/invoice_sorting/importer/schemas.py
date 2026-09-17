@@ -23,6 +23,7 @@ class ConfirmRow(BaseModel):
     summary: str | None = Field(default="", max_length=SUMMARY_MAX)
     category_id: int | None = None
     project_id: int | None = None
+    is_online: bool | None = None
 
 
 class ConfirmRequest(BaseModel):

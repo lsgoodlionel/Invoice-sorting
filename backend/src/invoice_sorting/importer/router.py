@@ -14,7 +14,7 @@ from invoice_sorting.importer.serializers import serialize_import
 from invoice_sorting.importer.service import ImportResult, import_files
 from invoice_sorting.importer.sessions import get_session_store
 from invoice_sorting.settings.deps import ConfigDep, SessionDep
-from invoice_sorting.settings.service import buyer_identity
+from invoice_sorting.settings.service import buyer_identity, region_policy
 
 router = APIRouter(prefix="/api", tags=["导入"])
 
@@ -66,7 +66,7 @@ def post_import(
         result.add_error(name, message)
     rows = {row.row_id: row.attachment.id for row in result.rows}
     session_id = get_session_store(request.app).create(rows)
-    return ok(serialize_import(session_id, result, buyer_identity(session)))
+    return ok(serialize_import(session_id, result, buyer_identity(session), region_policy(session)))
 
 
 @router.post("/imports/{session_id}/confirm")
