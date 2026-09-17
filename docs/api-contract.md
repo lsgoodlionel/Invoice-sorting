@@ -23,7 +23,7 @@
 | POST | `/api/auth/setup` | 公开；`{ password }`，仅在 admin 尚未设置密码时可用，否则 409“已设置过初始密码，请直接登录” | `{ authenticated: true, user: CurrentUser }`，以 admin 身份写入会话 Cookie |
 | POST | `/api/auth/login` | 公开；`{ username, password }`；用户名不存在、密码错误或账户已停用统一 401“用户名或密码错误”；admin 未设置密码 409“请先设置初始密码”；失败过多 429“尝试次数过多，请 N 分钟后再试” | `{ authenticated: true, user: CurrentUser }`，写入会话 Cookie |
 | POST | `/api/auth/logout` | 需登录 | `null` |
-| POST | `/api/auth/password` | 需登录；`{ current_password, new_password }`；当前密码错误 400 | `null`；本人其他会话失效，当前会话保留 |
+| POST | `/api/auth/password` | 需登录；`{ current_password, new_password }`；当前密码错误 400；关闭认证时 400“未启用登录认证，无法修改密码” | `null`；本人其他会话失效，当前会话保留 |
 
 ```ts
 type UserRole = "admin" | "member"
@@ -31,26 +31,26 @@ type CurrentUser = { id: number; username: string; display_name: string; role: U
 type UserRef = { id: number; display_name: string } // 用于上传人/操作人展示
 ```
 
-- 用户名：3–32 个字符，字母、数字、下划线、点、连字符（不区分大小写唯一，存储为小写）；`admin` 为内置管理员用户名。
-- 姓名 display_name：1–32 个字符，默认同用户名。
+- 用户名：3–32 个字符，字母、数字、下划线、点、连字符（不区分大小写唯一，存储为小写，首尾空白忽略）；`admin` 为内置管理员用户名。不符合 422“用户名需为 3–32 个字符，只能包含字母、数字、下划线、点、连字符”。login 的 username 不校验格式（去首尾空白、按小写匹配），仅超过 1024 字符 422。
+- 姓名 display_name：1–32 个字符（去首尾空白后计算），默认同用户名；不符合 422。
 - 密码规则：8–128 个字符（setup、new_password、创建用户、管理员重置密码）；不符合 422。login 的 password 与 current_password 不校验下限，仅超过 1024 字符 422。
 - 会话 Cookie `invoice_session`：HttpOnly、SameSite=Lax、Path=/，30 天，按小时续期；HTTPS 时 Secure；服务端只存令牌 SHA-256，会话关联用户。
-- 未认证：401“请先登录”；admin 未设置密码时 401“请先设置初始密码”。已登录但账户被停用：该用户所有会话立即失效（401“请先登录”）。
-- 权限不足：403“需要管理员权限”。
+- 未认证：401“请先登录”；admin 未设置密码时 401“请先设置初始密码”（此时其他用户也无法访问，status 的 authenticated=false、user=null）。已登录但账户被停用：该用户所有会话立即失效（401“请先登录”）。
+- 权限不足：403“需要管理员权限”（先于请求体校验，普通用户提交非法请求体也返回 403）。
 - 公开端点：`/api/health`、`/api/auth/status`、`/api/auth/setup`、`/api/auth/login`。
 - 登录失败限制：按客户端 IP，15 分钟内失败 5 次锁定 15 分钟（同前）。
 - `INVOICE_SORTING_AUTH_ENABLED=false`：关闭认证，status 返回 auth_enabled=false、authenticated=true、user=null；所有端点放行，管理员限定端点也放行；操作人记为空。
-- 旧版单一密码自动迁移：启动时若存在旧密码且没有用户，创建 admin 并沿用该密码；旧会话全部失效（需重新登录）。
-- 忘记 admin 密码：服务器执行 `invoice-sorting reset-password`（清除 admin 密码与 admin 全部会话，网页回到“设置初始密码”）；`invoice-sorting reset-password --user 用户名` 清除指定用户密码并停用其会话（该用户需管理员在网页中重新设置密码）。
+- 旧版单一密码自动迁移（启动时幂等执行）：若不存在 admin 用户则创建 admin（姓名“管理员”），有旧密码时沿用该密码，并删除旧密码设置；未关联用户的旧会话全部失效（需重新登录）。新库启动即有未设置密码的 admin。
+- 忘记 admin 密码：服务器执行 `invoice-sorting reset-password`（清除 admin 密码与 admin 全部会话，网页回到“设置初始密码”；其他用户会话保留，但在 admin 重新设置密码前同样 401“请先设置初始密码”）；`invoice-sorting reset-password --user 用户名` 清除指定用户密码并删除其全部会话（has_password=false，该用户需管理员在网页中重新设置密码）。用户不存在时 stderr 输出“用户不存在：用户名”并以退出码 1 结束。
 
 ### 0.2 用户管理（仅管理员）
 
 | 方法 | 路径 | 请求 | 返回 data |
 | --- | --- | --- | --- |
 | GET | `/api/users` | — | `User[]`（按创建时间） |
-| POST | `/api/users` | `{ username, display_name?, password, role }`；用户名已存在 409“用户名已存在” | `User` |
-| PATCH | `/api/users/{id}` | `{ display_name?, role?, is_active? }` | `User`；停用后其会话全部失效 |
-| POST | `/api/users/{id}/password` | `{ password }` 管理员重置 | `null`；该用户所有会话失效 |
+| POST | `/api/users` | `{ username, display_name?, password, role? }`（role 默认 `member`）；用户名已存在 409“用户名已存在” | `User` |
+| PATCH | `/api/users/{id}` | `{ display_name?, role?, is_active? }`；用户不存在 404“用户不存在” | `User`；停用后其会话全部失效 |
+| POST | `/api/users/{id}/password` | `{ password }` 管理员重置；用户不存在 404 | `null`；该用户所有会话失效（重置自己的密码时当前会话也失效，需重新登录） |
 
 ```ts
 type User = {
@@ -59,7 +59,7 @@ type User = {
 }
 ```
 
-- 约束（400，中文说明）：不能停用自己或把自己改为普通用户；系统必须至少保留一名启用中且已设置密码的管理员；内置 `admin` 不能改用户名（本接口不提供改用户名）。
+- 约束（400，中文说明）：不能停用自己（“不能停用自己”）或把自己改为普通用户（“不能把自己改为普通用户”）；系统必须至少保留一名启用中且已设置密码的管理员（修改会让最后一名这样的管理员失去资格时 400“系统必须至少保留一名启用中且已设置密码的管理员”）；内置 `admin` 不能改用户名（本接口不提供改用户名）。关闭认证时无“自己”，仅检查管理员保留规则。
 - 普通用户（member）可使用：收集、清单、批次、统计、附件、导入、经费项目新建/编辑、修改自己的密码。
 - 仅管理员：用户管理；`PUT /api/settings`；分类的新建/修改/删除；凭证清单规则的新建/修改/删除；`POST /api/backup`。对应 GET 端点所有登录用户可读。
 

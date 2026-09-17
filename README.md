@@ -24,7 +24,7 @@
   - [开票地区与订单凭证](#开票地区与订单凭证)
   - [批次：打包外送](#批次打包外送)
   - [统计](#统计)
-  - [登录与密码](#登录与密码)
+  - [用户与登录](#用户与登录)
   - [设置](#设置)
 - [核心概念](#核心概念)
 - [数据与备份](#数据与备份)
@@ -171,7 +171,7 @@ cd backend && uv export --quiet --frozen --no-dev --no-emit-project --extra ocr 
 curl -fsSL https://raw.githubusercontent.com/lsgoodlionel/Invoice-sorting/main/deploy/install.sh | sudo bash
 ```
 
-完成后通过 `http://服务器IP:8765` 访问（云服务器需在安全组放行 8765 端口）。**首次打开网页会要求设置初始登录密码**，设置前无法使用任何功能；安装完成后请尽快打开页面完成设置（设置前任何能访问该地址的人都可以设置）。
+完成后通过 `http://服务器IP:8765` 访问（云服务器需在安全组放行 8765 端口）。**首次打开网页会要求为管理员账户 `admin` 设置初始密码**，设置前无法使用任何功能；之后可在「设置 → 用户管理」添加其他用户。安装完成后请尽快打开页面完成设置（设置前任何能访问该地址的人都可以设置）。
 
 ### 使用域名并启用 HTTPS
 
@@ -183,7 +183,7 @@ curl -fsSL https://raw.githubusercontent.com/lsgoodlionel/Invoice-sorting/main/d
 
 ### 忘记登录密码
 
-在服务器上执行以下命令清除密码，然后重新打开网页设置新的初始密码（已登录的设备会全部退出）：
+普通用户忘记密码由管理员在「设置 → 用户管理」中重置。管理员 admin 忘记密码时，在服务器上执行以下命令清除 admin 密码，然后重新打开网页为 admin 设置新的初始密码（admin 已登录的设备会全部退出）：
 
 ```bash
 sudo -u invoice env INVOICE_SORTING_DATA_DIR=/var/lib/invoice-sorting /opt/invoice-sorting/app/backend/.venv/bin/invoice-sorting reset-password
@@ -362,13 +362,24 @@ scp *.pdf user@server:/tmp/ && ssh user@server 'sudo install -o invoice -g invoi
 - 交叉表：按分类 / 经费项目 / 商家 / 月份分组 × 状态，点击金额跳转到对应明细；统计数字与清单页同条件合计保持一致。
 - 按月趋势柱状图；「导出 Excel」输出汇总与明细。
 
-### 登录与密码
+### 用户与登录
 
-- **首次打开**：显示“设置初始密码”页（8–128 个字符，输入两次），设置完成后自动登录。设置前所有数据都无法访问。
-- **之后访问**：未登录时显示登录页；登录状态保存 30 天（每次使用自动续期）。
-- **修改密码 / 退出登录**：「设置 → 登录与安全」。修改密码后，其他设备需要重新登录。
+- **管理员 admin**：系统内置管理员账户。首次打开网页时为 admin 设置初始密码（8–128 个字符，输入两次），设置完成后自动登录；设置前所有数据都无法访问。
+- **添加用户**：管理员在「设置 → 用户管理」添加用户（用户名、姓名、角色、初始密码），也可以重置密码、修改姓名与角色、停用/启用用户。停用或重置密码后，该用户所有设备立即退出登录。系统始终保留至少一名启用中的管理员，管理员不能停用自己或取消自己的管理员身份。
+- **角色权限**：
+
+  | 功能 | 管理员 | 普通用户 |
+  | --- | --- | --- |
+  | 收集凭证、补传、处理记录、批次打包、统计 | ✔ | ✔ |
+  | 经费项目新建与编辑、修改自己的密码 | ✔ | ✔ |
+  | 用户管理 | ✔ | — |
+  | 系统设置（购方抬头、本地地区、分类、凭证清单规则、备份） | ✔ | 只读 |
+
+- **多人协作补全凭证**：所有用户共用同一个账本。同一套凭证可以由不同人分别上传，例如 A 上传发票、B 之后上传订单截图或银行交易，系统照样自动归并到同一条记录。每个附件显示上传人（收件箱自动导入的显示“收件箱”），记录显示创建人，时间线显示每次状态变化的操作人，批次与资料包显示创建/生成人。
+- **登录**：用户名 + 密码；登录状态保存 30 天（使用时自动续期）。
+- **修改密码 / 退出登录**：「设置 → 登录与安全」；修改密码后本人其他设备需重新登录。
 - **安全措施**：密码加盐哈希存储；同一 IP 15 分钟内输错 5 次锁定 15 分钟；会话 Cookie 不可被网页脚本读取。
-- **忘记密码**：见[常见问题](#常见问题)中的重置命令。
+- **忘记密码**：普通用户请管理员重置；admin 忘记密码见[常见问题](#常见问题)。
 
 ### 设置
 
@@ -476,10 +487,10 @@ scp *.pdf user@server:/tmp/ && ssh user@server 'sudo install -o invoice -g invoi
 导入确认表中可以直接修改；确认后在记录详情里也能修改。识别不出的发票会作为附件导入，手工填写即可。建议把识别有误的发票版式反馈到 Issues。
 
 **可以多人使用吗？**
-当前版本为个人使用设计，只有一个登录密码，没有多账号与权限体系。
+可以。管理员 admin 在「设置 → 用户管理」添加用户，大家共用同一个账本，分别上传的凭证会自动归并，并记录上传人与操作人。
 
 **忘记登录密码怎么办？**
-服务器：`sudo -u invoice env INVOICE_SORTING_DATA_DIR=/var/lib/invoice-sorting /opt/invoice-sorting/app/backend/.venv/bin/invoice-sorting reset-password`；本机：`backend/.venv/bin/invoice-sorting reset-password`。执行后重新打开网页设置初始密码。
+普通用户：请管理员在「设置 → 用户管理」重置密码。管理员 admin：在服务器执行 `sudo -u invoice env INVOICE_SORTING_DATA_DIR=/var/lib/invoice-sorting /opt/invoice-sorting/app/backend/.venv/bin/invoice-sorting reset-password`（本机：`backend/.venv/bin/invoice-sorting reset-password`），然后重新打开网页为 admin 设置初始密码。也可以用 `reset-password --user 用户名` 清除指定用户的密码。
 
 **如何迁移到另一台电脑或服务器？**
 停止应用后复制整个数据目录到新位置（服务器上注意 `chown -R invoice:invoice /var/lib/invoice-sorting`），再启动即可。

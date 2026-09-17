@@ -2,7 +2,7 @@
 # 发票账本 · Ubuntu 一键安装 / 升级脚本
 #
 # 首次安装与升级使用同一条命令（重复执行即升级，数据与登录密码保留）。
-# 安装完成后打开网页设置初始登录密码（应用内认证，终端不生成密码）：
+# 安装完成后打开网页为管理员 admin 设置初始密码，再在「设置 → 用户管理」添加其他用户：
 #   curl -fsSL https://raw.githubusercontent.com/lsgoodlionel/Invoice-sorting/main/deploy/install.sh | sudo bash
 #
 # 可选环境变量（写在 sudo 之后，例如 `| sudo DOMAIN=invoice.example.com bash`）：
@@ -346,13 +346,13 @@ print_summary() {
  访问地址：${scheme}://${host}${port_suffix}
 EOF
   if password_is_set; then
-    echo " 登录密码：沿用网页中已设置的密码"
+    echo " 管理员：admin（沿用网页中已设置的密码；其他用户由管理员在网页中添加）"
   else
-    echo " 登录密码：尚未设置 ← 请立即打开上面的访问地址，在网页中设置初始密码"
+    echo " 管理员：admin，尚未设置密码 ← 请立即打开上面的访问地址，为 admin 设置初始密码"
     echo "          （设置前任何能访问该地址的人都可以设置，请尽快完成）"
   fi
   cat <<EOF
- 忘记密码：sudo -u ${APP_USER} env INVOICE_SORTING_DATA_DIR=${DATA_DIR} ${APP_DIR}/backend/.venv/bin/invoice-sorting reset-password
+ 重置 admin 密码：sudo -u ${APP_USER} env INVOICE_SORTING_DATA_DIR=${DATA_DIR} ${APP_DIR}/backend/.venv/bin/invoice-sorting reset-password
  数据目录：${DATA_DIR}（收件箱：${DATA_DIR}/收件箱）
  升级命令：重新执行安装命令即可
  查看日志：journalctl -u ${APP_NAME} -f
