@@ -75,7 +75,7 @@ backend/.venv/bin/invoice-sorting
 | `MIRROR=auto` | 默认，测速自动选择 |
 | `MIRROR=cn` | 强制国内镜像 |
 | `MIRROR=global` | 强制官方源 |
-| `NO_OCR=1` | 不安装 OCR（约 200MB；截图只按文件名识别） |
+| `NO_OCR=1` | 不安装 OCR（约 200MB；截图只按文件名识别，可之后[单独安装](#单独安装-ocr截图识别)） |
 | `PYPI_INDEX` / `NPM_REGISTRY` | 手工指定源地址，跳过测速 |
 
 启动后自动打开 <http://127.0.0.1:8765>。本机模式只监听 127.0.0.1，不对局域网开放。
@@ -85,6 +85,60 @@ backend/.venv/bin/invoice-sorting
 ```bash
 git pull && bash scripts/setup.sh && backend/.venv/bin/invoice-sorting
 ```
+
+### 单独安装 OCR（截图识别）
+
+截图、图片类凭证（交易订单、银行交易、收据等）的文字识别依赖 `rapidocr`、`onnxruntime`、`opencv-python`，下载量约 200MB。安装时用 `NO_OCR=1` 跳过、或下载太慢中断时，可以之后单独补装。以下命令**按锁文件版本安装**（带哈希校验），已安装的包会自动跳过。
+
+**本机**（在仓库根目录执行）：
+
+官方源：
+
+```bash
+cd backend && uv export --quiet --frozen --no-dev --no-emit-project --extra ocr --format requirements-txt -o /tmp/ocr-req.txt && uv pip install --python .venv/bin/python --index-url https://pypi.org/simple -r /tmp/ocr-req.txt
+```
+
+阿里云镜像：
+
+```bash
+cd backend && uv export --quiet --frozen --no-dev --no-emit-project --extra ocr --format requirements-txt -o /tmp/ocr-req.txt && uv pip install --python .venv/bin/python --index-url https://mirrors.aliyun.com/pypi/simple -r /tmp/ocr-req.txt
+```
+
+装好后重启应用即可生效。
+
+**Ubuntu 服务器**（一键部署安装的实例）：
+
+1. 安装 OCR 运行所需的系统库：
+
+   ```bash
+   sudo apt-get install -y libgl1 libglib2.0-0
+   ```
+
+2. 以程序用户 `invoice` 安装依赖（二选一）。
+
+   官方源：
+
+   ```bash
+   cd /opt/invoice-sorting/app/backend && sudo -u invoice env HOME=/opt/invoice-sorting UV_NO_CONFIG=1 UV_CACHE_DIR=/opt/invoice-sorting/.cache/uv sh -c 'uv export --quiet --frozen --no-dev --no-emit-project --extra ocr --format requirements-txt -o /opt/invoice-sorting/.cache/ocr-req.txt && uv pip install --python .venv/bin/python --index-url https://pypi.org/simple -r /opt/invoice-sorting/.cache/ocr-req.txt'
+   ```
+
+   阿里云镜像：
+
+   ```bash
+   cd /opt/invoice-sorting/app/backend && sudo -u invoice env HOME=/opt/invoice-sorting UV_NO_CONFIG=1 UV_CACHE_DIR=/opt/invoice-sorting/.cache/uv sh -c 'uv export --quiet --frozen --no-dev --no-emit-project --extra ocr --format requirements-txt -o /opt/invoice-sorting/.cache/ocr-req.txt && uv pip install --python .venv/bin/python --index-url https://mirrors.aliyun.com/pypi/simple -r /opt/invoice-sorting/.cache/ocr-req.txt'
+   ```
+
+3. 预先下载识别模型（约 30MB，首次识别时也会自动下载）并确认可用，然后重启服务：
+
+   ```bash
+   cd /opt/invoice-sorting && sudo -u invoice /opt/invoice-sorting/app/backend/.venv/bin/python -c "from rapidocr import RapidOCR; RapidOCR(); from invoice_sorting.evidence import ocr_available; print('OCR 可用:', ocr_available())"
+   ```
+
+   ```bash
+   sudo systemctl restart invoice-sorting
+   ```
+
+> 之后再执行一键安装/升级命令时，若没有带 `NO_OCR=1`，脚本会自动保持 OCR 依赖为锁文件版本。
 
 可用环境变量：
 
@@ -140,7 +194,7 @@ curl -fsSL https://raw.githubusercontent.com/lsgoodlionel/Invoice-sorting/main/d
 | `INSTALL_DIR` | `/opt/invoice-sorting` | 程序目录 |
 | `DATA_DIR` | `/var/lib/invoice-sorting` | 数据目录 |
 | `MIRROR` | `auto` | 下载源：`auto` 测速选择 / `cn` 国内镜像 / `global` 官方源 |
-| `NO_OCR` | `0` | 设为 `1` 不安装截图识别 |
+| `NO_OCR` | `0` | 设为 `1` 不安装截图识别（之后可[单独安装](#单独安装-ocr截图识别)） |
 
 ### 脚本做了什么
 
