@@ -6,6 +6,7 @@ import type { ExpenseDetail, ExpensePatch } from '../../api/types';
 import { CategorySelect } from '../CategorySelect';
 import { MoneyInput } from '../MoneyInput';
 import { ProjectSelect } from '../ProjectSelect';
+import { ForeignExpenseFields } from './ForeignExpenseFields';
 
 const PAY_METHODS = ['微信', '支付宝', '银行卡', '公务卡', '现金', '对公转账'];
 
@@ -41,7 +42,7 @@ export function ExpenseFields({ expense }: { expense: ExpenseDetail }) {
         onChange={(value) => value && value !== expense.spent_on && save({ spent_on: value })}
       />
       <MoneyInput
-        label="金额（元）"
+        label="人民币金额（元）"
         cents={expense.amount_cents}
         onCentsChange={() => undefined}
         onCommit={(cents) => cents !== null && cents !== expense.amount_cents && save({ amount_cents: cents })}
@@ -63,6 +64,7 @@ export function ExpenseFields({ expense }: { expense: ExpenseDetail }) {
         checked={expense.is_online}
         onChange={(event) => save({ is_online: event.currentTarget.checked })}
       />
+      <ForeignExpenseFields expense={expense} />
       <Textarea label="备注" autosize minRows={2} style={{ gridColumn: '1 / -1' }} {...textProps('note')} />
     </SimpleGrid>
   );

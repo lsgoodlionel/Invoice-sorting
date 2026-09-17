@@ -12,6 +12,8 @@ import { ExpenseTable } from '../components/expenses/ExpenseTable';
 import { SelectionBar } from '../components/expenses/SelectionBar';
 import { StatusGroupBar } from '../components/expenses/StatusGroupBar';
 import { useExpenseFilters } from '../components/expenses/useExpenseFilters';
+import { usePreventFileDrop } from '../components/expenses/useFileDropTarget';
+import { useRowUpload } from '../components/expenses/useRowUpload';
 import { useQuickAdd } from '../components/QuickAddContext';
 import { filtersToQuery } from '../lib/expenseFilters';
 import { formatCents, sumCents } from '../lib/money';
@@ -30,6 +32,8 @@ export function ExpensesPage() {
   const [openId, setOpenId] = useState<number | null>(null);
   const [isBatchOpen, setBatchOpen] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
+  const uploadToRow = useRowUpload();
+  usePreventFileDrop();
 
   const items = data?.items ?? [];
   const selectedItems = items.filter((item) => selectedIds.includes(item.id));
@@ -74,6 +78,7 @@ export function ExpensesPage() {
           onToggle={(id) => setSelectedIds((ids) => toggleId(ids, id))}
           onToggleAll={(checked) => setSelectedIds(checked ? items.map((item) => item.id) : [])}
           onOpen={setOpenId}
+          onDropFiles={uploadToRow}
         />
       )}
       {visibleSelectedIds.length > 0 && (

@@ -4,7 +4,7 @@ import { describe, expect, test } from 'vitest';
 import { mockFetch } from '../../test/fetchMock';
 import { makeDetail } from '../../test/fixtures';
 import { createTestClient, TestProviders } from '../../test/render';
-import { useDeleteAttachment, useSetChecklistState, useUnassignedAttachments, useUpdateAttachment } from './attachments';
+import { useAttachmentCandidates, useDeleteAttachment, useSetChecklistState, useUnassignedAttachments, useUpdateAttachment } from './attachments';
 import {
   useBatch, useBatchItems, useBatchList, useCreateBatch, useDeleteBatch, useExportBatch,
   useMarkBatchReceived, useMarkBatchSent, useUpdateBatch,
@@ -12,7 +12,7 @@ import {
 import { useDashboard } from './dashboard';
 import {
   useCreateExpense, useDeleteExpense, useExpense, useExpenseList, useExpenseSearch,
-  useSetExpenseStatus, useUpdateExpense, useUploadExpenseAttachments,
+  useSetExpenseStatus, useUpdateExpense, useUploadExpenseAttachments, useUploadToExpense,
 } from './expenses';
 import { useConfirmImport, useImportFiles } from './imports';
 import { queryKeys } from './keys';
@@ -36,6 +36,7 @@ describe('query hooks', () => {
       'GET /api/expenses': { items: [detail], total: 1, total_cents: 96000, status_counts: {} },
       'GET /api/expenses/1': detail,
       'GET /api/attachments/unassigned': [],
+      'GET /api/attachments/2/candidates': [{ expense_id: 7 }],
       'GET /api/batches': [],
       'GET /api/batches/2': { id: 2 },
       'GET /api/dashboard': { missing: [] },
@@ -53,6 +54,8 @@ describe('query hooks', () => {
         one: useExpense(1),
         none: useExpense(null),
         unassigned: useUnassignedAttachments(),
+        candidates: useAttachmentCandidates(2, true),
+        lazyCandidates: useAttachmentCandidates(3, false),
         batches: useBatchList(),
         batch: useBatch(2),
         dashboard: useDashboard(),
@@ -70,6 +73,8 @@ describe('query hooks', () => {
     expect(result.current.one.data?.id).toBe(1);
     expect(result.current.none.fetchStatus).toBe('idle');
     expect(result.current.batch.data).toEqual({ id: 2 });
+    await waitFor(() => expect(result.current.candidates.data).toEqual([{ expense_id: 7 }]));
+    expect(result.current.lazyCandidates.fetchStatus).toBe('idle');
     expect(result.current.settings.data?.overdue_days).toBe(30);
   });
 });
@@ -92,7 +97,7 @@ describe('mutation hooks', () => {
     const { result } = renderHook(
       () => ({
         create: useCreateExpense(), update: useUpdateExpense(1), status: useSetExpenseStatus(1),
-        upload: useUploadExpenseAttachments(1), remove: useDeleteExpense(), checklist: useSetChecklistState(),
+        upload: useUploadExpenseAttachments(1), uploadTo: useUploadToExpense(), remove: useDeleteExpense(), checklist: useSetChecklistState(),
         updateAttachment: useUpdateAttachment(), deleteAttachment: useDeleteAttachment(),
         importFiles: useImportFiles(), confirm: useConfirmImport(),
       }),
@@ -103,12 +108,13 @@ describe('mutation hooks', () => {
       await result.current.update.mutateAsync({ note: 'x' });
       await result.current.status.mutateAsync({ status: null });
       await result.current.upload.mutateAsync({ files: [new File(['a'], 'a.pdf')], kind: 'order' });
+      await result.current.uploadTo.mutateAsync({ id: 1, files: [new File(['b'], 'b.png')] });
       await result.current.remove.mutateAsync(1);
       await result.current.checklist.mutateAsync({ id: 5, state: 'not_needed' });
       await result.current.updateAttachment.mutateAsync({ id: 9, patch: { kind: 'order' } });
       await result.current.deleteAttachment.mutateAsync(9);
       await result.current.importFiles.mutateAsync([new File(['a'], 'a.pdf')]);
-      await result.current.confirm.mutateAsync({ sessionId: 's', rows: [] });
+      await result.current.confirm.mutateAsync({ sessionId: 's', input: { groups: [] } });
     });
     expect(client.getQueryData(queryKeys.expense(1))).toEqual(detail);
     expect(calls.map((c) => c.method)).toContain('DELETE');

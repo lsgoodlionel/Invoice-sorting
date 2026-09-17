@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
-import { buildCondition, conditionSwitches, describeCondition } from './rules';
+import { buildCondition, conditionSwitches, describeCondition, INVOICE_EXEMPT_OPTIONS } from './rules';
 
-const EMPTY_INPUT = { amountGte: null, amountLt: null, isOnlineOnly: false, isNonlocalOnly: false, excludeDetailPlatform: false };
+const EMPTY_INPUT = { amountGte: null, amountLt: null, isOnlineOnly: false, isNonlocalOnly: false, excludeDetailPlatform: false, invoiceExempt: 'any' as const };
 
 describe('rule conditions', () => {
   test('describeCondition', () => {
@@ -28,8 +28,18 @@ describe('rule conditions', () => {
 
   test('conditionSwitches reads flags back from a stored condition', () => {
     expect(conditionSwitches({ is_nonlocal: true, detail_platform: false, is_online: true })).toEqual({
-      isOnlineOnly: true, isNonlocalOnly: true, excludeDetailPlatform: true,
+      isOnlineOnly: true, isNonlocalOnly: true, excludeDetailPlatform: true, invoiceExempt: 'any',
     });
-    expect(conditionSwitches({})).toEqual({ isOnlineOnly: false, isNonlocalOnly: false, excludeDetailPlatform: false });
+    expect(conditionSwitches({})).toEqual({ isOnlineOnly: false, isNonlocalOnly: false, excludeDetailPlatform: false, invoiceExempt: 'any' });
+  });
+
+  test('invoice exempt condition is described, encoded and read back', () => {
+    expect(describeCondition({ invoice_exempt: true })).toBe('仅免发票记录');
+    expect(describeCondition({ invoice_exempt: false, is_nonlocal: true })).toBe('仅外地发票，排除免发票记录');
+    expect(buildCondition({ ...EMPTY_INPUT, invoiceExempt: 'only' })).toEqual({ invoice_exempt: true });
+    expect(buildCondition({ ...EMPTY_INPUT, invoiceExempt: 'exclude' })).toEqual({ invoice_exempt: false });
+    expect(conditionSwitches({ invoice_exempt: true }).invoiceExempt).toBe('only');
+    expect(conditionSwitches({ invoice_exempt: false }).invoiceExempt).toBe('exclude');
+    expect(INVOICE_EXEMPT_OPTIONS.map((option) => option.label)).toEqual(['不限', '仅免发票记录', '排除免发票记录']);
   });
 });

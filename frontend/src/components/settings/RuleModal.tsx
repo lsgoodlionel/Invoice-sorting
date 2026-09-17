@@ -2,7 +2,7 @@ import { Button, Checkbox, Group, Modal, SegmentedControl, Select, SimpleGrid, S
 import { useEffect, useState } from 'react';
 import { useCategories, useSaveRule } from '../../api/hooks/settings';
 import type { AttachmentKind, ChecklistLevel, ChecklistRule } from '../../api/types';
-import { buildCondition, conditionSwitches, type ConditionSwitches } from '../../lib/rules';
+import { buildCondition, conditionSwitches, INVOICE_EXEMPT_OPTIONS, type ConditionSwitches, type InvoiceExemptFilter } from '../../lib/rules';
 import { ATTACHMENT_KIND_OPTIONS } from '../../lib/status';
 import { MoneyInput } from '../MoneyInput';
 
@@ -76,7 +76,16 @@ export function RuleModal({ editing, onClose }: { editing: ChecklistRule | 'new'
           <Switch label="仅外地发票" checked={draft.isNonlocalOnly} onChange={(e) => patch({ isNonlocalOnly: e.currentTarget.checked })} />
           <Switch label="排除已带明细平台" checked={draft.excludeDetailPlatform} onChange={(e) => patch({ excludeDetailPlatform: e.currentTarget.checked })} />
         </Group>
-        <Text size="xs" c="dimmed">外地：开票地区不等于设置中的本地地区；已带明细平台见“通用设置”。</Text>
+        <Select
+          label="免发票记录"
+          aria-label="免发票记录"
+          w={220}
+          data={INVOICE_EXEMPT_OPTIONS}
+          value={draft.invoiceExempt}
+          allowDeselect={false}
+          onChange={(v) => v && patch({ invoiceExempt: v as InvoiceExemptFilter })}
+        />
+        <Text size="xs" c="dimmed">外地：开票地区不等于设置中的本地地区；已带明细平台见“通用设置”；免发票记录：境外消费等无法取得发票的记录。</Text>
         <Textarea label="提示文字" autosize minRows={2} value={draft.hint} onChange={(e) => patch({ hint: e.currentTarget.value })} />
         <Group justify="flex-end">
           <Button variant="subtle" onClick={onClose}>取消</Button>

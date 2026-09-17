@@ -7,6 +7,7 @@ import type {
   ChecklistState,
   CreateExpensesResult,
   ExpenseDetail,
+  MatchCandidate,
 } from '../types';
 import { invalidateWorkflow } from './invalidate';
 import { queryKeys } from './keys';
@@ -24,6 +25,7 @@ export const attachmentsApi = {
   bulkAssign: (input: AttachmentBulkAssign) => api.post<Attachment[]>('/attachments/bulk-assign', input),
   createExpenses: (ids: readonly number[]) => api.post<CreateExpensesResult>('/attachments/create-expenses', { ids }),
   reparse: (ids: readonly number[]) => api.post<Attachment[]>('/attachments/reparse', { ids }),
+  candidates: (id: number) => api.get<MatchCandidate[]>(`/attachments/${id}/candidates`),
   thumbnailUrl: (id: number) => `/api/attachments/${id}/thumbnail`,
   fileUrl: (id: number) => `/api/attachments/${id}/file`,
   setChecklistState: (id: number, state: Exclude<ChecklistState, 'present'>, reason?: string) =>
@@ -32,6 +34,15 @@ export const attachmentsApi = {
 
 export function useUnassignedAttachments() {
   return useQuery({ queryKey: queryKeys.unassigned, queryFn: attachmentsApi.unassigned });
+}
+
+/** 待归属附件的候选记录；enabled 为 false 时不请求（懒加载）。 */
+export function useAttachmentCandidates(id: number, enabled: boolean) {
+  return useQuery({
+    queryKey: queryKeys.attachmentCandidates(id),
+    queryFn: () => attachmentsApi.candidates(id),
+    enabled,
+  });
 }
 
 export function useUpdateAttachment() {

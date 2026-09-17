@@ -1,9 +1,13 @@
 import '@testing-library/jest-dom/vitest';
+import { notifications } from '@mantine/notifications';
 import { cleanup } from '@testing-library/react';
 import { afterEach, vi } from 'vitest';
 
 afterEach(() => {
   cleanup();
+  // 通知存储是全局的且最多显示 5 条，避免前一个测试的通知把后续通知挤进队列
+  notifications.clean();
+  notifications.cleanQueue();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });

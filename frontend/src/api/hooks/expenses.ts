@@ -91,6 +91,10 @@ export const useUploadExpenseAttachments = (id: number) =>
     expensesApi.upload(id, files, kind),
   );
 
+/** 清单行拖放补传：不传 kind，由后端自动识别类型。 */
+export const useUploadToExpense = () =>
+  useDetailMutation(({ id, files }: { id: number; files: readonly File[] }) => expensesApi.upload(id, files));
+
 export function useDeleteExpense() {
   const client = useQueryClient();
   return useMutation({

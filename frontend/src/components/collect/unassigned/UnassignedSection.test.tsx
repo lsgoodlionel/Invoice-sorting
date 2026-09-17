@@ -1,9 +1,9 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import type { RecordedCall } from '../../../test/fetchMock';
 import { mockFetch } from '../../../test/fetchMock';
-import { makeAttachment, makeExpense, makeInvoice } from '../../../test/fixtures';
+import { makeAttachment, makeCandidate, makeEvidence, makeExpense, makeInvoice } from '../../../test/fixtures';
 import { renderWithProviders } from '../../../test/render';
 import { UnassignedSection } from './UnassignedSection';
 
@@ -38,7 +38,7 @@ describe('UnassignedSection', () => {
     const row = screen.getByTestId('unassigned-row-11');
     expect(within(row).getByText(/2026-09-10 · 北京某书店 · ¥128.00/)).toBeInTheDocument();
     expect(within(row).getByText('外地·北京')).toBeInTheDocument();
-    expect(within(screen.getByTestId('unassigned-row-12')).getByText('—')).toBeInTheDocument();
+    expect(within(screen.getByTestId('unassigned-row-12')).getByText('未识别（可在下方手动归属）')).toBeInTheDocument();
     expect(screen.queryByText(/已选/)).not.toBeInTheDocument();
   });
 
@@ -134,5 +134,56 @@ describe('UnassignedSection', () => {
     await renderSection(true);
     await user.click(screen.getByRole('checkbox', { name: '全选' }));
     expect(screen.getByRole('button', { name: '生成记录' })).toHaveAttribute('data-variant', 'light');
+  });
+
+  test('non-invoice evidence shows type, date, foreign amount, merchant and order tail', async () => {
+    const receipt = makeAttachment({ id: 13, expense_id: null, kind: 'order', original_name: 'Claude订单.png', evidence: makeEvidence() });
+    mockFetch({ 'GET /api/attachments/unassigned': [receipt] });
+    renderWithProviders(<UnassignedSection hasOtherPrimary={false} />);
+    const row = await screen.findByTestId('unassigned-row-13');
+    expect(within(row).getByText('订单 · 2026-06-28 · US$20.00 · Apple / Claude Pro - Monthly · 订单号 …QX1234')).toBeInTheDocument();
+  });
+
+  test('suggestions load lazily on click and can be adopted', async () => {
+    const user = userEvent.setup();
+    const { calls } = setup({
+      'GET /api/attachments/12/candidates': [makeCandidate({ expense_id: 42, merchant: '腾讯云', amount_cents: 29800, reasons: ['订单号一致'] })],
+      'GET /api/attachments/11/candidates': [],
+      'POST /api/attachments/bulk-assign': [],
+    });
+    await renderSection();
+    expect(calls.some((c) => c.url.includes('/candidates'))).toBe(false);
+
+    await user.click(within(screen.getByTestId('suggestion-12')).getByRole('button', { name: '查看建议' }));
+    const suggestion = screen.getByTestId('suggestion-12');
+    expect(await within(suggestion).findByText('建议挂到 #42 腾讯云 ¥298.00（订单号一致）')).toBeInTheDocument();
+    expect(calls.filter((c) => c.url.includes('/candidates')).map((c) => c.url)).toEqual(['/api/attachments/12/candidates']);
+
+    await user.click(within(screen.getByTestId('suggestion-11')).getByRole('button', { name: '查看建议' }));
+    expect(await within(screen.getByTestId('suggestion-11')).findByText('—')).toBeInTheDocument();
+
+    await user.click(within(suggestion).getByRole('button', { name: '采纳' }));
+    await waitFor(() => expect(callTo(calls, '/api/attachments/bulk-assign')?.body).toEqual({ ids: [12], expense_id: 42 }));
+    await waitFor(() => expect(document.body).toHaveTextContent('已挂到 #42'));
+  });
+
+  test('suggestions load automatically when rows enter the viewport', async () => {
+    class VisibleObserver {
+      constructor(private readonly callback: IntersectionObserverCallback) {}
+      observe() {
+        this.callback([{ isIntersecting: true } as IntersectionObserverEntry], this as unknown as IntersectionObserver);
+      }
+      disconnect() {}
+      unobserve() {}
+    }
+    vi.stubGlobal('IntersectionObserver', VisibleObserver);
+    const { calls } = setup({
+      'GET /api/attachments/11/candidates': [],
+      'GET /api/attachments/12/candidates': [makeCandidate({ reasons: [] })],
+    });
+    await renderSection();
+    expect(await within(screen.getByTestId('suggestion-12')).findByText('建议挂到 #42 腾讯云 ¥298.00')).toBeInTheDocument();
+    expect(calls.filter((c) => c.url.includes('/candidates'))).toHaveLength(2);
+    expect(screen.queryByRole('button', { name: '查看建议' })).not.toBeInTheDocument();
   });
 });

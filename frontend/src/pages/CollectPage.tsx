@@ -4,16 +4,16 @@ import { IconPlus } from '@tabler/icons-react';
 import { useState } from 'react';
 import { useConfirmImport, useImportFiles } from '../api/hooks/imports';
 import { useSettings } from '../api/hooks/settings';
-import type { ImportSession } from '../api/types';
-import { ImportConfirmTable } from '../components/collect/ImportConfirmTable';
+import type { ImportConfirmInput, ImportSession } from '../api/types';
+import { ImportGroupsPanel } from '../components/collect/groups/ImportGroupsPanel';
 import { ImportDropzone } from '../components/collect/ImportDropzone';
 import { ImportIssues } from '../components/collect/ImportIssues';
 import { UnassignedSection } from '../components/collect/unassigned/UnassignedSection';
 import { useQuickAdd } from '../components/QuickAddContext';
-import { draftsFromSession, toConfirmRow, updateDraft, type ImportDraft } from '../lib/importRows';
 
 function sessionSummary(session: ImportSession): string {
-  const parts = [`${session.rows.length} 张发票`, `${session.attachments.length} 个附件`];
+  const fileCount = session.groups.reduce((total, group) => total + group.attachments.length, 0);
+  const parts = [`${session.groups.length} 组`, `${fileCount} 个文件`];
   if (session.duplicates.length) parts.push(`${session.duplicates.length} 个重复已跳过`);
   if (session.errors.length) parts.push(`${session.errors.length} 个失败`);
   return parts.join(' · ');
@@ -25,32 +25,25 @@ export function CollectPage() {
   const importFiles = useImportFiles();
   const confirm = useConfirmImport();
   const [session, setSession] = useState<ImportSession | null>(null);
-  const [drafts, setDrafts] = useState<ImportDraft[]>([]);
-  const hasConfirmTable = session !== null && session.rows.length > 0;
+  const hasConfirmTable = session !== null && session.groups.length > 0;
 
   const handleFiles = (files: File[]) => {
     if (files.length === 0) return;
-    importFiles.mutate(files, {
-      onSuccess: (result) => {
-        setSession(result);
-        setDrafts(draftsFromSession(result));
-      },
-    });
+    importFiles.mutate(files, { onSuccess: setSession });
   };
 
-  const handleConfirm = () => {
+  const handleConfirm = (input: ImportConfirmInput) => {
     if (!session) return;
     confirm.mutate(
-      { sessionId: session.session_id, rows: drafts.map(toConfirmRow) },
+      { sessionId: session.session_id, input },
       {
         onSuccess: (result) => {
           notifications.show({
             color: 'ink',
             title: '导入完成',
-            message: `新建 ${result.created.length} 条，挂到已有 ${result.attached.length} 条，跳过 ${result.skipped} 条`,
+            message: `新建 ${result.created.length} 条，挂到已有 ${result.attached.length} 条，${result.skipped} 个文件留在待归属`,
           });
           setSession(null);
-          setDrafts([]);
         },
       },
     );
@@ -68,15 +61,9 @@ export function CollectPage() {
           <Text className="section-label">本次导入：{sessionSummary(session)}</Text>
           <ImportIssues duplicates={session.duplicates} errors={session.errors} notices={session.notices} />
           {hasConfirmTable ? (
-            <ImportConfirmTable
-              rows={session.rows}
-              drafts={drafts}
-              onChange={(rowId, patch) => setDrafts((current) => updateDraft(current, rowId, patch))}
-              onConfirm={handleConfirm}
-              isSubmitting={confirm.isPending}
-            />
+            <ImportGroupsPanel key={session.session_id} session={session} onConfirm={handleConfirm} isSubmitting={confirm.isPending} />
           ) : (
-            <Text size="sm" c="dimmed">本次没有识别到发票，非发票文件已放入下方“待归属附件”。</Text>
+            <Text size="sm" c="dimmed">本次没有需要确认的文件。</Text>
           )}
         </Stack>
       )}

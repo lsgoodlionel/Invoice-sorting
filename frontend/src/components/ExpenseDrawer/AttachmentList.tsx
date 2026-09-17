@@ -4,6 +4,7 @@ import { IconArrowBackUp, IconEye, IconTrash } from '@tabler/icons-react';
 import { useState } from 'react';
 import { useDeleteAttachment, useUpdateAttachment } from '../../api/hooks/attachments';
 import type { Attachment, AttachmentKind } from '../../api/types';
+import { evidenceParts, isEvidenceRecognized } from '../../lib/evidence';
 import { ATTACHMENT_KIND_OPTIONS } from '../../lib/status';
 import { AttachmentPreview } from '../AttachmentPreview';
 import { RegionBadge } from '../RegionBadge';
@@ -23,6 +24,14 @@ function InvoiceLine({ attachment }: { attachment: Attachment }) {
       {invoice.order_no && <Text size="xs" c="dimmed" className="num">订单号 {invoice.order_no}</Text>}
     </Group>
   );
+}
+
+/** 非发票凭证识别摘要：类型 · 日期 · 金额币种 · 订单号 */
+function EvidenceLine({ attachment }: { attachment: Attachment }) {
+  if (attachment.invoice || !isEvidenceRecognized(attachment.evidence)) return null;
+  const { evidence } = attachment;
+  const parts = evidenceParts({ ...evidence, merchant: '', item_name: '' });
+  return <Text size="xs" c="dimmed" className="num" data-testid={`evidence-${attachment.id}`}>{parts.join(' · ')}</Text>;
 }
 
 function AttachmentRow({ attachment }: { attachment: Attachment }) {
@@ -66,6 +75,7 @@ function AttachmentRow({ attachment }: { attachment: Attachment }) {
         </Tooltip>
       </Group>
       <InvoiceLine attachment={attachment} />
+      <EvidenceLine attachment={attachment} />
       <Collapse expanded={isPreviewOpen}>{isPreviewOpen && <AttachmentPreview attachment={attachment} />}</Collapse>
     </Stack>
   );

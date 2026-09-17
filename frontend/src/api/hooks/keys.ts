@@ -7,6 +7,8 @@ export const queryKeys = {
   expense: (id: number) => ['expenses', 'detail', id] as const,
   unbatchedExpenses: ['expenses', 'unbatched'] as const,
   unassigned: ['attachments', 'unassigned'] as const,
+  candidates: ['attachments', 'candidates'] as const,
+  attachmentCandidates: (id: number) => ['attachments', 'candidates', id] as const,
   batches: ['batches'] as const,
   batchList: (status?: string) => ['batches', 'list', status ?? 'all'] as const,
   batch: (id: number) => ['batches', 'detail', id] as const,
@@ -22,6 +24,7 @@ export const queryKeys = {
 export const WORKFLOW_KEYS = [
   queryKeys.expenses,
   queryKeys.unassigned,
+  queryKeys.candidates,
   queryKeys.batches,
   queryKeys.dashboard,
   ['stats'] as const,

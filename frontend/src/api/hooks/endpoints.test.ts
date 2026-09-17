@@ -15,7 +15,7 @@ function allRoutes() {
     'GET /api/expenses', 'POST /api/expenses', 'GET /api/expenses/1', 'PATCH /api/expenses/1', 'DELETE /api/expenses/1',
     'POST /api/expenses/1/status', 'POST /api/expenses/1/attachments',
     'GET /api/attachments/unassigned', 'PATCH /api/attachments/2', 'DELETE /api/attachments/2', 'PATCH /api/checklist-items/3',
-    'POST /api/attachments/bulk-delete', 'POST /api/attachments/bulk-assign', 'POST /api/attachments/create-expenses', 'POST /api/attachments/reparse',
+    'POST /api/attachments/bulk-delete', 'POST /api/attachments/bulk-assign', 'POST /api/attachments/create-expenses', 'POST /api/attachments/reparse', 'GET /api/attachments/2/candidates',
     'POST /api/imports', 'POST /api/imports/s%201/confirm',
     'GET /api/batches', 'POST /api/batches', 'GET /api/batches/4', 'PATCH /api/batches/4', 'DELETE /api/batches/4',
     'POST /api/batches/4/items', 'POST /api/batches/4/export', 'POST /api/batches/4/sent', 'POST /api/batches/4/received', 'POST /api/batches/4/reopen',
@@ -58,6 +58,7 @@ describe('endpoint functions follow the contract', () => {
     await attachmentsApi.bulkAssign({ ids: [1], expense_id: 4, kind: 'order' });
     await attachmentsApi.createExpenses([1]);
     await attachmentsApi.reparse([2]);
+    await attachmentsApi.candidates(2);
     expect(calls[1].body).toEqual({ expense_id: null });
     expect(calls[3].body).toEqual({ state: 'not_needed', reason: '线下购买' });
     expect(calls[4].body).toEqual({ state: 'missing' });
@@ -65,6 +66,7 @@ describe('endpoint functions follow the contract', () => {
     expect(calls[6]).toMatchObject({ method: 'POST', url: '/api/attachments/bulk-assign', body: { ids: [1], expense_id: 4, kind: 'order' } });
     expect(calls[7]).toMatchObject({ method: 'POST', url: '/api/attachments/create-expenses', body: { ids: [1] } });
     expect(calls[8]).toMatchObject({ method: 'POST', url: '/api/attachments/reparse', body: { ids: [2] } });
+    expect(calls[9]).toMatchObject({ method: 'GET', url: '/api/attachments/2/candidates' });
     expect(attachmentsApi.thumbnailUrl(9)).toBe('/api/attachments/9/thumbnail');
     expect(attachmentsApi.fileUrl(9)).toBe('/api/attachments/9/file');
   });
@@ -72,8 +74,12 @@ describe('endpoint functions follow the contract', () => {
   test('imports', async () => {
     const { calls } = mockFetch(allRoutes());
     await importsApi.upload([new File(['a'], 'a.pdf')]);
-    await importsApi.confirm('s 1', []);
-    expect(calls[1]).toMatchObject({ method: 'POST', url: '/api/imports/s%201/confirm', body: { rows: [] } });
+    await importsApi.confirm('s 1', { groups: [{ group_id: 'g1', attachment_ids: [1], action: 'skip' }] });
+    expect(calls[1]).toMatchObject({
+      method: 'POST',
+      url: '/api/imports/s%201/confirm',
+      body: { groups: [{ group_id: 'g1', attachment_ids: [1], action: 'skip' }] },
+    });
   });
 
   test('batches', async () => {

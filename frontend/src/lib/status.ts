@@ -24,6 +24,13 @@ export function statusLabel(status: ExpenseStatus): string {
   return STATUS_META[status].label;
 }
 
+const EXEMPT_INVOICED_LABEL = '已收凭证';
+
+/** 步进条标签：免发票记录第二步显示“已收凭证”。 */
+export function stepLabel(status: ExpenseStatus, invoiceExempt: boolean): string {
+  return invoiceExempt && status === 'invoiced' ? EXEMPT_INVOICED_LABEL : STATUS_META[status].label;
+}
+
 /** 主状态线上的序号（0 开始），作废为 -1。 */
 export function statusRank(status: ExpenseStatus): number {
   return STATUS_ORDER.indexOf(status);

@@ -68,6 +68,26 @@ export interface InvoiceData {
   buyer_mismatch: boolean;
 }
 
+export type EvidenceDocType = 'order' | 'receipt' | 'payment' | 'itinerary' | 'unknown';
+
+/** 非发票凭证识别结果（订单、收据、银行交易、行程单等）。 */
+export interface EvidenceData {
+  doc_type: EvidenceDocType;
+  recognizer: string;
+  /** 票面金额（分，按 currency） */
+  amount_cents: number | null;
+  currency: string;
+  /** 人民币金额（分） */
+  cny_cents: number | null;
+  occurred_on: string | null;
+  merchant: string;
+  item_name: string;
+  order_no: string;
+  card_last4: string;
+  is_foreign: boolean;
+  confirmed: boolean;
+}
+
 export interface Attachment {
   id: number;
   expense_id: number | null;
@@ -80,6 +100,9 @@ export interface Attachment {
   created_at: string;
   url: string;
   invoice: InvoiceData | null;
+  evidence: EvidenceData | null;
+  /** 文件名键（用于同组判断） */
+  file_key: string;
 }
 
 export interface ChecklistItem {
@@ -122,6 +145,12 @@ export interface ExpenseSummary {
   invoice_no: string | null;
   region_name: string;
   is_nonlocal: boolean;
+  /** 免发票（境外消费等） */
+  invoice_exempt: boolean;
+  /** 原币种（ISO），人民币为 CNY */
+  currency: string;
+  /** 原币金额（分）；CNY 时为 null */
+  original_amount_cents: number | null;
 }
 
 export interface ExpenseDetail extends ExpenseSummary {
@@ -182,7 +211,11 @@ export interface ExpenseCreate {
   note?: string;
 }
 
-export type ExpensePatch = Partial<ExpenseCreate>;
+export interface ExpensePatch extends Partial<ExpenseCreate> {
+  invoice_exempt?: boolean;
+  currency?: string;
+  original_amount_cents?: number | null;
+}
 
 export interface Batch {
   id: number;
@@ -253,28 +286,45 @@ export interface BatchReceived {
   expense_ids?: number[];
 }
 
-export interface ImportSuggestion {
+export type ImportAction = 'create' | 'attach' | 'skip';
+
+/** 与已有记录的匹配候选（分数与依据）。 */
+export interface MatchCandidate {
+  expense_id: number;
+  spent_on: string;
+  merchant: string;
+  amount_cents: number;
+  currency: string;
+  original_amount_cents: number | null;
+  status: ExpenseStatus;
+  missing_kinds: AttachmentKind[];
+  score: number;
+  reasons: string[];
+}
+
+/** 建议用于新建记录的字段。 */
+export interface GroupSummary {
   spent_on: string | null;
+  /** 人民币金额（分） */
   amount_cents: number | null;
+  currency: string;
+  original_amount_cents: number | null;
   merchant: string;
   summary: string;
   category_id: number | null;
   is_online: boolean;
+  invoice_exempt: boolean;
 }
 
-export interface ImportMatch {
-  expense_id: number;
-  merchant: string;
-  amount_cents: number;
-  spent_on: string;
-}
-
-export interface ImportRow {
-  row_id: string;
-  attachment: Attachment;
-  is_invoice: boolean;
-  suggested: ImportSuggestion;
-  match: ImportMatch | null;
+/** 一组同一笔支出的凭证。 */
+export interface ImportGroup {
+  group_id: string;
+  attachments: Attachment[];
+  link_reasons: string[];
+  summary: GroupSummary;
+  match: MatchCandidate | null;
+  candidates: MatchCandidate[];
+  suggested_action: ImportAction;
   warnings: string[];
 }
 
@@ -296,26 +346,34 @@ export interface ImportNotice {
 
 export interface ImportSession {
   session_id: string;
-  rows: ImportRow[];
-  attachments: Attachment[];
+  groups: ImportGroup[];
   duplicates: ImportDuplicate[];
   errors: ImportError[];
   notices: ImportNotice[];
 }
 
-export type ImportAction = 'create' | 'attach' | 'skip';
-
-export interface ImportConfirmRow {
-  row_id: string;
+export interface ConfirmGroup {
+  group_id: string;
+  /** 以前端当前分组为准 */
+  attachment_ids: number[];
+  /** 用户改过的附件类型，键为附件 id */
+  kinds?: Record<string, AttachmentKind>;
   action: ImportAction;
   expense_id?: number;
-  spent_on: string;
-  amount_cents: number;
-  merchant: string;
-  summary: string;
-  category_id: number | null;
+  spent_on?: string;
+  amount_cents?: number;
+  currency?: string;
+  original_amount_cents?: number | null;
+  merchant?: string;
+  summary?: string;
+  category_id?: number | null;
   project_id?: number | null;
   is_online?: boolean;
+  invoice_exempt?: boolean;
+}
+
+export interface ImportConfirmInput {
+  groups: ConfirmGroup[];
 }
 
 export interface ImportConfirmResult {
@@ -412,6 +470,7 @@ export interface ChecklistCondition {
   is_online?: boolean;
   is_nonlocal?: boolean;
   detail_platform?: boolean;
+  invoice_exempt?: boolean;
 }
 
 export interface ChecklistRule {

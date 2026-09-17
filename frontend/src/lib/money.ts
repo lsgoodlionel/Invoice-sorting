@@ -20,6 +20,49 @@ export function formatCents(cents: number | null | undefined, options: { symbol?
   return `${isNegative ? '-' : ''}${symbol ? '¥' : ''}${body}`;
 }
 
+export const DEFAULT_CURRENCY = 'CNY';
+
+const CURRENCY_SYMBOLS: Readonly<Record<string, string>> = {
+  CNY: '¥',
+  USD: 'US$',
+  EUR: '€',
+  GBP: '£',
+  HKD: 'HK$',
+  JPY: 'JP¥',
+};
+
+export const CURRENCY_OPTIONS: readonly { value: string; label: string }[] = [
+  { value: 'CNY', label: '人民币 CNY' },
+  { value: 'USD', label: '美元 USD' },
+  { value: 'EUR', label: '欧元 EUR' },
+  { value: 'GBP', label: '英镑 GBP' },
+  { value: 'HKD', label: '港币 HKD' },
+  { value: 'JPY', label: '日元 JPY' },
+];
+
+function normalizeCurrency(currency: string | null | undefined): string {
+  return (currency ?? '').trim().toUpperCase() || DEFAULT_CURRENCY;
+}
+
+/** 币种符号：USD → "US$"；未知币种返回 ISO 代码。 */
+export function currencySymbol(currency: string | null | undefined): string {
+  const code = normalizeCurrency(currency);
+  return CURRENCY_SYMBOLS[code] ?? code;
+}
+
+export function isForeignCurrency(currency: string | null | undefined): boolean {
+  return normalizeCurrency(currency) !== DEFAULT_CURRENCY;
+}
+
+/** 按币种格式化：(2000, "USD") → "US$20.00"；未知币种 → "SGD 5.00"。 */
+export function formatMoney(cents: number | null | undefined, currency: string | null | undefined): string {
+  const plain = formatCents(cents, { symbol: false });
+  if (plain === '—') return plain;
+  const code = normalizeCurrency(currency);
+  const symbol = CURRENCY_SYMBOLS[code] ?? `${code} `;
+  return plain.startsWith('-') ? `-${symbol}${plain.slice(1)}` : `${symbol}${plain}`;
+}
+
 /** 分 → 元字符串（用于输入框），96000 → "960.00" */
 export function centsToYuanString(cents: number | null | undefined): string {
   if (cents === null || cents === undefined) return '';

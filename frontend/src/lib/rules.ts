@@ -2,10 +2,20 @@
 import type { ChecklistCondition } from '../api/types';
 import { formatCents } from './money';
 
+/** 免发票条件：不限 / 仅免发票记录 / 排除免发票记录 */
+export type InvoiceExemptFilter = 'any' | 'only' | 'exclude';
+
+export const INVOICE_EXEMPT_OPTIONS: readonly { value: InvoiceExemptFilter; label: string }[] = [
+  { value: 'any', label: '不限' },
+  { value: 'only', label: '仅免发票记录' },
+  { value: 'exclude', label: '排除免发票记录' },
+];
+
 export interface ConditionSwitches {
   isOnlineOnly: boolean;
   isNonlocalOnly: boolean;
   excludeDetailPlatform: boolean;
+  invoiceExempt: InvoiceExemptFilter;
 }
 
 export interface ConditionInput extends ConditionSwitches {
@@ -24,6 +34,8 @@ function describeFlags(condition: ChecklistCondition): string[] {
   if (condition.is_nonlocal === false) parts.push('仅本地发票');
   if (condition.detail_platform === false) parts.push('排除已带明细平台');
   if (condition.detail_platform === true) parts.push('仅已带明细平台');
+  if (condition.invoice_exempt === true) parts.push('仅免发票记录');
+  if (condition.invoice_exempt === false) parts.push('排除免发票记录');
   return parts;
 }
 
@@ -44,6 +56,7 @@ export function buildCondition(input: ConditionInput): ChecklistCondition {
     ...(input.isOnlineOnly ? { is_online: true } : {}),
     ...(input.isNonlocalOnly ? { is_nonlocal: true } : {}),
     ...(input.excludeDetailPlatform ? { detail_platform: false } : {}),
+    ...(input.invoiceExempt === 'any' ? {} : { invoice_exempt: input.invoiceExempt === 'only' }),
   };
 }
 
@@ -53,5 +66,12 @@ export function conditionSwitches(condition: ChecklistCondition): ConditionSwitc
     isOnlineOnly: condition.is_online === true,
     isNonlocalOnly: condition.is_nonlocal === true,
     excludeDetailPlatform: condition.detail_platform === false,
+    invoiceExempt: exemptFilter(condition.invoice_exempt),
   };
+}
+
+function exemptFilter(value: boolean | undefined): InvoiceExemptFilter {
+  if (value === true) return 'only';
+  if (value === false) return 'exclude';
+  return 'any';
 }

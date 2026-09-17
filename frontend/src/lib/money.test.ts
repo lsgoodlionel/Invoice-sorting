@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { centsToYuanString, formatCents, parseYuanToCents, sumCents } from './money';
+import { centsToYuanString, CURRENCY_OPTIONS, currencySymbol, formatCents, formatMoney, isForeignCurrency, parseYuanToCents, sumCents } from './money';
 
 describe('formatCents', () => {
   test('formats with symbol, thousands and two decimals', () => {
@@ -71,5 +71,39 @@ describe('helpers', () => {
   test('sumCents adds integers', () => {
     expect(sumCents([10, 20, 30])).toBe(60);
     expect(sumCents([])).toBe(0);
+  });
+});
+
+describe('formatMoney', () => {
+  test('uses currency symbols', () => {
+    expect(formatMoney(2000, 'USD')).toBe('US$20.00');
+    expect(formatMoney(123456, 'EUR')).toBe('€1,234.56');
+    expect(formatMoney(999, 'GBP')).toBe('£9.99');
+    expect(formatMoney(10000, 'HKD')).toBe('HK$100.00');
+    expect(formatMoney(150000, 'JPY')).toBe('JP¥1,500.00');
+    expect(formatMoney(14426, 'CNY')).toBe('¥144.26');
+  });
+
+  test('treats empty currency as CNY and is case-insensitive', () => {
+    expect(formatMoney(100, '')).toBe('¥1.00');
+    expect(formatMoney(100, 'usd')).toBe('US$1.00');
+  });
+
+  test('falls back to ISO code prefix for unknown currencies', () => {
+    expect(formatMoney(500, 'SGD')).toBe('SGD 5.00');
+  });
+
+  test('handles negative and missing amounts', () => {
+    expect(formatMoney(-2000, 'USD')).toBe('-US$20.00');
+    expect(formatMoney(null, 'USD')).toBe('—');
+  });
+
+  test('currency helpers', () => {
+    expect(currencySymbol('USD')).toBe('US$');
+    expect(currencySymbol('XYZ')).toBe('XYZ');
+    expect(isForeignCurrency('USD')).toBe(true);
+    expect(isForeignCurrency('CNY')).toBe(false);
+    expect(isForeignCurrency('')).toBe(false);
+    expect(CURRENCY_OPTIONS.map((option) => option.value)).toEqual(['CNY', 'USD', 'EUR', 'GBP', 'HKD', 'JPY']);
   });
 });

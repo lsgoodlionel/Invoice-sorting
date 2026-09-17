@@ -1,4 +1,16 @@
-import type { Attachment, InvoiceData, BatchDetail, ChecklistItem, ExpenseDetail, ExpenseSummary, ImportRow, Project } from '../api/types';
+import type {
+  Attachment,
+  BatchDetail,
+  ChecklistItem,
+  EvidenceData,
+  ExpenseDetail,
+  ExpenseSummary,
+  ImportGroup,
+  ImportSession,
+  InvoiceData,
+  MatchCandidate,
+  Project,
+} from '../api/types';
 
 export function makeExpense(overrides: Partial<ExpenseSummary> = {}): ExpenseSummary {
   return {
@@ -22,6 +34,9 @@ export function makeExpense(overrides: Partial<ExpenseSummary> = {}): ExpenseSum
     invoice_no: null,
     region_name: '',
     is_nonlocal: false,
+    invoice_exempt: false,
+    currency: 'CNY',
+    original_amount_cents: null,
     ...overrides,
   };
 }
@@ -39,6 +54,8 @@ export function makeAttachment(overrides: Partial<Attachment> = {}): Attachment 
     created_at: '2026-09-15T10:00:00+08:00',
     url: '/api/attachments/10/file',
     invoice: null,
+    evidence: null,
+    file_key: '',
     ...overrides,
   };
 }
@@ -101,16 +118,66 @@ export function makeDetail(overrides: Partial<ExpenseDetail> = {}): ExpenseDetai
   };
 }
 
-export function makeImportRow(overrides: Partial<ImportRow> = {}): ImportRow {
+export function makeEvidence(overrides: Partial<EvidenceData> = {}): EvidenceData {
   return {
-    row_id: 'r1',
-    attachment: makeAttachment({ expense_id: null }),
-    is_invoice: true,
-    suggested: { spent_on: '2026-09-15', amount_cents: 96000, merchant: '京东某店', summary: '鼠标', category_id: 1, is_online: false },
+    doc_type: 'order',
+    recognizer: 'app_store_order',
+    amount_cents: 2000,
+    currency: 'USD',
+    cny_cents: null,
+    occurred_on: '2026-06-28',
+    merchant: 'Apple',
+    item_name: 'Claude Pro - Monthly',
+    order_no: 'MSD3K2L9QX1234',
+    card_last4: '',
+    is_foreign: true,
+    confirmed: false,
+    ...overrides,
+  };
+}
+
+export function makeCandidate(overrides: Partial<MatchCandidate> = {}): MatchCandidate {
+  return {
+    expense_id: 42,
+    spent_on: '2026-09-11',
+    merchant: '腾讯云',
+    amount_cents: 29800,
+    currency: 'CNY',
+    original_amount_cents: null,
+    status: 'spent',
+    missing_kinds: ['invoice'],
+    score: 85,
+    reasons: ['金额相同', '日期相差 1 天'],
+    ...overrides,
+  };
+}
+
+export function makeGroup(overrides: Partial<ImportGroup> = {}): ImportGroup {
+  return {
+    group_id: 'g1',
+    attachments: [makeAttachment({ id: 10, expense_id: null, invoice: makeInvoice() })],
+    link_reasons: [],
+    summary: {
+      spent_on: '2026-09-15',
+      amount_cents: 96000,
+      currency: 'CNY',
+      original_amount_cents: null,
+      merchant: '京东某店',
+      summary: '鼠标',
+      category_id: 1,
+      is_online: false,
+      invoice_exempt: false,
+    },
     match: null,
+    candidates: [],
+    suggested_action: 'create',
     warnings: [],
     ...overrides,
   };
+}
+
+export function makeSession(overrides: Partial<ImportSession> = {}): ImportSession {
+  return { session_id: 'sess-1', groups: [makeGroup()], duplicates: [], errors: [], notices: [], ...overrides };
 }
 
 export function makeBatch(overrides: Partial<BatchDetail> = {}): BatchDetail {

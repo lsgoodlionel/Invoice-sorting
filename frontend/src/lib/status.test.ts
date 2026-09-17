@@ -7,6 +7,7 @@ import {
   STATUS_META,
   statusLabel,
   statusRank,
+  stepLabel,
   toggleStatus,
 } from './status';
 
@@ -45,5 +46,10 @@ describe('status utils', () => {
     expect(isDateBasis('received')).toBe(true);
     expect(isDateBasis('created')).toBe(false);
     expect(ATTACHMENT_KIND_OPTIONS).toHaveLength(12);
+  });
+  test('stepLabel shows 已收凭证 for invoice exempt records on the second step', () => {
+    expect(stepLabel('invoiced', false)).toBe('已开票');
+    expect(stepLabel('invoiced', true)).toBe('已收凭证');
+    expect(stepLabel('complete', true)).toBe('凭证齐全');
   });
 });
