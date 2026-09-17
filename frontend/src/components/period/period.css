@@ -1,0 +1,60 @@
+/* 区间说明行：内联文字 + 下划线的轻量输入，聚焦时显示边框。 */
+.period-inline .mantine-Input-input,
+.period-inline input {
+  height: 26px;
+  min-height: 26px;
+  padding: 0 4px;
+  color: var(--ink-text);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  border: 1px solid transparent;
+  border-bottom: 1px dashed var(--paper-line-strong);
+  border-radius: 2px;
+  background: transparent;
+  cursor: pointer;
+  transition: border-color var(--duration-fast) ease, background-color var(--duration-fast) ease;
+}
+
+.period-inline input:hover {
+  border-bottom-color: var(--accent);
+}
+
+.period-inline input:focus,
+.period-inline input:focus-visible {
+  border-color: var(--accent);
+  background: var(--paper-surface);
+  outline: none;
+  cursor: text;
+}
+
+.period-date {
+  width: 110px;
+}
+
+.period-basis {
+  width: 92px;
+}
+
+.period-basis .mantine-Select-section,
+.period-basis [data-position='right'] {
+  width: 18px;
+}
+
+.period-presets {
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.period-presets::-webkit-scrollbar {
+  display: none;
+}
+
+.period-preset {
+  flex-shrink: 0;
+}
+
+.period-hint {
+  margin-left: 4px;
+}

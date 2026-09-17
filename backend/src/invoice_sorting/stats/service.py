@@ -150,12 +150,26 @@ def compute_months(entries: list[StatsEntry], start: date, end: date) -> list[di
     return [{"month": month, "amount_cents": cents} for month, cents in amounts.items()]
 
 
+def earliest_date(entries: list[StatsEntry]) -> date | None:
+    """区间内最早有数据的口径日期；无数据返回 None。"""
+    return min((entry.basis_date for entry in entries), default=None)
+
+
+def trend_start(start: date, data_start: date | None) -> date:
+    """趋势起点：数据起始月初与所选起始日期中较晚者；无数据时保持所选起始日期。"""
+    if data_start is None:
+        return start
+    return max(start, data_start.replace(day=1))
+
+
 def summarize(query: StatsQuery, entries: list[StatsEntry]) -> dict[str, Any]:
+    data_start = earliest_date(entries)
     return {
         "start": query.start.isoformat(),
         "end": query.end.isoformat(),
         "date_basis": str(query.date_basis),
+        "data_start": data_start.isoformat() if data_start else None,
         "totals": compute_totals([entry.expense for entry in entries]),
         "rows": compute_rows(entries, query.group_by),
-        "months": compute_months(entries, query.start, query.end),
+        "months": compute_months(entries, trend_start(query.start, data_start), query.end),
     }

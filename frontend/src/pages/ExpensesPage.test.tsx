@@ -2,6 +2,7 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, test } from 'vitest';
 import type { ExpenseListResult } from '../api/types';
+import { presetRange } from '../lib/period';
 import { mockFetch } from '../test/fetchMock';
 import { makeAttachment, makeDetail, makeExpense } from '../test/fixtures';
 import { renderWithProviders } from '../test/render';
@@ -131,5 +132,24 @@ describe('ExpensesPage', () => {
     renderWithProviders(<ExpensesPage />, { route: '/expenses?period=all&open=2' });
     expect(await screen.findByRole('dialog')).toBeInTheDocument();
     await waitFor(() => expect(calls.some((call) => call.url === '/api/expenses/2')).toBe(true));
+  });
+  test('period controls: legacy all shows 全部日期, presets and typed dates drive the request', async () => {
+    const user = userEvent.setup();
+    const { calls } = setupRoutes();
+    renderWithProviders(<ExpensesPage />, { route: '/expenses?period=all' });
+    await screen.findByText('京东某店');
+    expect(screen.getByText('全部日期')).toBeInTheDocument();
+    expect(calls.filter((c) => c.url.startsWith('/api/expenses?')).every((c) => !c.url.includes('start='))).toBe(true);
+
+    await user.click(screen.getByRole('button', { name: '近5年' }));
+    const range = presetRange('last_5_years') ?? { start: '', end: '' };
+    await waitFor(() => expect(calls.some((c) => c.url.includes(`start=${range.start}`) && c.url.includes(`end=${range.end}`))).toBe(true));
+    expect(screen.getByRole('button', { name: '近5年' })).toHaveAttribute('aria-pressed', 'true');
+
+    const endInput = screen.getByRole('textbox', { name: '结束日期' });
+    await user.clear(endInput);
+    await user.type(endInput, '2024-06-30');
+    await waitFor(() => expect(calls.some((c) => c.url.includes(`start=${range.start}`) && c.url.includes('end=2024-06-30'))).toBe(true));
+    expect(screen.queryAllByRole('button', { pressed: true }).filter((b) => b.closest('[aria-label="快捷区间"]'))).toHaveLength(0);
   });
 });

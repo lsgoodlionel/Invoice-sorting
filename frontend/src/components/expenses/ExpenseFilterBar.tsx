@@ -1,10 +1,12 @@
-import { Button, Group, TextInput } from '@mantine/core';
+import { Button, Group, Stack, TextInput } from '@mantine/core';
 import { useDebouncedCallback } from '@mantine/hooks';
 import { IconSearch, IconX } from '@tabler/icons-react';
 import { forwardRef, useEffect, useState } from 'react';
 import type { ExpenseFilters } from '../../lib/expenseFilters';
+import { resolvePeriod } from '../../lib/period';
 import { CategorySelect } from '../CategorySelect';
-import { PeriodPicker } from '../PeriodPicker';
+import { PeriodPresetBar } from '../period/PeriodPresetBar';
+import { PeriodRangeText } from '../period/PeriodRangeText';
 import { ProjectSelect } from '../ProjectSelect';
 
 interface ExpenseFilterBarProps {
@@ -26,38 +28,42 @@ export const ExpenseFilterBar = forwardRef<HTMLInputElement, ExpenseFilterBarPro
   const hasExtraFilters = filters.batchId !== null || filters.unbatched || filters.missingOnly;
 
   return (
-    <Group gap="xs" wrap="wrap">
-      <PeriodPicker
+    <Stack gap={6}>
+      <PeriodRangeText
         period={filters.period}
+        range={resolvePeriod(filters.period)}
         onPeriodChange={(period) => onChange({ period })}
         dateBasis={filters.dateBasis}
         onDateBasisChange={(dateBasis) => onChange({ dateBasis })}
       />
-      <CategorySelect w={130} placeholder="全部分类" clearable value={filters.categoryId} onChange={(categoryId) => onChange({ categoryId })} />
-      <ProjectSelect w={150} placeholder="全部项目" creatable={false} clearable value={filters.projectId} onChange={(projectId) => onChange({ projectId })} />
-      <TextInput
-        ref={searchRef}
-        w={220}
-        aria-label="搜索"
-        placeholder="搜索商家 / 摘要 / 发票号  /"
-        leftSection={<IconSearch size={14} />}
-        value={search}
-        onChange={(event) => {
-          const value = event.currentTarget.value;
-          setSearch(value);
-          commitSearch(value);
-        }}
-      />
-      {hasExtraFilters && (
-        <Button
-          size="xs"
-          variant="subtle"
-          leftSection={<IconX size={12} />}
-          onClick={() => onChange({ batchId: null, unbatched: false, missingOnly: false })}
-        >
-          {filters.missingOnly ? '仅缺项' : filters.unbatched ? '仅未分批' : `批次 #${filters.batchId}`}
-        </Button>
-      )}
-    </Group>
+      <Group gap="xs" wrap="wrap">
+        <PeriodPresetBar value={filters.period.preset} onSelect={(period) => onChange({ period })} />
+        <CategorySelect w={130} placeholder="全部分类" clearable value={filters.categoryId} onChange={(categoryId) => onChange({ categoryId })} />
+        <ProjectSelect w={150} placeholder="全部项目" creatable={false} clearable value={filters.projectId} onChange={(projectId) => onChange({ projectId })} />
+        <TextInput
+          ref={searchRef}
+          w={220}
+          aria-label="搜索"
+          placeholder="搜索商家 / 摘要 / 发票号  /"
+          leftSection={<IconSearch size={14} />}
+          value={search}
+          onChange={(event) => {
+            const value = event.currentTarget.value;
+            setSearch(value);
+            commitSearch(value);
+          }}
+        />
+        {hasExtraFilters && (
+          <Button
+            size="xs"
+            variant="subtle"
+            leftSection={<IconX size={12} />}
+            onClick={() => onChange({ batchId: null, unbatched: false, missingOnly: false })}
+          >
+            {filters.missingOnly ? '仅缺项' : filters.unbatched ? '仅未分批' : `批次 #${filters.batchId}`}
+          </Button>
+        )}
+      </Group>
+    </Stack>
   );
 });

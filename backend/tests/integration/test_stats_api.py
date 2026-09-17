@@ -49,15 +49,14 @@ def test_date_basis_assigns_periods(client, lifecycle):  # T14
     assert by_spent["totals"]["spent_cents"] == 57000
     assert by_spent["totals"]["reimbursed_cents"] == 50000
     assert by_spent["totals"]["pending_cents"] == 7000
-    assert by_spent["months"] == [
-        {"month": "2026-07", "amount_cents": 0},
-        {"month": "2026-08", "amount_cents": 0},
-        {"month": "2026-09", "amount_cents": 57000},
-    ]
+    assert by_spent["months"] == [{"month": "2026-09", "amount_cents": 57000}]
     assert stats(client, **Q3, date_basis="received")["totals"]["spent_cents"] == 0
     by_received = stats(client, **Q4, date_basis="received")
     assert by_received["totals"]["spent_cents"] == 50000
-    assert [m["amount_cents"] for m in by_received["months"]] == [0, 50000, 0]
+    assert by_received["months"] == [
+        {"month": "2026-11", "amount_cents": 50000},
+        {"month": "2026-12", "amount_cents": 0},
+    ]
     by_sent = stats(client, **Q4, date_basis="sent", group_by="month")
     assert [(row["key"], row["total_cents"]) for row in by_sent["rows"]] == [("2026-10", 50000)]
     assert stats(client, **Q4, date_basis="invoiced")["rows"] == []  # 图片发票无开票日期
@@ -148,3 +147,35 @@ def test_stats_export_xlsx(client, lifecycle):
     assert len(details) == 3
     assert details[1][1:4] == ("2026-09-20", "2026-09-20", "滴滴")
     assert details[1][7:] == ("已报销", 500, 500)
+
+
+def test_data_start_is_earliest_basis_date_in_range(client, lifecycle):
+    make_expense(client, spent_on="2025-05-18", cents=300, merchant="早期")
+    make_expense(client, spent_on="2024-01-02", cents=100, merchant="区间外")
+    decade = {"start": "2025-01-01", "end": "2026-12-31"}
+    by_spent = stats(client, **decade)
+    assert by_spent["data_start"] == "2025-05-18"
+    assert by_spent["start"] == "2025-01-01"
+    assert by_spent["months"][0] == {"month": "2025-05", "amount_cents": 300}
+    assert by_spent["months"][-1]["month"] == "2026-12"
+    assert len(by_spent["months"]) == 20
+    assert stats(client, **decade, date_basis="sent")["data_start"] == "2026-10-08"
+    by_received = stats(client, **decade, date_basis="received")
+    assert by_received["data_start"] == "2026-11-10"
+    assert [m["month"] for m in by_received["months"]] == ["2026-11", "2026-12"]
+
+
+def test_data_start_ignores_deleted_expenses(client):
+    removed = make_expense(client, spent_on="2026-07-03", cents=500, merchant="已删除")
+    make_expense(client, spent_on="2026-08-09", cents=800, merchant="保留")
+    assert client.delete(f"/api/expenses/{removed['id']}").status_code == 200
+    data = stats(client, **Q3)
+    assert data["data_start"] == "2026-08-09"
+    assert [m["month"] for m in data["months"]] == ["2026-08", "2026-09"]
+
+
+def test_no_data_keeps_months_from_start(client):
+    data = stats(client, **Q4)
+    assert data["data_start"] is None
+    assert [m["month"] for m in data["months"]] == ["2026-10", "2026-11", "2026-12"]
+    assert all(m["amount_cents"] == 0 for m in data["months"])
