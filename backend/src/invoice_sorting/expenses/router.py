@@ -8,6 +8,7 @@ from fastapi import APIRouter, File, Form, Query, UploadFile
 from invoice_sorting.attachments.uploads import store_uploads
 from invoice_sorting.common.constants import AttachmentKind, DateBasis
 from invoice_sorting.common.errors import ok
+from invoice_sorting.expenses.amounts import invoice_total, merge_invoice_amounts
 from invoice_sorting.expenses.listing import list_expenses, parse_statuses
 from invoice_sorting.expenses.queries import ExpenseFilter
 from invoice_sorting.expenses.schemas import ExpenseCreate, ExpenseUpdate, StatusChange
@@ -107,7 +108,9 @@ def post_attachments(
     kind: Annotated[AttachmentKind | None, Form()] = None,
 ) -> dict[str, Any]:
     expense = get_expense_or_404(session, expense_id)
+    previous_total = invoice_total(session, expense)
     store_uploads(session, config, files, kind, expense)
+    merge_invoice_amounts(session, expense, previous_total)
     refresh_expense(session, config, expense)
     session.commit()
     return ok(serialize_expense_detail(session, expense))

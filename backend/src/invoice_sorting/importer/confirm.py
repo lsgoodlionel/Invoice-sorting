@@ -20,6 +20,7 @@ from invoice_sorting.common.constants import AttachmentKind
 from invoice_sorting.common.errors import AppError
 from invoice_sorting.config import Settings
 from invoice_sorting.db.models import Attachment, Expense
+from invoice_sorting.expenses.amounts import invoice_total, merge_invoice_amounts
 from invoice_sorting.expenses.service import (
     create_expense,
     get_expense_or_404,
@@ -30,6 +31,7 @@ from invoice_sorting.importer.attach_fill import fill_attach_target
 from invoice_sorting.importer.group_summary import suggest_group_category
 from invoice_sorting.importer.items import item_from_attachment
 from invoice_sorting.importer.journal import FsJournal
+from invoice_sorting.importer.lodging import invoices_compatible
 from invoice_sorting.importer.schemas import ConfirmGroup
 
 logger = logging.getLogger(__name__)
@@ -112,10 +114,12 @@ def _apply_kinds(ctx: ConfirmContext, attachments: list[Attachment], group: Conf
 
 
 def _require_single_invoice(attachments: list[Attachment]) -> None:
+    """每组最多一张发票；住宿组可以是一张住宿发票 + 若干交通票发票。"""
+    if invoices_compatible([item_from_attachment(attachment) for attachment in attachments]):
+        return
     invoices = [item for item in attachments if item.kind == AttachmentKind.INVOICE]
-    if len(invoices) > 1:
-        names = "、".join(f"“{item.original_name}”" for item in invoices)
-        raise AppError(f"每组最多一张发票：{names}")
+    names = "、".join(f"“{item.original_name}”" for item in invoices)
+    raise AppError(f"每组最多一张发票（住宿可附多张交通票发票）：{names}")
 
 
 def _assign(ctx: ConfirmContext, attachment: Attachment, expense: Expense) -> None:
@@ -129,10 +133,17 @@ def _assign(ctx: ConfirmContext, attachment: Attachment, expense: Expense) -> No
 
 
 def _finish(
-    ctx: ConfirmContext, expense: Expense, attachments: list[Attachment], folder_before: str
+    ctx: ConfirmContext,
+    expense: Expense,
+    attachments: list[Attachment],
+    folder_before: str,
+    previous_total: int | None = None,
 ) -> None:
+    """挂上附件；previous_total 为挂到已有记录前的发票合计（新建记录为 None，不并入金额）。"""
     for attachment in attachments:
         _assign(ctx, attachment, expense)
+    if previous_total is not None:
+        merge_invoice_amounts(ctx.session, expense, previous_total)
     refresh_expense(ctx.session, ctx.settings, expense, note=IMPORT_NOTE)
     after = expense.folder_path
     if folder_before and after and folder_before != after:
@@ -187,8 +198,9 @@ def _create(ctx: ConfirmContext, attachments: list[Attachment], group: ConfirmGr
 def _attach(ctx: ConfirmContext, attachments: list[Attachment], group: ConfirmGroup) -> None:
     _require(group.expense_id is not None, "挂到已有记录时需要选择记录")
     expense = get_expense_or_404(ctx.session, group.expense_id)
+    previous_total = invoice_total(ctx.session, expense)
     folder_before = fill_attach_target(ctx.session, ctx.settings, ctx.journal, expense, group)
-    _finish(ctx, expense, attachments, folder_before)
+    _finish(ctx, expense, attachments, folder_before, previous_total)
     ctx.result.attached.append(expense.id)
 
 

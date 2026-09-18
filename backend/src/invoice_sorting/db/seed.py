@@ -22,7 +22,7 @@ RULES_VERSION_KEY = "rules_version"
 MEMORY_VERSION_KEY = "classification_memory_version"
 # 版本 2：分类记忆只记录用户手动修改；旧版自动写入的记忆可能固化了错误分类，升级时清空一次
 MEMORY_VERSION = 2
-RULES_VERSION = 5
+RULES_VERSION = 6
 LODGING_RULES_VERSION = 5
 BASE_RULES_VERSION = 1  # 未记录 rules_version 的旧库视为版本 1
 
@@ -131,6 +131,14 @@ LODGING_ORDER_RULE: RuleSpec = (
     "住宿费需附酒店订单（显示入住人、入住离店日期、房间数与单价）",
 )
 
+LODGING_TRANSPORT_RULE: RuleSpec = (
+    "差旅交通",
+    "transport",
+    "required",
+    IS_LODGING,
+    "往返酒店所在地与本地的火车/飞机/汽车/轮船票或行程单",
+)
+
 EXEMPT_RULES: tuple[RuleSpec, ...] = (
     (
         None,
@@ -180,6 +188,7 @@ DEFAULT_RULES: list[RuleSpec] = [
     ("印刷快递", "order", "suggested", {}, "打印费附明细（票面已开明细可免）"),
     ("差旅交通", "itinerary", "required", NOT_LODGING, "附行程单，需与出差单对应"),
     LODGING_ORDER_RULE,
+    LODGING_TRANSPORT_RULE,
     ("餐饮会议", "meal_form", "suggested", {}, "工作餐附工作餐单，50元/人/餐"),
     ("餐饮会议", "meeting", "suggested", {}, "会议附预算决算表、签到表、通知或议程"),
 ]
@@ -190,6 +199,7 @@ RULES_ADDED_IN: dict[int, tuple[RuleSpec, ...]] = {
     3: BOOK_RULES,
     4: EXEMPT_RULES,
     5: (LODGING_ORDER_RULE,),
+    6: (LODGING_TRANSPORT_RULE,),
 }
 EXEMPT_CONDITION_VERSION = 4  # 该版本起通用“发票”规则只对非免发票记录触发
 

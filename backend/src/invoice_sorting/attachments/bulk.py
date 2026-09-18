@@ -13,6 +13,7 @@ from invoice_sorting.common.constants import AttachmentKind
 from invoice_sorting.common.errors import ConflictError, NotFoundError
 from invoice_sorting.config import Settings
 from invoice_sorting.db.models import Attachment, Expense
+from invoice_sorting.expenses.amounts import invoice_total, merge_invoice_amounts
 from invoice_sorting.expenses.service import (
     get_expense_or_404,
     refresh_expense,
@@ -94,7 +95,10 @@ def bulk_assign(
     attachments = load_attachments(session, ids)
     target = get_expense_or_404(session, expense_id) if expense_id is not None else None
     affected: list[Expense | None] = [item.expense for item in attachments]
+    previous_total = invoice_total(session, target) if target is not None else 0
     for attachment in attachments:
         _assign_one(session, settings, attachment, target, kind)
+    if target is not None:
+        merge_invoice_amounts(session, target, previous_total)
     refresh_expenses(session, settings, [*affected, target])
     return attachments

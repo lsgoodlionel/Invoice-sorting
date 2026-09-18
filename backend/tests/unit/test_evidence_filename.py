@@ -127,3 +127,31 @@ def test_filename_hints_without_dash_or_region() -> None:
 
 def test_filename_hints_region_with_suffix() -> None:
     assert filename_hints("办公-20260101-椅子-上海市.pdf").region == "上海"
+
+
+@pytest.mark.parametrize(
+    ("name", "kind"),
+    [
+        ("差旅-苏州-酒店订单.pdf", "order"),
+        ("住宿订单-20260815.png", "order"),
+        ("出差-订单确认单.pdf", "order"),
+        ("BookingConfirmation.pdf", "order"),
+        ("差旅-上海-苏州-G7-火车票.png", "transport"),
+        ("差旅-车票.png", "transport"),
+        ("出差-机票-MU5101.png", "transport"),
+        ("高铁-20260815.png", "transport"),
+        ("差旅-船票.jpg", "transport"),
+        ("差旅-汽车票.jpg", "transport"),
+        ("登机牌.png", "transport"),
+        ("出差-行程.pdf", "itinerary"),
+        ("打车-20260901-行程单.pdf", "itinerary"),
+        ("差旅-火车票-发票.pdf", "invoice"),
+    ],
+)
+def test_filename_travel_kinds(name: str, kind: str) -> None:
+    assert filename_hints(name).kind == kind
+
+
+@pytest.mark.parametrize("word", ["差旅", "出差", "住宿", "酒店"])
+def test_filename_travel_category_words(word: str) -> None:
+    assert filename_hints(f"{word}-20260815-苏州-720.pdf").category_word == word

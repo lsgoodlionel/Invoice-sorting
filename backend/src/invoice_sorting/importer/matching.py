@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from invoice_sorting.common.constants import BatchStatus, ExpenseStatus
 from invoice_sorting.db.models import Attachment, Batch, EvidenceData, Expense, InvoiceData
 from invoice_sorting.importer.items import EvidenceItem, item_from_attachment
+from invoice_sorting.importer.lodging_scoring import transport_window
 from invoice_sorting.importer.merchants import merchant_similarity
 from invoice_sorting.importer.scoring import (
     DATE_NEAR_DAYS,
@@ -89,6 +90,8 @@ def _score_pool(session: Session, profile: GroupProfile) -> list[Expense]:
         window = timedelta(days=DATE_NEAR_DAYS)
         start, end = profile.occurred_on - window, profile.occurred_on + window
         options.append(Expense.spent_on.between(start, end))
+    if (window := transport_window(profile.items)) is not None:
+        options.append(Expense.spent_on.between(*window))
     if not options:
         return []
     query = select(Expense).where(eligible_condition(), or_(*options)).order_by(Expense.id)

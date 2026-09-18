@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 
 RAW_TEXT_LIMIT = 20000
 FAILED_RECOGNIZER = "error"
+TRANSPORT_RECOGNIZER = "transport_booking"
 DOC_TYPE_KINDS: dict[str, AttachmentKind] = {
     DOC_ORDER: AttachmentKind.ORDER,
     DOC_RECEIPT: AttachmentKind.ORDER,
@@ -75,10 +76,18 @@ def _hinted_kind(original_name: str) -> AttachmentKind | None:
         return None
 
 
+def is_transport_evidence(recognized: RecognizedEvidence) -> bool:
+    """车票/机票等订单截图（transport_booking）或带交通工具的识别结果 → 往来交通凭证。"""
+    vehicle = str((recognized.details or {}).get("vehicle") or "").strip()
+    return recognized.recognizer == TRANSPORT_RECOGNIZER or bool(vehicle)
+
+
 def kind_for_evidence(
     recognized: RecognizedEvidence, original_name: str, fallback: AttachmentKind
 ) -> AttachmentKind:
-    """识别出的凭证类型优先，其次文件名线索，最后用调用方给的猜测类型。"""
+    """往来交通凭证优先，其次识别出的凭证类型、文件名线索，最后用调用方给的猜测类型。"""
+    if is_transport_evidence(recognized):
+        return AttachmentKind.TRANSPORT
     known = DOC_TYPE_KINDS.get(recognized.doc_type)
     if known is not None:
         return known
@@ -100,4 +109,5 @@ def apply_evidence(attachment: Attachment, recognized: RecognizedEvidence) -> Ev
     evidence.card_last4 = recognized.card_last4 or ""
     evidence.file_key = attachment.file_key or ""
     evidence.raw_text = (recognized.raw_text or "")[:RAW_TEXT_LIMIT]
+    evidence.details = dict(recognized.details or {})
     return evidence

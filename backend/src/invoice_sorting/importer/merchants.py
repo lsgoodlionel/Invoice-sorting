@@ -15,7 +15,7 @@ def _normalize_merchant(name: str) -> str:
     return COMPANY_SUFFIXES.sub("", text)
 
 
-def _longest_common_substring(first: str, second: str) -> int:
+def longest_common_substring(first: str, second: str) -> int:
     best = 0
     previous = [0] * (len(second) + 1)
     for char in first:
@@ -35,7 +35,7 @@ def merchant_similarity(first: str, second: str) -> int:
         return 0
     if left in right or right in left:
         return CONTAINMENT_BONUS + min(len(left), len(right))
-    return _longest_common_substring(left, right)
+    return longest_common_substring(left, right)
 
 
 def merchants_overlap(

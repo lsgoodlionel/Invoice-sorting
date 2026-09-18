@@ -6,7 +6,7 @@
 - 日期 `YYYY-MM-DD`；时间 ISO 8601 带时区。
 - 枚举值见 `backend/src/invoice_sorting/common/constants.py`：
   - ExpenseStatus：`spent` 已支出 / `invoiced` 已开票 / `complete` 凭证齐全 / `sent` 已外发 / `reimbursed` 已报销 / `void` 不报销/作废
-  - AttachmentKind：`invoice` 发票 / `order` 订单明细 / `payment` 支付记录 / `acceptance` 验收单 / `contract` 合同 / `application` 申购单 / `itinerary` 行程单 / `meal_form` 工作餐单 / `meeting` 会议材料 / `software_form` 软件服务报账单 / `statement` 情况说明 / `other` 其他
+  - AttachmentKind：`invoice` 发票 / `order` 订单明细 / `payment` 支付记录 / `acceptance` 验收单 / `contract` 合同 / `application` 申购单 / `itinerary` 行程单 / `meal_form` 工作餐单 / `meeting` 会议材料 / `software_form` 软件服务报账单 / `statement` 情况说明 / `transport` 往来交通凭证 / `other` 其他
   - ChecklistLevel：`required` / `suggested`；ChecklistState：`missing` / `present` / `not_needed`
   - BatchStatus：`draft` 待外发 / `sent` 已外发 / `partial` 部分到账 / `received` 已到账
   - ExportLayout：`by_expense` / `by_kind`；DateBasis：`spent` / `invoiced` / `sent` / `received`
@@ -221,9 +221,16 @@ type ImportGroup = {
 
 // summary 来源：金额与日期取 发票 > 人民币支付记录 > 订单/收据；商家与摘要取 发票 > 订单/收据 > 支付记录；
 // 原币取外币订单/收据（其次外币支付记录）；分类先按文件名首段分类词（办公→办公用品、软件→软件服务、
-// 打车/出行→差旅交通、线缆/数码/数据→易耗品、图书→图书、设备→设备，或同名分类），否则走分类建议。
+// 打车/出行/交通/差旅/出差/住宿/酒店→差旅交通、线缆/数码/数据→易耗品、图书→图书、设备→设备，或同名分类），否则走分类建议。
+// 住宿组（含酒店订单或住宿发票，差旅住宿凭证设计第 3 节）另行汇总：金额 = 组内全部发票价税合计之和（订单不计；
+// 只有订单时取订单金额，invoice_exempt=false）；商家 = 酒店名（订单 details.hotel，否则住宿发票销售方）；
+// 摘要 = “酒店名 N晚 + 交通 K 张”；分类 = 差旅交通；日期 = 入住日期（无订单时取住宿发票开票日期）。
 // suggested_action：含“可能重复”提示 → skip；有强匹配 → attach；含发票或有金额和日期 → create；否则 skip。
-// link_reasons 取值：订单号一致、文件名一致、金额与日期一致、境外订单与银行交易日期一致、卡号末四位一致。
+// link_reasons 取值：订单号一致、文件名一致、金额与日期一致、境外订单与银行交易日期一致、卡号末四位一致、
+// 酒店发票与订单一致（金额相同 + 酒店名与销售方有 ≥2 字公共子串 + 开票日期在入住至离店后 30 天内）、
+// 往返酒店所在地的交通凭证（交通日期在入住−1 至离店+1 天内，且起点或终点包含酒店城市）。
+// MatchCandidate.reasons 另有：“往返 苏州 的交通凭证（入住 08-15、离店 08-16）”（住宿记录 ↔ 新交通凭证，+60）、
+// “酒店发票与订单一致”（住宿发票 ↔ 只有订单的记录，+70）。
 
 type ImportSession = {
   session_id: string;
@@ -261,11 +268,12 @@ type ConfirmGroup = {
 - `finish` 可重复调用（如重试失败文件后再次 finish）：按会话内仍待归属的附件（已删除或已归属的跳过）从数据库重建分组，结果与一次性 `POST /api/imports` 相同；发票的支出日期沿用导入时的建议日期（差旅票优先乘车日期）。`confirm` 与一次性导入相同，确认后附件移出会话。
 - attachment_ids 为准：每个附件须属于本次导入会话、仍待归属、且不重复出现在多个组，否则 400（如“文件“a.png”：不属于本次导入或已处理”“文件“a.png”：不能同时出现在多个组”“附件 #9 不存在或已处理”）。
 - kinds 的键须是该组的附件 id，否则 400“类型设置中的附件 #id 不在该组”；先应用 kinds 再校验发票数。
-- 一个 ConfirmGroup 最多含一张发票（否则 400“每组最多一张发票：“a.pdf”、“b.pdf””）。
+- 一个 ConfirmGroup 最多含一张发票；住宿组（含住宿发票或酒店订单）可以是一张住宿发票 + 任意张交通票发票（details.vehicle 非空或税收分类为旅客运输等），两张住宿发票不可同组。否则 400“每组最多一张发票（住宿可附多张交通票发票）：“a.pdf”、“b.pdf””。
 - 组内错误统一加前缀：单文件为 `文件“name”：`，多文件为 `文件“name”等 N 个：`。
 - 整个请求原子：任一组失败则全部回滚（含文件移动）；成功后本次提交的附件（含 skip）移出会话，会话清空后再提交返回 404“导入会话已过期，请重新导入”。
 - 记录时间线备注为“导入凭证”。
-- attach：文件挂到目标记录，发票 `confirmed=true`、凭证 `confirmed=true`；目标记录缺商家/原币信息时补上，不覆盖金额与日期。
+- attach：文件挂到目标记录，发票 `confirmed=true`、凭证 `confirmed=true`；目标记录缺商家/原币信息时补上，不覆盖日期。
+- 金额并入（attach、收件箱自动确认、`bulk-assign`、`PATCH /api/attachments/{id}` 改归属、`POST /api/expenses/{id}/attachments` 补传共用）：记录此前已有发票且挂上后发票合计变化时——记录金额等于挂之前的发票合计则更新为新的发票合计，时间线追加一条 from_status = to_status 的事件，note 为“并入交通票 ¥120.00，金额更新为 ¥620.00”（记录内无交通票发票时写“发票”）；金额被手动改过则不改，note 为“并入交通票 ¥120.00，金额未自动调整（已手动修改过）”。记录此前没有发票（首张发票）时不改金额。
 - create：日期、金额、商家必填（“请填写支出日期”“请填写金额”“请填写商家”；invoice_exempt=true 时缺金额提示“请填写人民币金额”）。
 - skip：只需 `{ group_id, attachment_ids, action: "skip" }`，文件留在待归属，计入 skipped。
 - 收件箱与“生成记录”使用同一分组与匹配逻辑自动确认（设计 5.3）；收件箱同一轮检测到的文件一起导入以便互相归组；每组确认前重新匹配，单组失败只回滚该组。
@@ -324,4 +332,4 @@ type Stats = {
 
 `ChecklistRule = { id, category_id: number|null, attachment_kind, level, condition: { amount_gte?: number, amount_lt?: number, is_online?: boolean, is_nonlocal?: boolean, detail_platform?: boolean, content_keywords?: string[], exclude_keywords?: string[] }, hint }`
 
-条件全部满足才触发：`is_nonlocal` 为外地发票；`detail_platform` 为销售方属于已带明细平台；`invoice_exempt` 为免发票记录；`content_keywords` 为发票内容（税收分类、商品名称、销售方）或记录商家、摘要包含任一关键词（每个 1–20 字，最多 20 个），`exclude_keywords` 为包含任一关键词则不触发。默认规则（版本 5）：差旅交通的“订单明细”仅在含“住宿/酒店/宾馆/旅馆/民宿/客栈”时必需（酒店订单），“行程单”对这些住宿发票不触发。默认新增通用规则：`{ is_nonlocal: true, detail_platform: false }` → 订单明细（必需），提示“外地发票需附网购订单截图（京东、当当、圆迈等已带明细平台可免）；非网购外地购品需随差旅报销并说明”。
+条件全部满足才触发：`is_nonlocal` 为外地发票；`detail_platform` 为销售方属于已带明细平台；`invoice_exempt` 为免发票记录；`content_keywords` 为发票内容（税收分类、商品名称、销售方）或记录商家、摘要包含任一关键词（每个 1–20 字，最多 20 个），`exclude_keywords` 为包含任一关键词则不触发。默认规则（版本 5）：差旅交通的“订单明细”仅在含“住宿/酒店/宾馆/旅馆/民宿/客栈”时必需（酒店订单），“行程单”对这些住宿发票不触发。版本 6：同条件下“往来交通凭证”（`transport`）必需，提示“往返酒店所在地与本地的火车/飞机/汽车/轮船票或行程单”；该项在记录有 `transport` 类型附件，或有 details.vehicle 非空的发票（交通票发票）时视为已有。旧库启动时追加一次（幂等）。默认新增通用规则：`{ is_nonlocal: true, detail_platform: false }` → 订单明细（必需），提示“外地发票需附网购订单截图（京东、当当、圆迈等已带明细平台可免）；非网购外地购品需随差旅报销并说明”。

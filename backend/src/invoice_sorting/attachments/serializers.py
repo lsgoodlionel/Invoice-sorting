@@ -78,6 +78,7 @@ def serialize_invoice(
         "parser": invoice.parser or "",
         "confirmed": bool(invoice.confirmed),
         "buyer_mismatch": is_buyer_mismatch(invoice, buyer),
+        "details": dict(invoice.details or {}),
     }
 
 
@@ -95,6 +96,7 @@ def serialize_evidence(evidence: EvidenceData) -> dict[str, Any]:
         "card_last4": evidence.card_last4 or "",
         "is_foreign": bool(evidence.is_foreign),
         "confirmed": bool(evidence.confirmed),
+        "details": dict(evidence.details or {}),
     }
 
 

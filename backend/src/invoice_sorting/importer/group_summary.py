@@ -2,6 +2,9 @@
 
 金额与日期按上述顺序取第一个非空值；商家与摘要取“发票 > 订单/收据 > 支付记录”（银行交易的商户描述
 如 PP*APPLE.COM/BILL 不适合作为商家名）。无发票且境外或外币 → 免发票。
+
+住宿组（有酒店订单或住宿发票）另按差旅住宿凭证设计第 3 节：金额为发票合计、商家为酒店名、
+分类为差旅交通、日期为入住日期。
 """
 
 from collections.abc import Callable, Iterable
@@ -18,6 +21,7 @@ from invoice_sorting.common.constants import AttachmentKind
 from invoice_sorting.db.models import Category
 from invoice_sorting.importer.classify import suggest_category
 from invoice_sorting.importer.items import CNY, ORDER_LIKE_KINDS, EvidenceItem
+from invoice_sorting.importer.lodging_summary import LodgingSummary, lodging_summary
 from invoice_sorting.importer.suggestions import ONLINE_PLATFORM_KEYWORDS
 
 # 文件名首段分类词 → 默认分类名（找不到同名未归档分类时走分类建议逻辑）
@@ -28,6 +32,9 @@ CATEGORY_WORDS: dict[str, str] = {
     "出行": "差旅交通",
     "交通": "差旅交通",
     "差旅": "差旅交通",
+    "出差": "差旅交通",
+    "住宿": "差旅交通",
+    "酒店": "差旅交通",
     "线缆": "易耗品",
     "数码": "易耗品",
     "数据": "易耗品",
@@ -109,7 +116,29 @@ def suggest_group_category(
     return suggest_category(session, merchant, summary, tax_category, from_name)
 
 
+def _from_lodging(
+    session: Session, items: tuple[EvidenceItem, ...], lodging: LodgingSummary
+) -> GroupSummary:
+    category_id = lodging.category_id
+    if category_id is None:
+        category_id = suggest_group_category(session, items, lodging.merchant, lodging.summary)
+    return GroupSummary(
+        spent_on=lodging.spent_on,
+        amount_cents=lodging.amount_cents,
+        currency=CNY,
+        original_amount_cents=None,
+        merchant=lodging.merchant,
+        summary=lodging.summary,
+        category_id=category_id,
+        is_online=_is_online(items, lodging.merchant),
+        invoice_exempt=False,
+    )
+
+
 def build_summary(session: Session, items: tuple[EvidenceItem, ...]) -> GroupSummary:
+    lodging = lodging_summary(session, items)
+    if lodging is not None:
+        return _from_lodging(session, items, lodging)
     by_amount, by_name = _ordered(items)
     merchant = _first(by_name, lambda item: item.merchant) or ""
     summary = _first(by_name, lambda item: item.item_name) or ""

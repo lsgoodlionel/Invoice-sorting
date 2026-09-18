@@ -1,4 +1,7 @@
-"""M3 评分（设计 5.2）：纯函数，输入组画像与候选记录，输出分数与中文依据。"""
+"""M3 评分（设计 5.2）：纯函数，输入组画像与候选记录，输出分数与中文依据。
+
+住宿记录另有加分（差旅住宿凭证设计第 4 节，见 lodging_scoring）。
+"""
 
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -8,6 +11,7 @@ from invoice_sorting.attachments.serializers import kind_label
 from invoice_sorting.common.constants import AttachmentKind, ChecklistLevel, ChecklistState
 from invoice_sorting.db.models import Expense
 from invoice_sorting.importer.items import CNY, EvidenceItem
+from invoice_sorting.importer.lodging_scoring import lodging_score
 from invoice_sorting.importer.merchants import merchants_overlap
 from invoice_sorting.importer.platforms import platform_tokens
 
@@ -31,6 +35,7 @@ class GroupProfile:
     original_amount_cents: int | None
     occurred_on: date | None
     merchants: tuple[tuple[str, frozenset[str]], ...]  # (商家, 平台)
+    items: tuple[EvidenceItem, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -41,6 +46,8 @@ class MatchCandidate:
 
 
 KIND_PRIORITY = {AttachmentKind.INVOICE: 0, AttachmentKind.PAYMENT: 1, AttachmentKind.ORDER: 2}
+# 交通凭证并入住宿记录时，记录已有发票/交通凭证不扣分
+TRANSPORT_JOIN_KINDS = frozenset({AttachmentKind.INVOICE, AttachmentKind.TRANSPORT})
 
 
 def _priority(item: EvidenceItem) -> int:
@@ -54,13 +61,17 @@ def build_profile(items: Sequence[EvidenceItem]) -> GroupProfile:
     foreign = next(
         (item for item in ordered if item.is_foreign_currency and item.amount_cents), None
     )
+    kinds = {item.kind for item in items}
+    if any(item.is_transport for item in items):
+        kinds.add(AttachmentKind.TRANSPORT)  # 交通票发票也满足“往来交通凭证”
     return GroupProfile(
-        kinds=frozenset(item.kind for item in items),
+        kinds=frozenset(kinds),
         amount_cents=amount,
         currency=foreign.currency if foreign else CNY,
         original_amount_cents=foreign.amount_cents if foreign else None,
         occurred_on=occurred,
         merchants=tuple((item.merchant, item.platforms) for item in items if item.merchant),
+        items=tuple(items),
     )
 
 
@@ -106,13 +117,15 @@ def missing_kinds(expense: Expense) -> list[str]:
     ]
 
 
-def _kind_scores(profile: GroupProfile, expense: Expense) -> list[tuple[int, str]]:
+def _kind_scores(
+    profile: GroupProfile, expense: Expense, exempt: frozenset[str] = frozenset()
+) -> list[tuple[int, str]]:
     scores: list[tuple[int, str]] = []
     missing = [kind for kind in missing_kinds(expense) if kind in profile.kinds]
     if missing:
         labels = "、".join(kind_label(kind) for kind in missing)
         scores.append((SCORE_FILLS_MISSING, f"正好缺少{labels}"))
-    present = sorted({a.kind for a in expense.attachments} & profile.kinds)
+    present = sorted(({a.kind for a in expense.attachments} & profile.kinds) - exempt)
     if present:
         labels = "、".join(kind_label(kind) for kind in present)
         scores.append((-PENALTY_SAME_KIND, f"已有{labels}"))
@@ -120,11 +133,14 @@ def _kind_scores(profile: GroupProfile, expense: Expense) -> list[tuple[int, str
 
 
 def score_expense(profile: GroupProfile, expense: Expense) -> MatchCandidate:
+    lodging = lodging_score(profile.items, expense)
+    exempt = TRANSPORT_JOIN_KINDS if lodging.joins_transport else frozenset()
     parts = [
         _amount_score(profile, expense),
         _date_score(profile, expense),
         _merchant_score(profile, expense),
-        *_kind_scores(profile, expense),
+        *lodging.parts,
+        *_kind_scores(profile, expense, exempt),
     ]
     score = sum(points for points, _reason in parts)
     reasons = tuple(reason for _points, reason in parts if reason)

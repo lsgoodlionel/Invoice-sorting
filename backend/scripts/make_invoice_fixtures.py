@@ -350,6 +350,29 @@ def write_ofd(name: str, lines: list[Line], attached_xml: str | None) -> None:
             archive.writestr("Doc_0/Attachs/invoice.xml", attached_xml)
 
 
+TRAVEL_COLUMNS = (30, 80, 190, 260, 310, 360, 410)
+
+
+def bus_ticket_lines() -> list[Line]:
+    """数电发票（旅客运输服务）：带出行人、出发地、到达地、交通工具类型表格的汽车票。"""
+    fare = ("*运输服务*客运服务费", "", "次", "1", "43.69", "43.69", "3%", "1.31")
+    spec = replace(
+        digital_same_line(),
+        invoice_no="26312000000077778888",
+        seller="上海示例长途客运有限公司",
+        items=(fare,),
+        subtotal=("43.69", "1.31"),
+        upper="肆拾伍圆整",
+        lower="45.00",
+    )
+    header = ("出行人", "有效身份证件号", "出行日期", "出发地", "到达地", "等级", "交通工具类型")
+    values = ("张示例", "3101011990****1234", "2026-09-15", "上海", "苏州", "无", "汽车")
+    lines = digital_lines(spec) + [(30, 620, "特定业务：旅客运输服务")]
+    lines += [(x, 605, text) for x, text in zip(TRAVEL_COLUMNS, header, strict=True)]
+    lines += [(x, 590, text) for x, text in zip(TRAVEL_COLUMNS, values, strict=True)]
+    return lines
+
+
 def not_invoice_lines() -> list[Line]:
     return [
         (200, 800, "学术会议通知"),
@@ -372,6 +395,7 @@ def main() -> None:
     write_sized_pdf(OUT_DIR / "discount_lines.pdf", discount_lines(buyer), font)
     write_pdf("rail_ticket.pdf", rail_lines(), font)
     write_pdf("air_itinerary.pdf", air_lines(), font)
+    write_pdf("bus_ticket.pdf", bus_ticket_lines(), font)
     write_pdf("not_invoice.pdf", not_invoice_lines(), font)
     write_pdf("encrypted.pdf", digital_lines(digital_same_line()), font, encrypt="secret")
     (OUT_DIR / "corrupt.pdf").write_bytes(

@@ -16,6 +16,7 @@ from invoice_sorting.common.platforms import ONLINE_PLATFORM_KEYWORDS
 from invoice_sorting.db.models import InvoiceData
 from invoice_sorting.importer.classify import suggest_category
 from invoice_sorting.parsers import ParsedInvoice
+from invoice_sorting.parsers.travel_details import travel_details
 
 RAW_TEXT_LIMIT = 20000
 BUYER_MISMATCH_WARNING = "购方名称或税号与设置不一致，请核对发票抬头"
@@ -54,6 +55,7 @@ def invoice_data_from(parsed: ParsedInvoice) -> InvoiceData:
         parser=parsed.parser or "",
         confirmed=False,
         raw_text=(parsed.raw_text or "")[:RAW_TEXT_LIMIT],
+        details=travel_details(parsed),
     )
 
 

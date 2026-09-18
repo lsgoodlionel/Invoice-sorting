@@ -9,8 +9,10 @@ from invoice_sorting.evidence.recognizers import (
     app_store,
     bank,
     ecommerce,
+    hotel_booking,
     receipt,
     ride,
+    transport_booking,
     wallet,
 )
 
@@ -20,7 +22,10 @@ MIN_CONFIDENCE = 0.4
 
 Recognizer = Callable[[EvidenceText], RecognizedEvidence | None]
 
+# 同分时取靠前者：专用的差旅识别器排在通用订单/账单识别器之前
 RECOGNIZERS: tuple[Recognizer, ...] = (
+    hotel_booking.recognize,
+    transport_booking.recognize,
     app_store.recognize,
     receipt.recognize,
     bank.recognize,

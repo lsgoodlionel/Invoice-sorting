@@ -7,6 +7,7 @@ from pathlib import Path
 from invoice_sorting.parsers.air_itinerary import AirItineraryParser
 from invoice_sorting.parsers.base import InvoiceParser, ParsedInvoice
 from invoice_sorting.parsers.digital_pdf import DigitalPdfParser
+from invoice_sorting.parsers.ground_travel import with_ground_travel
 from invoice_sorting.parsers.ofd_invoice import (
     OfdInvoiceParser,
     invoice_xml_candidates,
@@ -85,7 +86,7 @@ def parse_invoice_file(path: Path) -> ParsedInvoice | None:
         return None
     if result is None or not _has_valid_result(result):
         return None
-    return result
+    return with_ground_travel(result)
 
 
 def _xml_is_invoice(path: Path) -> bool:

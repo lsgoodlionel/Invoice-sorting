@@ -1,8 +1,10 @@
 """本次上传内分组（设计 5.1）：并查集依次按以下条件连接。
 
-L1 订单号 → L2 文件名键 → L3 金额+日期+商家 → L4 境外订单↔银行交易。
+L1 订单号 → L2 文件名键 → L6 酒店发票↔酒店订单 → L3 金额+日期+商家 → L4 境外订单↔银行交易
+→ L7 住宿组 ↔ 往返酒店所在地的交通凭证（差旅住宿凭证设计第 3 节）。
 
-约束：每组最多一张发票；两组各自带有不同订单号（发票/订单类凭证）时不合并。纯函数，无数据库依赖。
+约束：每组最多一张发票（住宿组可以是一张住宿发票 + 若干交通票发票）；两组各自带有不同订单号
+（发票/订单类凭证）时不合并。纯函数，无数据库依赖。
 """
 
 from collections.abc import Iterator, Sequence
@@ -10,6 +12,12 @@ from dataclasses import dataclass
 
 from invoice_sorting.common.constants import AttachmentKind
 from invoice_sorting.importer.items import ORDER_LIKE_KINDS, EvidenceItem
+from invoice_sorting.importer.lodging import (
+    invoice_matches_order,
+    invoices_compatible,
+    merge_stays,
+    transport_fits,
+)
 from invoice_sorting.importer.merchants import merchants_overlap
 from invoice_sorting.importer.platforms import platforms_compatible
 
@@ -19,6 +27,8 @@ REASON_FILE_KEY = "文件名一致"
 REASON_AMOUNT_DATE = "金额与日期一致"
 REASON_FOREIGN = "境外订单与银行交易日期一致"
 REASON_CARD = "卡号末四位一致"
+REASON_HOTEL = "酒店发票与订单一致"
+REASON_TRANSPORT = "往返酒店所在地的交通凭证"
 
 Link = tuple[int, int, tuple[str, ...]]
 
@@ -46,7 +56,7 @@ class _UnionFind:
 
     def _conflicts(self, first: int, second: int) -> bool:
         merged = self.members(first) + self.members(second)
-        if sum(1 for item in merged if item.is_invoice) > 1:
+        if not invoices_compatible(merged):
             return True
         return _order_keys_disjoint(self.members(first), self.members(second))
 
@@ -179,16 +189,40 @@ def foreign_links(items: Sequence[EvidenceItem]) -> list[Link]:
     return links
 
 
+def hotel_links(items: Sequence[EvidenceItem]) -> list[Link]:
+    """L6：酒店发票 ↔ 酒店订单（金额相同、酒店名匹配、开票日期在住宿窗口内）。"""
+    return [
+        (first, second, (REASON_HOTEL,))
+        for first, second in _pairs(items)
+        if invoice_matches_order(items[first], items[second])
+        or invoice_matches_order(items[second], items[first])
+    ]
+
+
+def _link_transport(finder: _UnionFind, items: Sequence[EvidenceItem]) -> None:
+    """L7：已成形的住宿组吸收往返酒店所在地的交通凭证（交通凭证本身不在住宿组中）。"""
+    for root in dict.fromkeys(finder.find(index) for index in range(len(items))):
+        stay = merge_stays(finder.members(root))
+        if stay is None:
+            continue
+        for index, item in enumerate(items):
+            own_group = finder.members(finder.find(index))
+            if transport_fits(item, stay) and merge_stays(own_group) is None:
+                finder.union(root, index, (REASON_TRANSPORT,))
+
+
 def group_items(items: Sequence[EvidenceItem]) -> list[ItemGroup]:
     """按优先级依次尝试连接；返回的组按组内第一个凭证在输入中的顺序排列。"""
     finder = _UnionFind(items)
     levels = (
         _same_value_links(items, "order_key", REASON_ORDER_NO),
         _same_value_links(items, "usable_file_key", REASON_FILE_KEY),
+        hotel_links(items),
         amount_date_links(items),
         foreign_links(items),
     )
     for links in levels:
         for first, second, reasons in links:
             finder.union(first, second, reasons)
+    _link_transport(finder, items)
     return finder.groups()

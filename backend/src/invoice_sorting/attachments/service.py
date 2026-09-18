@@ -13,6 +13,7 @@ from invoice_sorting.common.constants import AttachmentKind
 from invoice_sorting.common.errors import NotFoundError
 from invoice_sorting.config import Settings
 from invoice_sorting.db.models import Attachment, Expense
+from invoice_sorting.expenses.amounts import invoice_total, merge_invoice_amounts
 from invoice_sorting.expenses.service import get_expense_or_404, refresh_expense
 
 
@@ -58,7 +59,10 @@ def update_attachment(
     if kind is not None:
         attachment.kind = str(kind)
     if change_expense and target is not previous:
+        previous_total = invoice_total(session, target) if target is not None else 0
         assign_attachment(session, settings, attachment, target)
+        if target is not None:
+            merge_invoice_amounts(session, target, previous_total)
     else:
         relocate_attachment(session, settings, attachment)
     _refresh_all(session, settings, [previous, target])

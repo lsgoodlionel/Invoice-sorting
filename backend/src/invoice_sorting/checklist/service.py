@@ -12,8 +12,14 @@ from invoice_sorting.checklist.regions import (
     is_detail_platform,
     is_nonlocal,
 )
-from invoice_sorting.common.constants import ChecklistLevel, ChecklistState
-from invoice_sorting.db.models import Attachment, ChecklistItem, ChecklistRule, Expense
+from invoice_sorting.common.constants import AttachmentKind, ChecklistLevel, ChecklistState
+from invoice_sorting.db.models import (
+    Attachment,
+    ChecklistItem,
+    ChecklistRule,
+    Expense,
+    InvoiceData,
+)
 from invoice_sorting.settings.service import region_policy
 
 HINT_SEPARATOR = "；"
@@ -103,10 +109,25 @@ def evaluate_rules(session: Session, expense: Expense) -> list[ChecklistRule]:
     return list(merged.values())
 
 
+def _has_transport_invoice(session: Session, expense: Expense) -> bool:
+    """交通票发票（details.vehicle 非空）也算“往来交通凭证”；旧库 details 可能为 NULL。"""
+    query = (
+        select(InvoiceData.details)
+        .join(Attachment, Attachment.id == InvoiceData.attachment_id)
+        .where(Attachment.expense_id == expense.id, Attachment.kind == str(AttachmentKind.INVOICE))
+    )
+    return any(
+        str((details or {}).get("vehicle") or "").strip() for details in session.scalars(query)
+    )
+
+
 def _attachment_kinds(session: Session, expense: Expense) -> set[str]:
     session.flush()
     query = select(Attachment.kind).where(Attachment.expense_id == expense.id)
-    return set(session.scalars(query))
+    kinds = set(session.scalars(query))
+    if AttachmentKind.TRANSPORT not in kinds and _has_transport_invoice(session, expense):
+        kinds.add(str(AttachmentKind.TRANSPORT))
+    return kinds
 
 
 def _state_for(item: ChecklistItem, present_kinds: set[str]) -> str:
