@@ -36,12 +36,17 @@ function ProgressStatus({ item }: { item: UploadItem }) {
   );
 }
 
+function doneLabel(item: UploadItem): string {
+  if (!item.recognizedAs) return '已导入';
+  return [`识别为：${item.recognizedAs}`, item.recognizedDetail].filter(Boolean).join(' · ');
+}
+
 function DoneStatus({ item }: { item: UploadItem }) {
   return (
     <Stack gap={0}>
       <Group gap={4} wrap="nowrap">
         <IconCircleCheck size={14} stroke={1.8} color="var(--accent)" aria-hidden />
-        <Text size="xs" c="ink.7">{item.recognizedAs ? `识别为：${item.recognizedAs}` : '已导入'}</Text>
+        <Text size="xs" c="ink.7">{doneLabel(item)}</Text>
       </Group>
       {item.message && <Text size="xs" c={WARN_COLOR}>{item.message}</Text>}
     </Stack>

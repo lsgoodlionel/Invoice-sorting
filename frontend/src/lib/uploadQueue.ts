@@ -1,5 +1,6 @@
 // 分文件导入的上传队列：纯函数 reducer 与选择器。
 import type { ImportFileResult } from '../api/types';
+import { attachmentTravelSummary } from './travelDetails';
 
 export type UploadPhase = 'waiting' | 'uploading' | 'processing' | 'done' | 'duplicate' | 'error' | 'cancelled';
 
@@ -12,6 +13,8 @@ export interface UploadItem {
   /** 上传百分比 0-100 */
   progress: number;
   recognizedAs: string;
+  /** 识别为的补充信息（酒店订单 / 交通行程摘要），无则 "" */
+  recognizedDetail?: string;
   message: string;
   attachmentId: number | null;
   existingExpenseId: number | null;
@@ -105,6 +108,7 @@ function applyResult(result: ImportFileResult): Partial<UploadItem> {
     phase: RESULT_PHASE[result.status],
     progress: FULL_PROGRESS,
     recognizedAs: result.recognized_as,
+    recognizedDetail: result.attachment ? (attachmentTravelSummary(result.attachment) ?? '') : '',
     message: result.message,
     attachmentId: result.attachment?.id ?? null,
     existingExpenseId: result.existing_expense_id,

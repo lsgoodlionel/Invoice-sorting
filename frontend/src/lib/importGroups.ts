@@ -11,6 +11,7 @@ import type {
 } from '../api/types';
 import { candidateOptionLabel } from './candidates';
 import { DEFAULT_CURRENCY, isForeignCurrency } from './money';
+import { classifyInvoice, invoiceMixProblem, invoicesTotalCents } from './travelInvoice';
 
 export type OperationChoice =
   | { type: 'create' }
@@ -39,6 +40,8 @@ export interface GroupDraft extends GroupFields {
   warnings: readonly string[];
   match: MatchCandidate | null;
   candidates: readonly MatchCandidate[];
+  /** 用户手动改过人民币金额：移动交通票发票时不再自动重算 */
+  isAmountEdited: boolean;
 }
 
 export interface ImportGroupsState {
@@ -58,6 +61,7 @@ export type ImportGroupsAction =
   | { type: 'splitAttachment'; attachmentId: number };
 
 export const MULTI_INVOICE_PROBLEM = '一组最多一张发票，请把多余的发票移到其他组或拆为单独一组';
+export const MULTI_LODGING_PROBLEM = '一组最多一张住宿发票（可另带交通票发票），请把多余的住宿发票移到其他组';
 
 function initialOperation(group: ImportGroup): OperationChoice {
   if (group.suggested_action === 'skip') return { type: 'skip' };
@@ -86,6 +90,7 @@ function draftFromGroup(group: ImportGroup): GroupDraft {
     warnings: group.warnings,
     match: group.match,
     candidates: group.candidates,
+    isAmountEdited: false,
   };
 }
 
@@ -100,7 +105,7 @@ function mapGroup(state: ImportGroupsState, groupId: string, fn: (group: GroupDr
 }
 
 function applyFields(group: GroupDraft, patch: Partial<GroupFields>): GroupDraft {
-  const next = { ...group, ...patch };
+  const next = { ...group, ...patch, isAmountEdited: group.isAmountEdited || 'amountCents' in patch };
   return isForeignCurrency(next.currency) ? next : { ...next, currency: DEFAULT_CURRENCY, originalAmountCents: null };
 }
 
@@ -128,7 +133,7 @@ function moveAttachment(state: ImportGroupsState, attachmentId: number, targetGr
     .map((group) => (group.groupId === targetGroupId ? { ...group, attachmentIds: [...group.attachmentIds, attachmentId] } : group))
     .map((group) => (group.groupId === source.groupId ? { ...group, attachmentIds: group.attachmentIds.filter((id) => id !== attachmentId) } : group))
     .filter((group) => group.attachmentIds.length > 0);
-  return { ...state, groups };
+  return refreshLodgingAmounts({ ...state, groups }, attachmentId, [source.groupId, targetGroupId]);
 }
 
 /** 单个文件的识别结果 → 新建记录字段（分类、项目、网购沿用原组）。 */
@@ -169,11 +174,38 @@ function splitAttachment(state: ImportGroupsState, attachmentId: number): Import
   const created: GroupDraft = {
     ...fieldsFromAttachment(attachment, source),
     groupId, attachmentIds: [attachmentId], operation: { type: 'create' },
-    linkReasons: [], warnings: [], match: null, candidates: [],
+    linkReasons: [], warnings: [], match: null, candidates: [], isAmountEdited: false,
   };
   const remaining = withoutAttachment(state.groups, attachmentId);
   const index = remaining.findIndex((group) => group.groupId === source.groupId);
-  return { ...state, splitSeq, groups: [...remaining.slice(0, index + 1), created, ...remaining.slice(index + 1)] };
+  const next = { ...state, splitSeq, groups: [...remaining.slice(0, index + 1), created, ...remaining.slice(index + 1)] };
+  return refreshLodgingAmounts(next, attachmentId, [source.groupId]);
+}
+
+/** 按当前类型（含用户改过的）看待组内附件。 */
+function effectiveAttachments(state: ImportGroupsState, group: GroupDraft): Attachment[] {
+  return groupAttachments(state, group).map((item) => ({ ...item, kind: effectiveKind(state, item.id) ?? item.kind }));
+}
+
+function isTransportInvoiceFile(state: ImportGroupsState, attachmentId: number): boolean {
+  const invoice = state.attachments[attachmentId]?.invoice ?? null;
+  return effectiveKind(state, attachmentId) === 'invoice' && classifyInvoice(invoice) === 'transport';
+}
+
+/** 住宿组金额 = 组内发票价税合计（用户改过金额或外币组不动）。 */
+function recalcLodgingAmount(state: ImportGroupsState, group: GroupDraft): GroupDraft {
+  if (group.isAmountEdited || isForeignCurrency(group.currency)) return group;
+  const attachments = effectiveAttachments(state, group);
+  const hasLodging = attachments.some((item) => item.kind === 'invoice' && classifyInvoice(item.invoice) === 'lodging');
+  const total = hasLodging ? invoicesTotalCents(attachments) : null;
+  return total === null ? group : { ...group, amountCents: total };
+}
+
+/** 交通票发票移入/移出住宿组后重算相关组的金额。 */
+function refreshLodgingAmounts(state: ImportGroupsState, attachmentId: number, groupIds: readonly string[]): ImportGroupsState {
+  if (!isTransportInvoiceFile(state, attachmentId)) return state;
+  const groups = state.groups.map((group) => (groupIds.includes(group.groupId) ? recalcLodgingAmount(state, group) : group));
+  return { ...state, groups };
 }
 
 export function importGroupsReducer(state: ImportGroupsState, action: ImportGroupsAction): ImportGroupsState {
@@ -210,9 +242,18 @@ export function actionOf(operation: OperationChoice): ImportAction {
   return operation.type;
 }
 
+const MIX_PROBLEM_TEXT = { lodging: MULTI_LODGING_PROBLEM, multiple: MULTI_INVOICE_PROBLEM } as const;
+
+/** 多发票校验：允许一张住宿发票 + 若干交通票发票。 */
+function invoiceProblems(state: ImportGroupsState, group: GroupDraft): string[] {
+  const invoices = effectiveAttachments(state, group).filter((item) => item.kind === 'invoice').map((item) => item.invoice);
+  const problem = invoiceMixProblem(invoices);
+  return problem ? [MIX_PROBLEM_TEXT[problem]] : [];
+}
+
 /** 该组的校验问题；为空表示可以确认。 */
 export function groupProblems(state: ImportGroupsState, group: GroupDraft): string[] {
-  const problems = invoiceCount(state, group) > 1 ? [MULTI_INVOICE_PROBLEM] : [];
+  const problems = invoiceProblems(state, group);
   const { operation } = group;
   if (operation.type === 'create') {
     if (!group.spentOn) problems.push('请填写日期');

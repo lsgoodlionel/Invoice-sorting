@@ -84,6 +84,7 @@ export function makeInvoice(overrides: Partial<InvoiceData> = {}): InvoiceData {
     order_no: '',
     detail_platform: false,
     buyer_mismatch: false,
+    details: null,
     ...overrides,
   };
 }
@@ -136,6 +137,7 @@ export function makeEvidence(overrides: Partial<EvidenceData> = {}): EvidenceDat
     card_last4: '',
     is_foreign: true,
     confirmed: false,
+    details: null,
     ...overrides,
   };
 }
@@ -239,4 +241,37 @@ export function makeStatusEvent(overrides: Partial<StatusEvent> = {}): StatusEve
     actor: null,
     ...overrides,
   };
+}
+
+/** 携程酒店订单（hotel_booking）。 */
+export function makeHotelEvidence(overrides: Partial<EvidenceData> = {}): EvidenceData {
+  return makeEvidence({
+    doc_type: 'order', recognizer: 'hotel_booking', amount_cents: 72000, currency: 'CNY', cny_cents: 72000,
+    occurred_on: '2026-08-16', merchant: '苏州园区阳澄湖泰康万豪酒店', item_name: '苏州园区阳澄湖泰康万豪酒店 08-15–08-16 1晚1间',
+    order_no: '1132548283006095', is_foreign: false,
+    details: {
+      city: '苏州', hotel: '苏州园区阳澄湖泰康万豪酒店', check_in: '2026-08-15', check_out: '2026-08-16',
+      nights: '1', rooms: '1', guest: '李欣', platform: '携程',
+    },
+    ...overrides,
+  });
+}
+
+export const TRAIN_DETAILS: Readonly<Record<string, string>> = {
+  date: '2026-08-15', from: '上海虹桥', to: '苏州园区', vehicle: 'train', number: 'G7123', passenger: '张三',
+};
+
+/** 住宿发票（酒店）。 */
+export function makeLodgingInvoice(overrides: Partial<InvoiceData> = {}): InvoiceData {
+  return makeInvoice({
+    total_cents: 72000, seller_name: '苏州泰康万豪酒店有限公司', item_summary: '住宿费', tax_category: '住宿服务', ...overrides,
+  });
+}
+
+/** 交通票发票（铁路电子客票）。 */
+export function makeTransportInvoice(overrides: Partial<InvoiceData> = {}): InvoiceData {
+  return makeInvoice({
+    total_cents: 15250, seller_name: '中国铁路上海局集团有限公司', item_summary: '铁路旅客运输服务', tax_category: '旅客运输服务',
+    invoice_type: '电子发票（铁路电子客票）', details: { ...TRAIN_DETAILS }, ...overrides,
+  });
 }

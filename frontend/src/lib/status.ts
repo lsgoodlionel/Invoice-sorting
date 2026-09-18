@@ -78,6 +78,7 @@ export const ATTACHMENT_KIND_LABELS: Readonly<Record<AttachmentKind, string>> = 
   contract: '合同',
   application: '申购单',
   itinerary: '行程单',
+  transport: '往来交通凭证',
   meal_form: '工作餐单',
   meeting: '会议材料',
   software_form: '软件服务报账单',

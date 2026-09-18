@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { makeAttachment, makeDetail, makeEvidence, makeInvoice } from '../test/fixtures';
+import { makeAttachment, makeDetail, makeEvidence, makeHotelEvidence, makeInvoice, makeTransportInvoice, TRAIN_DETAILS } from '../test/fixtures';
 import { attachmentFacts, evidenceParts, isEvidenceRecognized, uploadResultMessage } from './evidence';
 
 describe('evidence summary', () => {
@@ -52,5 +52,21 @@ describe('evidence summary', () => {
     expect(uploadResultMessage({ ...detail, attachments: [makeAttachment({ id: 3, kind_label: '支付记录' }), makeAttachment({ id: 4, kind_label: '支付记录' })] }, 2))
       .toBe('已上传 2 个文件到 #7，识别为：支付记录');
     expect(uploadResultMessage({ ...detail, attachments: [] }, 1)).toBe('已上传 1 个文件到 #7');
+  });
+
+  test('hotel order and transport evidence use travel summaries', () => {
+    expect(evidenceParts(makeHotelEvidence(), { orderNoTail: true }).join(' · ')).toBe(
+      '酒店订单 · 苏州园区阳澄湖泰康万豪酒店 · 08-15 至 08-16 · 1晚1间 · ¥720.00 · 携程 · 订单号 …006095',
+    );
+    const ticket = makeEvidence({ doc_type: 'unknown', recognizer: 'transport_booking', details: { ...TRAIN_DETAILS } });
+    expect(evidenceParts(ticket).join(' · ')).toBe('火车 G7123 · 上海虹桥 → 苏州园区 · 08-15 · 张三');
+    expect(isEvidenceRecognized(ticket)).toBe(true);
+  });
+
+  test('attachmentFacts appends travel summary', () => {
+    const facts = attachmentFacts(makeAttachment({ invoice: makeTransportInvoice() }));
+    expect(facts.at(-1)).toEqual({ label: '行程', value: '火车 G7123 · 上海虹桥 → 苏州园区 · 08-15 · 张三' });
+    const hotel = attachmentFacts(makeAttachment({ kind: 'order', evidence: makeHotelEvidence() }));
+    expect(hotel.at(-1)?.label).toBe('住宿');
   });
 });

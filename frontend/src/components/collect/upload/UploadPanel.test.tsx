@@ -115,4 +115,10 @@ describe('UploadPanel', () => {
     expect(screen.getByText('正在分组匹配…')).toBeInTheDocument();
     expect(screen.getByText('已导入')).toBeInTheDocument();
   });
+
+  test('done row shows travel detail next to recognized type', () => {
+    const ticket = item('t', { name: '车票.pdf', phase: 'done', progress: 100, recognizedAs: '往来交通凭证', recognizedDetail: '火车 G7123 · 上海虹桥 → 苏州园区' });
+    renderPanel({ items: [ticket] });
+    expect(screen.getByText('识别为：往来交通凭证 · 火车 G7123 · 上海虹桥 → 苏州园区')).toBeInTheDocument();
+  });
 });

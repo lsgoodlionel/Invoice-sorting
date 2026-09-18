@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import {
+  ATTACHMENT_KIND_LABELS,
   ATTACHMENT_KIND_OPTIONS,
   isDateBasis,
   isStatus,
@@ -45,7 +46,9 @@ describe('status utils', () => {
   test('date basis guard and kind options', () => {
     expect(isDateBasis('received')).toBe(true);
     expect(isDateBasis('created')).toBe(false);
-    expect(ATTACHMENT_KIND_OPTIONS).toHaveLength(12);
+    expect(ATTACHMENT_KIND_OPTIONS).toHaveLength(13);
+    expect(ATTACHMENT_KIND_OPTIONS).toContainEqual({ value: 'transport', label: '往来交通凭证' });
+    expect(ATTACHMENT_KIND_LABELS.transport).toBe('往来交通凭证');
   });
   test('stepLabel shows 已收凭证 for invoice exempt records on the second step', () => {
     expect(stepLabel('invoiced', false)).toBe('已开票');

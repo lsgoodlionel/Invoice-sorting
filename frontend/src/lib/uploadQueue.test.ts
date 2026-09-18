@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import type { ImportFileResult } from '../api/types';
-import { makeAttachment } from '../test/fixtures';
+import { makeAttachment, makeTransportInvoice } from '../test/fixtures';
 import {
   EMPTY_UPLOAD_QUEUE,
   fileSignature,
@@ -83,7 +83,13 @@ describe('uploadQueueReducer lifecycle', () => {
     state = reduce(state, { type: 'uploaded', id: 'a' });
     expect(state.items[0]).toMatchObject({ phase: 'processing', progress: 100 });
     state = reduce(state, { type: 'result', id: 'a', result: result({ message: '无法识别发票内容' }) });
-    expect(state.items[0]).toMatchObject({ phase: 'done', recognizedAs: '发票', message: '无法识别发票内容', attachmentId: 9 });
+    expect(state.items[0]).toMatchObject({ phase: 'done', recognizedAs: '发票', message: '无法识别发票内容', attachmentId: 9, recognizedDetail: '' });
+  });
+
+  test('result keeps travel summary of the imported attachment', () => {
+    const ticket = makeAttachment({ id: 9, expense_id: null, invoice: makeTransportInvoice() });
+    const state = reduce(added, { type: 'start', id: 'a' }, { type: 'uploaded', id: 'a' }, { type: 'result', id: 'a', result: result({ attachment: ticket }) });
+    expect(state.items[0].recognizedDetail).toBe('火车 G7123 · 上海虹桥 → 苏州园区 · 08-15 · 张三');
   });
 
   test('progress clamps to 0-100, handles zero total and is ignored outside uploading', () => {

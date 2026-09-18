@@ -2,6 +2,7 @@ import { Group, Text } from '@mantine/core';
 import type { Attachment } from '../../../api/types';
 import { evidenceParts, isEvidenceRecognized, UNRECOGNIZED_TEXT } from '../../../lib/evidence';
 import { formatCents } from '../../../lib/money';
+import { hasTransportDetails, transportParts } from '../../../lib/travelDetails';
 import { RegionBadge } from '../../RegionBadge';
 
 const SUMMARY_MAX_WIDTH = 300;
@@ -13,6 +14,7 @@ function InvoiceLine({ attachment }: { attachment: Attachment }) {
     invoice.issued_on ?? '日期未识别',
     invoice.seller_name || '销售方未识别',
     invoice.total_cents === null ? '金额未识别' : formatCents(invoice.total_cents),
+    ...(hasTransportDetails(invoice.details) ? transportParts(invoice.details) : []),
   ];
   return (
     <Group gap={6} wrap="nowrap">
@@ -22,7 +24,7 @@ function InvoiceLine({ attachment }: { attachment: Attachment }) {
   );
 }
 
-/** 识别信息：发票显示开票日期 · 销售方 · 金额 · 地区；其他凭证显示类型 · 日期 · 金额 · 商户 · 订单号尾号。 */
+/** 识别信息：发票显示开票日期 · 销售方 · 金额（交通票另加行程）· 地区；其他凭证显示类型 · 日期 · 金额 · 商户 · 订单号尾号（酒店订单、交通凭证用差旅摘要）。 */
 export function RecognitionSummary({ attachment }: { attachment: Attachment }) {
   if (attachment.kind === 'invoice' && attachment.invoice) return <InvoiceLine attachment={attachment} />;
   if (!isEvidenceRecognized(attachment.evidence)) return <Text size="xs" c="dimmed">{UNRECOGNIZED_TEXT}</Text>;

@@ -7,6 +7,7 @@ import { useDeleteAttachment, useUpdateAttachment } from '../../api/hooks/attach
 import type { Attachment, AttachmentKind } from '../../api/types';
 import { evidenceParts, isEvidenceRecognized } from '../../lib/evidence';
 import { uploaderName } from '../../lib/operator';
+import { hasTransportDetails, transportParts } from '../../lib/travelDetails';
 import { ATTACHMENT_KIND_OPTIONS } from '../../lib/status';
 import { AttachmentPreview } from '../AttachmentPreview';
 import { useCurrentUser } from '../auth/CurrentUserContext';
@@ -27,6 +28,13 @@ function InvoiceLine({ attachment }: { attachment: Attachment }) {
       {invoice.order_no && <Text size="xs" c="dimmed" className="num">订单号 {invoice.order_no}</Text>}
     </Group>
   );
+}
+
+/** 交通票发票的行程：火车 G7123 · 上海虹桥 → 苏州园区 · 08-15 · 张三 */
+function TravelLine({ attachment }: { attachment: Attachment }) {
+  const details = attachment.invoice?.details;
+  if (!hasTransportDetails(details)) return null;
+  return <Text size="xs" c="dimmed" className="num" data-testid={`travel-${attachment.id}`}>{transportParts(details).join(' · ')}</Text>;
 }
 
 /** 非发票凭证识别摘要：类型 · 日期 · 金额币种 · 订单号 */
@@ -91,6 +99,7 @@ function AttachmentRow({ attachment }: { attachment: Attachment }) {
       </Group>
       <UploaderLine attachment={attachment} />
       <InvoiceLine attachment={attachment} />
+      <TravelLine attachment={attachment} />
       <EvidenceLine attachment={attachment} />
       <Collapse expanded={isPreviewOpen}>{isPreviewOpen && <AttachmentPreview attachment={attachment} />}</Collapse>
     </Stack>

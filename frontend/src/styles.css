@@ -361,6 +361,10 @@ body {
   background: var(--paper-surface);
 }
 
+.batch-list-summary {
+  border-bottom: 1px solid var(--paper-line-strong);
+}
+
 .batch-item {
   display: block;
   width: 100%;
@@ -602,4 +606,16 @@ body {
   margin: 0;
   padding: 0;
   min-width: 0;
+}
+
+/* 住宿信息条（详情抽屉顶部） */
+.lodging-banner {
+  background: var(--accent-soft);
+  border-left: 3px solid var(--accent);
+  color: var(--ink-text);
+}
+
+/* 时间线：金额并入等说明作为正文显示 */
+.timeline-note {
+  color: var(--ink-text);
 }

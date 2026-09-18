@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'vitest';
 import type { ImportSession } from '../api/types';
-import { makeAttachment, makeCandidate, makeEvidence, makeGroup, makeInvoice, makeSession } from '../test/fixtures';
+import {
+  makeAttachment, makeCandidate, makeEvidence, makeGroup, makeHotelEvidence, makeInvoice, makeLodgingInvoice, makeSession, makeTransportInvoice,
+} from '../test/fixtures';
 import {
   buildConfirmInput,
   effectiveKind,
@@ -10,6 +12,8 @@ import {
   importGroupsReducer,
   initImportGroups,
   invoiceCount,
+  MULTI_INVOICE_PROBLEM,
+  MULTI_LODGING_PROBLEM,
   operationOptions,
   operationValue,
   parseOperationValue,
@@ -241,5 +245,73 @@ describe('groupTitle', () => {
     expect(groupTitle(state, group(state, 'g1'), 0)).toBe('组 1 · 京东某店');
     const blank = apply(state, { type: 'updateFields', groupId: 'g1', patch: { merchant: ' ' } });
     expect(groupTitle(blank, group(blank, 'g1'), 0)).toBe('组 1 · 发票_123.pdf');
+  });
+});
+
+describe('lodging groups with transport invoices', () => {
+  const hotelInvoice = makeAttachment({ id: 11, expense_id: null, invoice: makeLodgingInvoice({ invoice_no: 'H1' }) });
+  const hotelOrder = makeAttachment({ id: 12, expense_id: null, kind: 'order', evidence: makeHotelEvidence() });
+  const train1 = makeAttachment({ id: 13, expense_id: null, invoice: makeTransportInvoice({ invoice_no: 'T1', total_cents: 15250 }) });
+  const train2 = makeAttachment({ id: 14, expense_id: null, invoice: makeTransportInvoice({ invoice_no: 'T2', total_cents: 15250 }) });
+  const hotelInvoice2 = makeAttachment({ id: 15, expense_id: null, invoice: makeLodgingInvoice({ invoice_no: 'H2', total_cents: 50000 }) });
+  const summary = (amount: number) => ({ ...makeGroup().summary, amount_cents: amount, merchant: '苏州园区阳澄湖泰康万豪酒店' });
+  const travelSession = makeSession({
+    groups: [
+      makeGroup({ group_id: 'h1', attachments: [hotelInvoice, hotelOrder, train1], summary: summary(87250) }),
+      makeGroup({ group_id: 't1', attachments: [train2], summary: summary(15250) }),
+      makeGroup({ group_id: 'h2', attachments: [hotelInvoice2], summary: summary(50000) }),
+    ],
+  });
+
+  test('one lodging invoice plus transport invoices is valid and keeps backend amount', () => {
+    const state = initImportGroups(travelSession);
+    expect(invoiceCount(state, group(state, 'h1'))).toBe(2);
+    expect(groupProblems(state, group(state, 'h1'))).toEqual([]);
+    expect(group(state, 'h1').amountCents).toBe(87250);
+  });
+
+  test('two lodging invoices in one group are rejected', () => {
+    const state = apply(initImportGroups(travelSession), { type: 'moveAttachment', attachmentId: 15, targetGroupId: 'h1' });
+    expect(groupProblems(state, group(state, 'h1'))).toEqual([MULTI_LODGING_PROBLEM]);
+    expect(tallyGroups(state).invalid).toBe(1);
+  });
+
+  test('several invoices without lodging are rejected, and fixed after moving back', () => {
+    const moved = apply(initImportGroups(travelSession), { type: 'moveAttachment', attachmentId: 13, targetGroupId: 't1' });
+    expect(groupProblems(moved, group(moved, 't1'))).toEqual([MULTI_INVOICE_PROBLEM]);
+    const back = apply(moved, { type: 'moveAttachment', attachmentId: 13, targetGroupId: 'h1' });
+    expect(groupProblems(back, group(back, 't1'))).toEqual([]);
+    expect(groupProblems(back, group(back, 'h1'))).toEqual([]);
+  });
+
+  test('moving a transport invoice into a lodging group recomputes the amount', () => {
+    const state = apply(initImportGroups(travelSession), { type: 'moveAttachment', attachmentId: 14, targetGroupId: 'h1' });
+    expect(group(state, 'h1').amountCents).toBe(102500);
+  });
+
+  test('moving or splitting a transport invoice out of a lodging group recomputes the amount', () => {
+    const moved = apply(initImportGroups(travelSession), { type: 'moveAttachment', attachmentId: 13, targetGroupId: 'h2' });
+    expect(group(moved, 'h1').amountCents).toBe(72000);
+    expect(group(moved, 'h2').amountCents).toBe(65250);
+    const split = apply(initImportGroups(travelSession), { type: 'splitAttachment', attachmentId: 13 });
+    expect(group(split, 'h1').amountCents).toBe(72000);
+    expect(group(split, 'split-1').amountCents).toBe(15250);
+  });
+
+  test('amount edited by the user is kept when files move', () => {
+    const state = apply(
+      initImportGroups(travelSession),
+      { type: 'updateFields', groupId: 'h1', patch: { amountCents: 90000 } },
+      { type: 'moveAttachment', attachmentId: 14, targetGroupId: 'h1' },
+    );
+    expect(group(state, 'h1').amountCents).toBe(90000);
+  });
+
+  test('moving non-transport files or into groups without lodging keeps amounts', () => {
+    const orderMoved = apply(initImportGroups(travelSession), { type: 'moveAttachment', attachmentId: 12, targetGroupId: 'h2' });
+    expect(group(orderMoved, 'h1').amountCents).toBe(87250);
+    expect(group(orderMoved, 'h2').amountCents).toBe(50000);
+    const toTransport = apply(initImportGroups(travelSession), { type: 'moveAttachment', attachmentId: 13, targetGroupId: 't1' });
+    expect(group(toTransport, 't1').amountCents).toBe(15250);
   });
 });

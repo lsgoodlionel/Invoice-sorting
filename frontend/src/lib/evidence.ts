@@ -1,6 +1,7 @@
 // 非发票凭证识别结果的摘要文案，以及附件识别要点。
 import type { Attachment, EvidenceData, EvidenceDocType, ExpenseDetail } from '../api/types';
 import { formatCents, formatMoney, isForeignCurrency } from './money';
+import { attachmentTravelInfo, hasHotelDetails, hasTransportDetails, hotelBookingParts, orderNoText, transportParts } from './travelDetails';
 
 export const EVIDENCE_TYPE_LABELS: Readonly<Record<EvidenceDocType, string>> = {
   order: '订单',
@@ -12,28 +13,30 @@ export const EVIDENCE_TYPE_LABELS: Readonly<Record<EvidenceDocType, string>> = {
 
 export const UNRECOGNIZED_TEXT = '未识别（可在下方手动归属）';
 
-const ORDER_TAIL_LENGTH = 6;
+const FALLBACK_TYPE_LABEL = '凭证';
 
+/** 已识别：类型已知，或带有酒店/交通结构化信息。 */
 export function isEvidenceRecognized(evidence: EvidenceData | null): evidence is EvidenceData {
-  return evidence !== null && evidence.doc_type !== 'unknown';
+  if (evidence === null) return false;
+  return evidence.doc_type !== 'unknown' || hasHotelDetails(evidence.details) || hasTransportDetails(evidence.details);
 }
 
-function orderNoText(orderNo: string, useTail: boolean): string {
-  if (!orderNo) return '';
-  const shown = useTail && orderNo.length > ORDER_TAIL_LENGTH ? `…${orderNo.slice(-ORDER_TAIL_LENGTH)}` : orderNo;
-  return `订单号 ${shown}`;
-}
-
-/** 类型 · 日期 · 金额（按币种）· 商户/商品 · 订单号；空字段省略。 */
+/**
+ * 类型 · 日期 · 金额（按币种）· 商户/商品 · 订单号；空字段省略。
+ * 酒店订单与交通凭证改用差旅摘要（见 travelDetails）。
+ */
 export function evidenceParts(evidence: EvidenceData, options: { orderNoTail?: boolean } = {}): string[] {
+  const orderNoTail = options.orderNoTail ?? false;
+  if (hasHotelDetails(evidence.details)) return hotelBookingParts(evidence, orderNoTail);
+  if (hasTransportDetails(evidence.details)) return transportParts(evidence.details);
   const amount = evidence.amount_cents === null ? '' : formatMoney(evidence.amount_cents, evidence.currency);
   const party = [evidence.merchant, evidence.item_name].filter(Boolean).join(' / ');
   return [
-    EVIDENCE_TYPE_LABELS[evidence.doc_type],
+    EVIDENCE_TYPE_LABELS[evidence.doc_type] ?? FALLBACK_TYPE_LABEL,
     evidence.occurred_on ?? '',
     amount,
     party,
-    orderNoText(evidence.order_no, options.orderNoTail ?? false),
+    orderNoText(evidence.order_no, orderNoTail),
   ].filter(Boolean);
 }
 
@@ -49,8 +52,14 @@ function evidenceAmount(evidence: EvidenceData): string {
   return hasCny ? `${base}（${formatCents(evidence.cny_cents)}）` : base;
 }
 
-/** 文件卡片 tooltip：发票号 / 订单号 / 金额币种 / 日期。 */
+/** 文件卡片 tooltip：发票号 / 订单号 / 金额币种 / 日期，差旅凭证另加住宿或行程摘要。 */
 export function attachmentFacts(attachment: Attachment): AttachmentFact[] {
+  const travel = attachmentTravelInfo(attachment);
+  const facts = baseFacts(attachment);
+  return travel ? [...facts, { label: travel.label, value: travel.text }] : facts;
+}
+
+function baseFacts(attachment: Attachment): AttachmentFact[] {
   const { invoice, evidence } = attachment;
   if (invoice) {
     return [

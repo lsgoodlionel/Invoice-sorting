@@ -10,6 +10,7 @@ export type AttachmentKind =
   | 'contract'
   | 'application'
   | 'itinerary'
+  | 'transport'
   | 'meal_form'
   | 'meeting'
   | 'software_form'
@@ -106,6 +107,8 @@ export interface InvoiceData {
   order_no: string;
   detail_platform: boolean;
   buyer_mismatch: boolean;
+  /** 发票解析出的结构化信息（交通票：date/from/to/vehicle/number/passenger）；旧数据可能为 null */
+  details?: Record<string, string> | null;
 }
 
 export type EvidenceDocType = 'order' | 'receipt' | 'payment' | 'itinerary' | 'unknown';
@@ -126,6 +129,8 @@ export interface EvidenceData {
   card_last4: string;
   is_foreign: boolean;
   confirmed: boolean;
+  /** 凭证结构化信息：酒店订单 city/hotel/check_in/check_out/nights/rooms/guest/platform；交通 date/from/to/vehicle/number/passenger */
+  details?: Record<string, string> | null;
 }
 
 export interface Attachment {
