@@ -5,7 +5,7 @@ export const queryKeys = {
   expenseList: (query: ExpenseQuery) => ['expenses', 'list', query] as const,
   expenseSearch: (q: string) => ['expenses', 'search', q] as const,
   expense: (id: number) => ['expenses', 'detail', id] as const,
-  unbatchedExpenses: ['expenses', 'unbatched'] as const,
+  unbatchedExpenses: (query: ExpenseQuery) => ['expenses', 'unbatched', query] as const,
   unassigned: ['attachments', 'unassigned'] as const,
   candidates: ['attachments', 'candidates'] as const,
   attachmentCandidates: (id: number) => ['attachments', 'candidates', id] as const,

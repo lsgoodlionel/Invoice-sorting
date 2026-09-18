@@ -125,4 +125,39 @@ describe('PeriodPresetBar + PeriodRangeText', () => {
     await user.click(await screen.findByRole('option', { name: '到账日期' }));
     expect(onDateBasisChange).toHaveBeenCalledWith('received');
   });
+
+  test('includeAll adds a 全部日期 preset that reports all and highlights it', async () => {
+    const onSelect = vi.fn();
+    const { rerender } = renderWithProviders(<PeriodPresetBar value="this_year" onSelect={onSelect} includeAll />);
+    const labels = screen.getAllByRole('button').map((button) => button.textContent);
+    expect(labels[0]).toBe('全部日期');
+    await userEvent.setup().click(presetButton('全部日期'));
+    expect(onSelect).toHaveBeenCalledWith({ preset: 'all' });
+    rerender(<PeriodPresetBar value="all" onSelect={onSelect} includeAll />);
+    expect(presetButton('全部日期')).toHaveAttribute('aria-pressed', 'true');
+    expect(presetButton('本年')).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  test('custom basis options replace the default date bases', async () => {
+    const onDateBasisChange = vi.fn();
+    const options = [
+      { value: 'created', label: '创建日期' },
+      { value: 'sent', label: '外发日期' },
+    ] as const;
+    renderWithProviders(
+      <PeriodRangeText
+        period={{ preset: 'all' }}
+        range={{}}
+        onPeriodChange={vi.fn()}
+        dateBasis="created"
+        basisOptions={options}
+        onDateBasisChange={onDateBasisChange}
+      />,
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('combobox', { name: '日期口径' }));
+    expect(screen.queryByRole('option', { name: '支出日期' })).not.toBeInTheDocument();
+    await user.click(await screen.findByRole('option', { name: '外发日期' }));
+    expect(onDateBasisChange).toHaveBeenCalledWith('sent');
+  });
 });

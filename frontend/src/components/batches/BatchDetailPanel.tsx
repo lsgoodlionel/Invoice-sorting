@@ -86,6 +86,7 @@ export function BatchDetailPanel({ batch, onOpenExpense, onDeleted, onAddExpense
         <ExportSection batch={batch} />
       </Section>
       <BatchItemsSection
+        key={batch.id}
         expenses={batch.expenses}
         count={batch.item_count}
         isDraft={isDraft}

@@ -47,12 +47,13 @@ export function useExpenseSearch(q: string) {
   });
 }
 
-/** 未分批记录（用于“添加记录到批次”），仅在 enabled 时请求。 */
-export function useUnbatchedExpenses(enabled: boolean) {
-  const query: ExpenseQuery = { unbatched: true, page_size: UNBATCHED_PAGE_SIZE };
+/** 未分批记录（用于“添加记录到批次”），可带日期/分类/项目/状态/缺凭证筛选，仅在 enabled 时请求。 */
+export function useUnbatchedExpenses(filters: Omit<ExpenseQuery, 'unbatched' | 'page' | 'page_size'>, enabled: boolean) {
+  const query: ExpenseQuery = { ...filters, unbatched: true, page_size: UNBATCHED_PAGE_SIZE };
   return useQuery({
-    queryKey: queryKeys.unbatchedExpenses,
+    queryKey: queryKeys.unbatchedExpenses(query),
     queryFn: async (): Promise<ExpenseSummary[]> => (await expensesApi.list(query)).items,
+    placeholderData: keepPreviousData,
     enabled,
   });
 }

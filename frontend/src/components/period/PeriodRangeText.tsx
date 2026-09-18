@@ -3,23 +3,29 @@ import { DateInput } from '@mantine/dates';
 import type { ReactNode } from 'react';
 import type { DateBasis } from '../../api/types';
 import { ALL_DATES_LABEL, customPeriod, isValidDate, type DateRange, type Period } from '../../lib/period';
-import { DATE_BASIS_OPTIONS, isDateBasis } from '../../lib/status';
+import { DATE_BASIS_OPTIONS } from '../../lib/status';
 import './period.css';
 
-interface PeriodRangeTextProps {
+export interface BasisOption<B extends string> {
+  value: B;
+  label: string;
+}
+
+interface PeriodRangeTextProps<B extends string> {
   period: Period;
   /** 页面实际使用的起止日期（清单页可缺省表示不限） */
   range: Partial<DateRange>;
   onPeriodChange: (period: Period) => void;
-  dateBasis: DateBasis;
-  onDateBasisChange: (basis: DateBasis) => void;
+  dateBasis: B;
+  onDateBasisChange: (basis: B) => void;
+  /** 口径选项，默认支出/开票/外发/到账日期（批次列表用创建/外发/到账） */
+  basisOptions?: readonly BasisOption<B>[];
   /** 口径后的动词，如“统计” */
   verb?: string;
   /** 行尾补充说明，如数据起始月份 */
   hint?: ReactNode;
 }
 
-const BASIS_DATA = DATE_BASIS_OPTIONS.map((option) => ({ ...option }));
 
 /** 仅完整的 YYYY-MM-DD 才提交，避免输入过程中的半截日期触发查询。 */
 const parseFullDate = (text: string): string | null => {
@@ -53,7 +59,18 @@ function BoundInput({ label, value, placeholder, onChange }: BoundInputProps) {
 }
 
 /** 标题下方的区间说明：按 [口径▾] 统计 · [起始] 至 [结束]，日期可直接输入或点选。 */
-export function PeriodRangeText({ period, range, onPeriodChange, dateBasis, onDateBasisChange, verb, hint }: PeriodRangeTextProps) {
+export function PeriodRangeText<B extends string = DateBasis>({
+  period,
+  range,
+  onPeriodChange,
+  dateBasis,
+  onDateBasisChange,
+  basisOptions,
+  verb,
+  hint,
+}: PeriodRangeTextProps<B>) {
+  const options = basisOptions ?? (DATE_BASIS_OPTIONS as readonly BasisOption<string>[] as readonly BasisOption<B>[]);
+  const basisData = options.map((option) => ({ ...option }));
   const isAll = period.preset === 'all';
   const placeholder = isAll ? '不限' : '选择日期';
   return (
@@ -64,12 +81,13 @@ export function PeriodRangeText({ period, range, onPeriodChange, dateBasis, onDa
         className="period-inline period-basis"
         variant="unstyled"
         size="sm"
-        data={BASIS_DATA}
+        data={basisData}
         value={dateBasis}
         allowDeselect={false}
         comboboxProps={{ width: 110, position: 'bottom-start' }}
         onChange={(value) => {
-          if (isDateBasis(value)) onDateBasisChange(value);
+          const match = options.find((option) => option.value === value);
+          if (match) onDateBasisChange(match.value);
         }}
       />
       <Text span size="sm" c="dimmed">{verb ? `${verb} · ` : '· '}</Text>
