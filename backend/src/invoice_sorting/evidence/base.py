@@ -1,6 +1,6 @@
 """非发票凭证（订单、收据、银行交易、行程单等）识别结果的公共结构。"""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 
 DOC_ORDER = "order"
@@ -25,6 +25,10 @@ class RecognizedEvidence:
     is_foreign: bool = False
     raw_text: str = ""
     confidence: float = 0.0  # 0~1，识别器匹配程度
+    # 结构化补充信息（键见 docs/差旅住宿凭证_设计.md）：
+    #   酒店订单：city、hotel、check_in、check_out（YYYY-MM-DD）、rooms、nights、guest、platform
+    #   交通凭证：date（YYYY-MM-DD）、from、to、vehicle（train/flight/bus/ship）、number、passenger
+    details: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

@@ -203,6 +203,9 @@ class InvoiceData(Base):
     confirmed: Mapped[bool] = mapped_column(Boolean, default=False)
     raw_text: Mapped[str] = mapped_column(Text, default="")
 
+    # 结构化补充信息（火车/飞机票：date、from、to、vehicle、number、passenger），旧库可能为 NULL
+    details: Mapped[dict[str, str] | None] = mapped_column(JSON, nullable=True, default=dict)
+
     attachment: Mapped[Attachment] = relationship(back_populates="invoice_data")
 
 
@@ -226,6 +229,8 @@ class EvidenceData(Base):
     file_key: Mapped[str] = mapped_column(String(200), default="")
     raw_text: Mapped[str] = mapped_column(Text, default="")
     confirmed: Mapped[bool] = mapped_column(Boolean, default=False)
+    # 结构化补充信息（酒店订单：城市、入住离店日期；交通凭证：日期、起止站），旧库可能为 NULL
+    details: Mapped[dict[str, str] | None] = mapped_column(JSON, nullable=True, default=dict)
 
     attachment: Mapped[Attachment] = relationship(back_populates="evidence_data")
 

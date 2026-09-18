@@ -51,6 +51,7 @@ class AttachmentKind(StrEnum):
     MEETING = "meeting"
     SOFTWARE_FORM = "software_form"
     STATEMENT = "statement"
+    TRANSPORT = "transport"
     OTHER = "other"
 
     @property
@@ -70,6 +71,7 @@ ATTACHMENT_KIND_LABELS: dict[AttachmentKind, str] = {
     AttachmentKind.MEETING: "会议材料",
     AttachmentKind.SOFTWARE_FORM: "软件服务报账单",
     AttachmentKind.STATEMENT: "情况说明",
+    AttachmentKind.TRANSPORT: "往来交通凭证",
     AttachmentKind.OTHER: "其他",
 }
 
