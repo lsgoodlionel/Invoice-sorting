@@ -2,8 +2,7 @@ import { Button, PasswordInput, Stack, Text, TextInput } from '@mantine/core';
 import { useState, type ChangeEvent, type FormEvent } from 'react';
 import { errorMessage } from '../../api/client';
 import { useLogin } from '../../api/hooks/auth';
-import { AuthLayout, BRAND_NAME } from '../../components/auth/AuthLayout';
-import { ResetPasswordHint } from '../../components/auth/ResetPasswordHint';
+import { AuthLayout } from '../../components/auth/AuthLayout';
 import { loadRememberedUsername, saveRememberedUsername } from '../../lib/rememberedUsername';
 
 /** 登录表单状态：用户名默认上次成功登录的用户名（首次为 admin），修改输入时清除错误。 */
@@ -34,20 +33,19 @@ export function LoginPage() {
   const error = login.error ? errorMessage(login.error) : null;
 
   return (
-    <AuthLayout title={BRAND_NAME} subtitle="请输入用户名和密码以继续。">
+    <AuthLayout title="登录" footer="忘记密码？请联系管理员重置">
       <form onSubmit={submit} noValidate>
-        <Stack gap="sm">
+        <Stack gap="md">
           <TextInput label="用户名" name="username" autoComplete="username" autoCapitalize="none" spellCheck={false}
             autoFocus={!username} value={username} aria-invalid={Boolean(error)} onChange={onUsername} />
           <PasswordInput label="密码" name="password" autoComplete="current-password"
             autoFocus={Boolean(username)} value={password} aria-invalid={Boolean(error)} onChange={onPassword} />
           {error && <Text size="sm" c="red.7" role="alert">{error}</Text>}
         </Stack>
-        <Button type="submit" variant="filled" fullWidth mt="md" loading={login.isPending} disabled={!canSubmit}>
+        <Button type="submit" variant="filled" fullWidth size="md" mt="xl" loading={login.isPending} disabled={!canSubmit}>
           登录
         </Button>
       </form>
-      <ResetPasswordHint />
     </AuthLayout>
   );
 }

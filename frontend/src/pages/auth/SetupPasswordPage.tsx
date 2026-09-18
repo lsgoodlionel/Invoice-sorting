@@ -12,7 +12,7 @@ const HTTP_CONFLICT = 409;
 
 const isAlreadySet = (error: unknown) => error instanceof ApiError && error.status === HTTP_CONFLICT;
 
-const INTRO = `为管理员账户 ${DEFAULT_USERNAME} 设置初始密码。设置后可在「设置 → 用户管理」中添加其他用户。请妥善保管，忘记后需在服务器上执行重置命令。`;
+const INTRO = `为管理员账户 ${DEFAULT_USERNAME} 设置初始密码。设置后可在「设置 → 用户管理」中添加其他用户。`;
 
 /** 设置初始密码页：成功后刷新认证状态进入应用；已被设置过（409）则切到登录页。 */
 export function SetupPasswordPage() {
@@ -37,7 +37,7 @@ export function SetupPasswordPage() {
   const inlineError = setup.error && !isAlreadySet(setup.error) ? errorMessage(setup.error) : null;
 
   return (
-    <AuthLayout title="欢迎使用发票账本" subtitle={INTRO}>
+    <AuthLayout title="设置初始密码" subtitle={INTRO} footer={<Text size="xs" className="auth-warning">尚未设置密码前任何人打开此页面都可以设置，请尽快完成。</Text>}>
       <form onSubmit={submit} noValidate>
         <Stack gap="xs">
           {/* 只读用户名便于浏览器密码管理器保存 admin 账户 */}
@@ -49,13 +49,10 @@ export function SetupPasswordPage() {
             {inlineError}
           </Text>
         )}
-        <Button type="submit" variant="filled" fullWidth mt="md" loading={setup.isPending} disabled={!canSubmit}>
+        <Button type="submit" variant="filled" fullWidth size="md" mt="xl" loading={setup.isPending} disabled={!canSubmit}>
           设置并进入
         </Button>
       </form>
-      <Text size="xs" className="auth-footnote auth-warning">
-        尚未设置密码前任何人打开此页面都可以设置，请尽快完成。
-      </Text>
     </AuthLayout>
   );
 }

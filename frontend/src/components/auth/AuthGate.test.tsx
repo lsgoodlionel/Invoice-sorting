@@ -42,7 +42,7 @@ describe('AuthGate states', () => {
   test('renders setup page when no password has been set', async () => {
     mockFetch({ 'GET /api/auth/status': NEEDS_SETUP });
     renderGate();
-    expect(await screen.findByRole('heading', { name: '欢迎使用发票账本' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: '设置初始密码' })).toBeInTheDocument();
     expect(screen.queryByText('应用内容')).not.toBeInTheDocument();
   });
 

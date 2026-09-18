@@ -8,9 +8,6 @@ import { AUTHENTICATED_MEMBER, NEEDS_LOGIN, authStatusRoute } from '../../test/a
 import { mockFetch } from '../../test/fetchMock';
 import { renderWithProviders } from '../../test/render';
 
-const SERVER_RESET_COMMAND =
-  'sudo -u invoice env INVOICE_SORTING_DATA_DIR=/var/lib/invoice-sorting /opt/invoice-sorting/app/backend/.venv/bin/invoice-sorting reset-password';
-
 const renderGate = () =>
   renderWithProviders(
     <AuthGate>
@@ -31,8 +28,9 @@ describe('LoginPage', () => {
     expect(username).toHaveAttribute('autocomplete', 'username');
     expect(password).toHaveFocus();
     expect(password).toHaveAttribute('autocomplete', 'current-password');
-    expect(screen.getByText(/忘记密码请联系管理员重置；管理员 admin 忘记密码时在服务器执行/)).toBeInTheDocument();
-    expect(screen.getByText(SERVER_RESET_COMMAND)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '登录' })).toBeInTheDocument();
+    expect(screen.getByText('忘记密码？请联系管理员重置')).toBeInTheDocument();
+    expect(screen.queryByText(/reset-password/)).not.toBeInTheDocument();
   });
 
   test('prefills the last successfully used username', async () => {
