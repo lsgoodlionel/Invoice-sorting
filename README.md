@@ -477,6 +477,17 @@ scp *.pdf user@server:/tmp/ && ssh user@server 'sudo install -o invoice -g invoi
 
 ## 常见问题
 
+**升级后服务起不来，日志里有 `bad marshal data`？**
+Python 缓存文件（`.pyc`）损坏，常见于升级时旧服务仍在反复重启。新版安装脚本会先停服务、装完后自检并自动修复；已经遇到时执行：
+
+```bash
+sudo systemctl stop invoice-sorting
+sudo find /opt/invoice-sorting/app/backend -name __pycache__ -type d -prune -exec rm -rf {} +
+sudo systemctl start invoice-sorting
+```
+
+仍不行就删除虚拟环境后重新执行一键安装命令（数据不受影响）：`sudo rm -rf /opt/invoice-sorting/app/backend/.venv`。
+
 **经费项目在哪里创建、怎么关联？**
 三处都可以：「设置 → 经费项目」集中管理；记录详情的“经费项目”下拉底部「＋ 新建经费项目」；新建批次或批次信息中的项目下拉同样可以新建。记录关联项目后，可在清单和统计中按项目筛选汇总；批次设置项目后，「添加记录」默认只列出该项目的记录。
 

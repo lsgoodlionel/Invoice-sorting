@@ -169,6 +169,36 @@ prepare_frontend() {
   FRONTEND_READY=0
 }
 
+stop_service() {
+  # 升级期间停止旧服务：避免它在依赖替换过程中反复重启、写入损坏的 .pyc 缓存，也让数据库备份一致
+  if has_systemd && systemctl is-active --quiet "$APP_NAME" 2>/dev/null; then
+    log "停止旧服务"
+    systemctl stop "$APP_NAME" || true
+  fi
+}
+
+verify_backend() {
+  # 清除 .pyc 缓存后重新编译并试导入；缓存损坏（bad marshal data）或依赖不完整时重建虚拟环境一次
+  local venv="${APP_DIR}/backend/.venv"
+  local attempt
+  for attempt in 1 2; do
+    find "$venv" "${APP_DIR}/backend/src" -name __pycache__ -type d -prune -exec rm -rf {} + 2>/dev/null || true
+    as_app "$venv/bin/python" -m compileall -q "$venv/lib" "${APP_DIR}/backend/src" >/dev/null 2>&1 || true
+    if as_app "$venv/bin/python" -c "import invoice_sorting.main" 2>/tmp/invoice-sorting-import.log; then
+      return 0
+    fi
+    if [ "$attempt" = 2 ]; then
+      break
+    fi
+    warn "后端导入失败，重建 Python 虚拟环境后重试："
+    tail -n 3 /tmp/invoice-sorting-import.log >&2 || true
+    rm -rf "$venv"
+    build_app
+  done
+  cat /tmp/invoice-sorting-import.log >&2 || true
+  die "后端依赖安装不完整，原因见上方日志；可删除 ${venv} 后重新执行安装命令"
+}
+
 build_app() {
   # UV_NO_CONFIG：不读取任何 uv.toml，避免受调用者目录或用户配置影响
   as_app env MIRROR="$MIRROR" NO_OCR="${NO_OCR:-0}" UV_NO_CONFIG=1 \
@@ -367,12 +397,14 @@ main() {
   # 切到程序目录：调用者的当前目录（如 /home/xxx）对系统用户 invoice 不可读，
   # uv/pnpm 会在当前目录查找配置文件而报 Permission denied
   cd "$INSTALL_DIR"
+  stop_service
   backup_database
   fetch_source
   load_mirrors
   install_uv
   prepare_frontend
   build_app
+  verify_backend
   write_service
   write_nginx
   open_firewall
