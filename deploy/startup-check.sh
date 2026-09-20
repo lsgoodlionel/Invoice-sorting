@@ -15,6 +15,8 @@ VENV_DIR="${ROOT}/backend/.venv"
 PYTHON="${VENV_DIR}/bin/python"
 CACHE_DIR="${PYTHONPYCACHEPREFIX:-/var/cache/invoice-sorting/pycache}"
 SERVICE_NAME="invoice-sorting"
+APP_BIN="${VENV_DIR}/bin/invoice-sorting"
+DIAGNOSE_TIMEOUT=60
 # 自检导入的模块：应用入口 + 历史上出现过 .pyc 损坏的第三方包
 CHECK_SNIPPET='import invoice_sorting.main, openpyxl'
 
@@ -33,6 +35,37 @@ print_failure_hint() {
      修复后执行：sudo systemctl reset-failed ${SERVICE_NAME} && sudo systemctl start ${SERVICE_NAME}
   4. 依赖损坏时重新执行一键安装命令即可修复（数据不受影响）。
 EOF
+  collect_crash_diagnostics
+}
+
+# 非正常退出后留一份**脱敏**诊断包（docs/日志与故障上报_设计.md）。
+# - 只有同时配置了 INVOICE_SORTING_LOG_REPO 与 INVOICE_SORTING_LOG_TOKEN 才会上传，默认只存本机；
+# - 幂等：反复执行只是多生成一个包，诊断包目录自动只保留最近 10 个；
+# - 不阻塞恢复：超时即放弃，任何失败都只打印一行提示并返回 0。
+collect_crash_diagnostics() {
+  [ -x "$APP_BIN" ] || return 0
+  local args=(diagnose --reason=crash)
+  if [ -n "${INVOICE_SORTING_LOG_REPO:-}" ] && [ -n "${INVOICE_SORTING_LOG_TOKEN:-}" ]; then
+    args+=(--upload)
+  fi
+  local output
+  # 诊断包里不会出现令牌；这里也只回显命令自己的输出，不打印任何环境变量
+  if output="$(run_limited "$APP_BIN" "${args[@]}" 2>&1)"; then
+    printf '%s\n' "$output" | tail -n 3 >&2
+  else
+    note "生成崩溃诊断包失败（不影响服务恢复）："
+    printf '%s\n' "$output" | tail -n 3 >&2
+  fi
+  return 0
+}
+
+# 有 timeout 就限时执行，没有就直接跑（诊断包生成通常在 1 秒内完成）
+run_limited() {
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "$DIAGNOSE_TIMEOUT" "$@"
+  else
+    "$@"
+  fi
 }
 
 can_import() { "$PYTHON" -c "$CHECK_SNIPPET" 2>&1; }

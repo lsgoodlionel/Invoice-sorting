@@ -47,9 +47,24 @@ LICENSE_KEY=供应商提供的密钥
 LICENSE_SERVER=https://saas.example.com
 ```
 
+运行日志与诊断包（**默认不上传**，两项都配置了才会把脱敏诊断包发到私有仓库）：
+
+```bash
+LOG_REPO=lsgoodlionel/paper     # 私有仓库 owner/repo；留空即关闭上传
+LOG_TOKEN=细粒度 PAT            # 只给该仓库 Contents 读写权限
+```
+
+日志在 `/data/日志/app.log`，诊断包在 `/data/日志/诊断包/`。手工生成一个交给开发：
+
+```bash
+docker compose exec app invoice-sorting diagnose --reason=manual
+```
+
+脱敏范围、令牌创建步骤与关闭方法见 [部署与运维 · 运行日志与诊断包](../../docs/部署与运维.md#117-运行日志与诊断包把现场交给开发)。
+
 ## 注意事项
 
-- **镜像里不含任何密钥**：授权密钥只在运行时通过环境变量传入；`.env` 已被 `.gitignore` 忽略，也不会进入构建上下文。
+- **镜像里不含任何密钥**：授权密钥与日志仓库令牌都只在运行时通过环境变量传入；`.env` 已被 `.gitignore` 忽略，也不会进入构建上下文。
 - **非 root 运行**：容器内用户 UID/GID 均为 `10001`。改用宿主机目录存数据时，先 `sudo chown -R 10001:10001 <目录>`，否则容器会启动失败并打印提示。
 - **数据在 `/data`**：默认挂命名卷 `invoice-data`；`docker compose down` 不会删除它。
 - **构建慢或失败**：国内网络在 `.env` 里换镜像源（`PYPI_INDEX`、`NPM_REGISTRY`）；已在宿主机构建好前端时设 `FRONTEND_SOURCE=prebuilt` 可跳过容器内的前端构建。

@@ -1,5 +1,6 @@
 """测试公共夹具：每个测试使用独立的临时数据目录。"""
 
+import logging
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -103,3 +104,18 @@ def fake_recognition(monkeypatch):
     from tests.evidence_factory import FakeRecognition
 
     return FakeRecognition().install(monkeypatch)
+
+
+@pytest.fixture
+def clean_root():
+    """诊断日志测试用：用完把根 logger 还原，避免文件 handler 影响后续测试。"""
+    from invoice_sorting.diagnostics.logging_setup import HANDLER_MARK
+
+    root = logging.getLogger()
+    handlers, filters, level = list(root.handlers), list(root.filters), root.level
+    yield root
+    for handler in [item for item in root.handlers if getattr(item, HANDLER_MARK, False)]:
+        handler.close()
+    root.handlers = handlers
+    root.filters = filters
+    root.setLevel(level)

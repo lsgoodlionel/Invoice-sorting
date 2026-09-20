@@ -36,6 +36,13 @@ services:
       INVOICE_SORTING_LICENSE_GRACE_DAYS: ${GRACE_DAYS:-14}
       INVOICE_SORTING_AUTH_ENABLED: ${AUTH_ENABLED:-true}
       INVOICE_SORTING_WATCH_INBOX: ${WATCH_INBOX:-true}
+      # 运行日志与故障上报：LOG_REPO 与 LOG_TOKEN 都留空时**不上传**，诊断包只留在 /data/日志/诊断包/
+      INVOICE_SORTING_LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      INVOICE_SORTING_LOG_REPO: ${LOG_REPO:-}
+      INVOICE_SORTING_LOG_TOKEN: ${LOG_TOKEN:-}
+      INVOICE_SORTING_LOG_APP: ${LOG_APP:-invoice-sorting}
+      INVOICE_SORTING_LOG_INSTANCE: ${LOG_INSTANCE:-}
+      INVOICE_SORTING_LOG_BRANCH: ${LOG_BRANCH:-main}
     volumes:
       # 默认用命名卷；想直接看到文件就换成宿主机目录，例如 - /srv/invoice-sorting:/data
       - ${DATA_VOLUME:-invoice-data}:/data

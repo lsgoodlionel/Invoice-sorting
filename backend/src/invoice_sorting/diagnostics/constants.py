@@ -1,0 +1,86 @@
+"""诊断与上报的常量、阈值与中文文案（设计《日志与故障上报》）。
+
+本文件不导入项目内其他模块，中间件与认证白名单可安全引用其中的路径常量。
+"""
+
+# 运行日志（设计 2）
+LOG_MAX_BYTES = 5 * 1024 * 1024
+LOG_BACKUP_COUNT = 5
+LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s %(message)s"
+LOG_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
+
+# 诊断包（设计 3）
+MAX_PACKAGE_BYTES = 5 * 1024 * 1024
+LOG_TAIL_LINES = 2000
+JOURNAL_TAIL_LINES = 500
+NGINX_TAIL_LINES = 200
+KEEP_PACKAGES = 10
+COMMAND_TIMEOUT_SECONDS = 10
+SERVICE_UNIT = "invoice-sorting"
+NGINX_ERROR_LOG = "/var/log/nginx/error.log"
+PACKAGE_PREFIX = "diag"
+PACKAGE_SUFFIX = ".zip"
+
+MEMBER_SUMMARY = "summary.json"
+MEMBER_APP_LOG = "app.log"
+MEMBER_JOURNAL = "journal.log"
+MEMBER_SERVICE = "service.txt"
+MEMBER_NGINX = "nginx-error.log"
+MEMBER_ENV = "env.txt"
+MEMBER_HEALTH = "health.json"
+# 超限时按这个顺序截断：日志最长，先动它
+TRUNCATION_ORDER = (MEMBER_APP_LOG, MEMBER_JOURNAL, MEMBER_NGINX)
+TRUNCATION_NOTE = "\n…（超出体积上限，已截断）\n"
+
+REASON_CRASH = "crash"
+REASON_MANUAL = "manual"
+REASON_ERROR = "error"
+REASONS = (REASON_CRASH, REASON_MANUAL, REASON_ERROR)
+
+# env.txt 里只写这些变量名与“已设置/未设置”，绝不写值
+TRACKED_ENV_NAMES = (
+    "INVOICE_SORTING_DATA_DIR",
+    "INVOICE_SORTING_HOST",
+    "INVOICE_SORTING_PORT",
+    "INVOICE_SORTING_AUTH_ENABLED",
+    "INVOICE_SORTING_DEPLOYMENT_MODE",
+    "INVOICE_SORTING_TENANT_HOST_SUFFIX",
+    "INVOICE_SORTING_FRONTEND_DIST",
+    "INVOICE_SORTING_WATCH_INBOX",
+    "INVOICE_SORTING_LICENSE_KEY",
+    "INVOICE_SORTING_LICENSE_SERVER",
+    "INVOICE_SORTING_LICENSE_PRIVATE_KEY",
+    "INVOICE_SORTING_LOG_LEVEL",
+    "INVOICE_SORTING_LOG_REPO",
+    "INVOICE_SORTING_LOG_TOKEN",
+    "INVOICE_SORTING_LOG_APP",
+    "INVOICE_SORTING_LOG_INSTANCE",
+    "INVOICE_SORTING_LOG_BRANCH",
+    "PYTHONPYCACHEPREFIX",
+    "TZ",
+)
+ENV_SET = "已设置"
+ENV_UNSET = "未设置"
+
+# 上传（设计 6）
+GITHUB_API_ROOT = "https://api.github.com"
+GITHUB_API_VERSION = "2022-11-28"
+UPLOAD_TIMEOUT_SECONDS = 30
+UPLOAD_MAX_ATTEMPTS = 3  # 首次 + 最多重试 2 次
+UPLOAD_RETRY_SLEEP_SECONDS = 2.0
+LATEST_FILENAME = "latest.json"
+LOGS_SEGMENT = "logs"
+
+# 接口（设计 5.1）
+DIAGNOSTICS_PREFIX = "/api/diagnostics"
+DIAGNOSTICS_STATUS_PATH = f"{DIAGNOSTICS_PREFIX}/status"
+DIAGNOSTICS_COLLECT_PATH = f"{DIAGNOSTICS_PREFIX}/collect"
+
+MSG_UPLOAD_DISABLED = "未配置日志仓库或令牌，诊断包只保存在本机。"
+MSG_UPLOAD_OK = "诊断包已上传。"
+MSG_UPLOAD_FAILED = "诊断包上传失败，已保留在本机。"
+MSG_RESIDUE_BLOCKED = "诊断包自检发现疑似未脱敏内容（{types}），已拒绝上传，请联系开发人员。"
+MSG_COLLECT_FAILED = "生成诊断包失败，请查看服务端日志。"
+MSG_BAD_REASON = "reason 只能是 crash、manual 或 error。"
+MSG_BAD_REPO = "日志仓库格式应为 owner/repo。"
+MSG_NOT_COLLECTED = "尚未生成过诊断包。"

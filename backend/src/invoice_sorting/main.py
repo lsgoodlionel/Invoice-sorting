@@ -29,6 +29,13 @@ from invoice_sorting.control.database import (
 )
 from invoice_sorting.control.migrate import migrate_tenant_accounts
 from invoice_sorting.control.repository import ensure_tenant
+from invoice_sorting.diagnostics import cli as diagnostics_cli
+from invoice_sorting.diagnostics.constants import REASON_MANUAL, REASONS
+from invoice_sorting.diagnostics.logging_setup import configure_logging, log_startup_summary
+from invoice_sorting.diagnostics.middleware import FaultMiddleware
+from invoice_sorting.diagnostics.router import router as diagnostics_router
+from invoice_sorting.diagnostics.service import STATE_SERVICE_KEY as DIAGNOSTICS_KEY
+from invoice_sorting.diagnostics.service import DiagnosticsService
 from invoice_sorting.expenses.reclassify_router import router as reclassify_router
 from invoice_sorting.expenses.router import router as expenses_router
 from invoice_sorting.importer.router import router as importer_router
@@ -39,6 +46,7 @@ from invoice_sorting.licensing.middleware import WriteGuardMiddleware
 from invoice_sorting.licensing.platform_router import router as platform_license_router
 from invoice_sorting.licensing.router import router as license_router
 from invoice_sorting.licensing.scheduler import LicenseScheduler, interval_seconds
+from invoice_sorting.licensing.serializers import serialize_status
 from invoice_sorting.licensing.service import LicenseService
 from invoice_sorting.migration import cli as migration_cli
 from invoice_sorting.migration.jobs import ExportJobStore
@@ -95,8 +103,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         _prepare_single_tenant(app)
     _prepare_license(app, settings)
     _prepare_quota(app, settings)
+    _prepare_diagnostics(app, settings)
     install_error_handlers(app)
-    # 认证在外层：未登录的写请求先得到 401，不会泄漏本机授权状态
+    # 由内到外：故障采集 → 写守卫 → 认证。
+    # 认证在最外层，未登录的写请求先得到 401，不会泄漏本机授权状态；
+    # 故障采集在最内层，只看到真正没被处理的异常与 5xx。
+    app.add_middleware(FaultMiddleware)
     app.add_middleware(WriteGuardMiddleware)
     app.add_middleware(AuthMiddleware)
 
@@ -118,6 +130,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         platform_license_router,
         platform_admin_router,
         quota_router,
+        diagnostics_router,
     ):
         app.include_router(router)
 
@@ -145,6 +158,22 @@ def _prepare_single_tenant(app: FastAPI) -> None:
     with app.state.control_session_factory() as control:
         migrate_tenant_accounts(control, tenant_id, context.session_factory)
         control.commit()
+
+
+def _prepare_diagnostics(app: FastAPI, settings: Settings) -> None:
+    """装配运行日志与诊断服务（设计《日志与故障上报》）。
+
+    未配置日志仓库与令牌时只在本机生成诊断包，不会发起任何外部请求。
+    """
+    configure_logging(settings)
+    log_startup_summary(settings)
+    setattr(app.state, DIAGNOSTICS_KEY, DiagnosticsService(settings, lambda: _health_snapshot(app)))
+
+
+def _health_snapshot(app: FastAPI) -> dict:
+    """诊断包里的 health.json：/api/health 与授权状态，去掉实例标识。"""
+    status = serialize_status(app.state.license_service.status())
+    return {"health": {"status": "up"}, "license": {**status, "instance_id": ""}}
 
 
 def _prepare_license(app: FastAPI, settings: Settings) -> None:
@@ -220,9 +249,21 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
         "reset-password", help="清除 admin（或指定用户）的密码与其全部会话，之后在网页重新设置"
     )
     reset.add_argument("--user", metavar="用户名", help="要清除密码的用户，默认 admin")
+    _add_diagnostics_commands(commands)
     _add_migration_commands(commands)
     _add_platform_commands(commands)
     return parser.parse_args(argv)
+
+
+def _add_diagnostics_commands(commands) -> None:  # noqa: ANN001 - argparse 的子命令容器
+    """诊断包（设计《日志与故障上报》5）：手工或崩溃后生成，可选上传。"""
+    diagnose = commands.add_parser(
+        "diagnose", help="生成脱敏诊断包（配置了日志仓库与令牌时可加 --upload 上传）"
+    )
+    diagnose.add_argument("--upload", action="store_true", help="生成后上传到私有日志仓库")
+    diagnose.add_argument(
+        "--reason", metavar="原因", default=REASON_MANUAL, choices=REASONS, help="/".join(REASONS)
+    )
 
 
 def _add_platform_commands(commands) -> None:  # noqa: ANN001 - argparse 的子命令容器
@@ -262,12 +303,15 @@ def run(argv: Sequence[str] | None = None) -> None:
     if args.command == "grant-platform-admin":
         platform_cli.run_grant(Settings(), args.username, args.password, args.display_name)
         return
+    if args.command == "diagnose":
+        diagnostics_cli.run_diagnose(Settings(), args.reason, args.upload)
+        return
     if args.command == "import-tenant":
         migration_cli.run_import(Settings(), args.archive, args.slug, args.overwrite)
         return
-    logging.basicConfig(level=logging.INFO)
     settings = Settings()
-    app = create_app(settings)
+    logging.basicConfig(level=logging.INFO)
+    app = create_app(settings)  # 内部会按 INVOICE_SORTING_LOG_LEVEL 接管日志配置
     url = f"http://{settings.host}:{settings.port}"
     if settings.open_browser:
         webbrowser.open(url)

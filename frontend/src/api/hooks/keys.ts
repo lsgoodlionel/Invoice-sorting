@@ -24,6 +24,7 @@ export const queryKeys = {
   invites: ['invites'] as const,
   licenseStatus: ['license', 'status'] as const,
   quota: ['quota'] as const,
+  diagnosticsStatus: ['diagnostics', 'status'] as const,
   platformOverview: ['platform', 'overview'] as const,
   platformTenants: (query: PlatformTenantQuery) => ['platform', 'tenants', query] as const,
   platformMembers: (slug: string) => ['platform', 'members', slug] as const,

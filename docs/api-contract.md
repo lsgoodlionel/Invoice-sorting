@@ -493,3 +493,36 @@ type ExportJob = { job, slug, status: "running"|"done"|"failed", file, size, fil
 **首个平台管理员（离线开通）**：`invoice-sorting grant-platform-admin --username x [--password ...] [--display-name ...]`。
 命令只读写本机 `control.db`：建号（或复用同名账号）、标记 `is_platform_admin`，并确保该账号至少属于一个账套
 （多租户部署自动开通 `platform`「平台运营」账套，单账套部署挂到 `default`），否则登录会被「尚未加入任何账套」拒绝。
+
+### 诊断与故障上报（diagnostics 模块）
+
+设计见 [运行日志与故障上报 · 设计](日志与故障上报_设计.md)。两个端点都**仅管理员**可用（非管理员 403），
+且在只读降级期间仍然放行——服务出问题的时候恰恰最需要诊断包。
+
+| 方法 | 路径 | 请求 | 返回 data |
+| --- | --- | --- | --- |
+| GET | `/api/diagnostics/status` | —（仅管理员） | `DiagnosticsStatus` |
+| POST | `/api/diagnostics/collect` | `{ upload?: boolean, reason?: "manual"\|"crash"\|"error" }`（仅管理员） | `DiagnosticsReport` |
+
+```ts
+type DiagnosticsReport = {
+  created_at: string; reason: "manual" | "crash" | "error";
+  fingerprint: string;          // 故障指纹（异常类型 + 堆栈顶部位置），手工生成时为空
+  package: string; size: number;   // 包文件名与字节数（包在 <数据目录>/日志/诊断包/）
+  residue: string[];            // 残留自检结果，非空表示拒绝上传
+  is_truncated: boolean;        // 日志过大已截断
+  is_uploaded: boolean; repo_path: string; message: string;
+}
+type DiagnosticsStatus = {
+  upload_enabled: boolean;      // 仓库与令牌都配置了才为 true
+  repo: string;                 // 未启用上传时为空串
+  app: string; instance: string; log_file: string;
+  last: DiagnosticsReport | null;
+  throttle: { daily_used: number; daily_remaining: number; tracked_fingerprints: number };
+}
+```
+
+- **默认不上传**：未配置 `INVOICE_SORTING_LOG_REPO` 与 `INVOICE_SORTING_LOG_TOKEN` 时，
+  `upload: true` 也只生成本机诊断包，`message` 说明原因。
+- 日志仓库令牌只从环境变量读，**不落库、不写日志、不进诊断包，也不会出现在任何响应里**。
+- 包内所有文本都已脱敏；打包后自检发现疑似残留（邮箱、手机号、证件号、卡号、密钥形态）即拒绝上传。

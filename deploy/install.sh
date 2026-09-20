@@ -61,7 +61,10 @@ MODE_SINGLE="single"
 MODE_SAAS="saas"
 DEFAULT_CHECK_INTERVAL_HOURS=24
 DEFAULT_GRACE_DAYS=14
-# 注意：DEPLOY_MODE / TENANT_HOST_SUFFIX / LICENSE_* / CHECK_INTERVAL_HOURS / GRACE_DAYS
+DEFAULT_LOG_LEVEL=INFO
+DEFAULT_LOG_APP=invoice-sorting
+DEFAULT_LOG_BRANCH=main
+# 注意：DEPLOY_MODE / TENANT_HOST_SUFFIX / LICENSE_* / LOG_* / CHECK_INTERVAL_HOURS / GRACE_DAYS
 # 这几项**不在此处赋默认值**：resolve_deployment_settings 要靠「变量是否被设置过」
 # 区分“用户本次显式传入空值（清空）”和“没传（沿用旧配置）”。
 
@@ -92,6 +95,32 @@ resolve_setting() {
 
 is_positive_int() { [ -n "$1" ] && [ -z "${1//[0-9]/}" ] && [ "$1" -gt 0 ] 2>/dev/null; }
 
+# 运行日志与故障上报（docs/日志与故障上报_设计.md）。
+# **默认不上传**：LOG_REPO 与 LOG_TOKEN 两项都配置了才会把诊断包发到私有仓库。
+# 令牌只写进 systemd 单元（随后 chmod 600），脚本任何输出里都不回显它。
+resolve_log_settings() {
+  LOG_LEVEL="$(resolve_setting LOG_LEVEL INVOICE_SORTING_LOG_LEVEL "$DEFAULT_LOG_LEVEL")"
+  LOG_REPO="$(resolve_setting LOG_REPO INVOICE_SORTING_LOG_REPO)"
+  LOG_TOKEN="$(resolve_setting LOG_TOKEN INVOICE_SORTING_LOG_TOKEN)"
+  LOG_APP="$(resolve_setting LOG_APP INVOICE_SORTING_LOG_APP "$DEFAULT_LOG_APP")"
+  LOG_INSTANCE="$(resolve_setting LOG_INSTANCE INVOICE_SORTING_LOG_INSTANCE)"
+  LOG_BRANCH="$(resolve_setting LOG_BRANCH INVOICE_SORTING_LOG_BRANCH "$DEFAULT_LOG_BRANCH")"
+
+  if [ -n "$LOG_REPO" ] && [[ ! "$LOG_REPO" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]; then
+    die "LOG_REPO 需要写成 owner/repo（当前：${LOG_REPO}）"
+  fi
+  if [ -n "$LOG_REPO" ] && [ -z "$LOG_TOKEN" ]; then
+    warn "只配置了 LOG_REPO、没有 LOG_TOKEN，诊断包不会上传（仍会保存在本机）"
+  fi
+  if [ -z "$LOG_REPO" ] && [ -n "$LOG_TOKEN" ]; then
+    warn "只配置了 LOG_TOKEN、没有 LOG_REPO，诊断包不会上传（仍会保存在本机）"
+  fi
+  if [ -n "$LOG_REPO" ] && [ -n "$LOG_TOKEN" ]; then
+    warn "已启用诊断包上传：出故障时会把**脱敏后**的诊断包发到私有仓库 ${LOG_REPO}"
+    warn "关闭方式：重新执行安装命令并传 LOG_REPO= （留空）"
+  fi
+}
+
 # 解析部署形态与授权配置，并做基本校验（必须在 check_environment 中、写单元文件之前调用）
 resolve_deployment_settings() {
   DEPLOY_MODE="$(resolve_setting DEPLOY_MODE INVOICE_SORTING_DEPLOYMENT_MODE "$MODE_SINGLE")"
@@ -101,6 +130,7 @@ resolve_deployment_settings() {
   CHECK_INTERVAL_HOURS="$(resolve_setting CHECK_INTERVAL_HOURS \
     INVOICE_SORTING_LICENSE_CHECK_INTERVAL_HOURS "$DEFAULT_CHECK_INTERVAL_HOURS")"
   GRACE_DAYS="$(resolve_setting GRACE_DAYS INVOICE_SORTING_LICENSE_GRACE_DAYS "$DEFAULT_GRACE_DAYS")"
+  resolve_log_settings
 
   case "$DEPLOY_MODE" in
     "$MODE_SINGLE" | "$MODE_SAAS") ;;
@@ -322,6 +352,24 @@ deployment_env_lines() {
     printf 'Environment=INVOICE_SORTING_LICENSE_CHECK_INTERVAL_HOURS=%s\n' "$CHECK_INTERVAL_HOURS"
     printf 'Environment=INVOICE_SORTING_LICENSE_GRACE_DAYS=%s\n' "$GRACE_DAYS"
   fi
+  log_env_lines
+  return 0
+}
+
+# 运行日志与故障上报的 Environment= 行；未配置的项不写入，保持单元文件干净
+log_env_lines() {
+  printf 'Environment=INVOICE_SORTING_LOG_LEVEL=%s\n' "$LOG_LEVEL"
+  if [ -n "$LOG_REPO" ]; then
+    printf 'Environment=INVOICE_SORTING_LOG_REPO=%s\n' "$LOG_REPO"
+    printf 'Environment=INVOICE_SORTING_LOG_APP=%s\n' "$LOG_APP"
+    printf 'Environment=INVOICE_SORTING_LOG_BRANCH=%s\n' "$LOG_BRANCH"
+  fi
+  if [ -n "$LOG_TOKEN" ]; then
+    printf 'Environment=INVOICE_SORTING_LOG_TOKEN=%s\n' "$LOG_TOKEN"
+  fi
+  if [ -n "$LOG_INSTANCE" ]; then
+    printf 'Environment=INVOICE_SORTING_LOG_INSTANCE=%s\n' "$LOG_INSTANCE"
+  fi
   return 0
 }
 
@@ -364,8 +412,8 @@ ReadWritePaths=${DATA_DIR} ${PYCACHE_DIR}
 [Install]
 WantedBy=multi-user.target
 EOF
-  # 单元文件里含授权密钥时收紧权限（systemd 以 root 读取，不影响启动）
-  if [ -n "$LICENSE_KEY" ]; then
+  # 单元文件里含授权密钥或日志仓库令牌时收紧权限（systemd 以 root 读取，不影响启动）
+  if [ -n "$LICENSE_KEY" ] || [ -n "$LOG_TOKEN" ]; then
     chmod 600 "$SERVICE_FILE"
   else
     chmod 644 "$SERVICE_FILE"

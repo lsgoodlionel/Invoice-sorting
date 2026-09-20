@@ -3,6 +3,7 @@ import { IconLock } from '@tabler/icons-react';
 import type { ReactNode } from 'react';
 import { useCurrentUser } from '../components/auth/CurrentUserContext';
 import { CategoryManager } from '../components/settings/CategoryManager';
+import { DiagnosticsSection } from '../components/settings/DiagnosticsSection';
 import { GeneralSettings } from '../components/settings/GeneralSettings';
 import { ProjectManager } from '../components/settings/ProjectManager';
 import { ReclassifySection } from '../components/settings/ReclassifySection';
@@ -38,6 +39,7 @@ export function SettingsPage() {
       <Section label="凭证清单规则" isReadOnly={isReadOnly}><RuleManager readOnly={isReadOnly} /></Section>
       {isAdmin && <Section label="分类整理"><ReclassifySection /></Section>}
       {isAdmin && <Section label="用户管理"><UserManager /></Section>}
+      {isAdmin && <Section label="运行日志与诊断"><DiagnosticsSection /></Section>}
       <Section label="登录与安全"><SecuritySettings /></Section>
     </Stack>
   );
