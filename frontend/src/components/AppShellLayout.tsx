@@ -1,6 +1,7 @@
 import { AppShell, Burger, Group, Kbd, NavLink, Stack, Text } from '@mantine/core';
 import { useDisclosure, useHotkeys } from '@mantine/hooks';
 import {
+  IconBuildingStore,
   IconChartBar,
   IconInbox,
   IconListDetails,
@@ -11,6 +12,8 @@ import {
 import { useMemo } from 'react';
 import { NavLink as RouterNavLink, Outlet } from 'react-router';
 import { NavUserFooter } from './auth/NavUserFooter';
+import { TopNotices } from './notices/TopNotices';
+import { usePlatformAccess } from './platform/usePlatformAccess';
 import { DashboardBar } from './DashboardBar';
 import { QuickAddContext } from './QuickAddContext';
 import { QuickExpenseModal } from './QuickExpenseModal';
@@ -29,16 +32,21 @@ const NAV_ITEMS: readonly NavItem[] = [
   { to: '/settings', label: '设置', icon: IconSettings },
 ];
 
+const PLATFORM_ITEM: NavItem = { to: '/platform', label: '平台', icon: IconBuildingStore };
+
 const NAVBAR_WIDTH = 176;
 const HEADER_HEIGHT = 48;
 
 function SideNav({ onNavigate }: { onNavigate: () => void }) {
+  const { canSeePlatform } = usePlatformAccess();
+  // 平台入口只对平台管理员出现；单账套部署永远不出现
+  const items = canSeePlatform ? [...NAV_ITEMS, PLATFORM_ITEM] : NAV_ITEMS;
   return (
     <Stack gap={2} p="xs" h="100%">
       <Text fw={700} size="lg" px="sm" py="md" style={{ letterSpacing: '0.08em' }}>
         发票账本
       </Text>
-      {NAV_ITEMS.map((item) => (
+      {items.map((item) => (
         <RouterNavLink key={item.to} to={item.to} onClick={onNavigate} style={{ textDecoration: 'none', color: 'inherit' }}>
           {({ isActive }) => (
             <NavLink
@@ -89,6 +97,7 @@ export function AppShellLayout() {
           <SideNav onNavigate={nav.close} />
         </AppShell.Navbar>
         <AppShell.Main>
+          <TopNotices />
           <Outlet />
         </AppShell.Main>
       </AppShell>

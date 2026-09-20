@@ -22,7 +22,24 @@ export const queryKeys = {
   authTenants: ['auth', 'tenants'] as const,
   users: ['users'] as const,
   invites: ['invites'] as const,
+  licenseStatus: ['license', 'status'] as const,
+  quota: ['quota'] as const,
+  platformOverview: ['platform', 'overview'] as const,
+  platformTenants: (query: PlatformTenantQuery) => ['platform', 'tenants', query] as const,
+  platformMembers: (slug: string) => ['platform', 'members', slug] as const,
+  platformInvites: (slug: string) => ['platform', 'invites', slug] as const,
+  platformPlans: ['platform', 'plans'] as const,
+  platformLicenses: ['platform', 'licenses'] as const,
 };
+
+/** 平台账套列表的查询条件（搜索词 + 页码）。 */
+export interface PlatformTenantQuery {
+  q: string;
+  page: number;
+}
+
+/** 账套、成员、套餐变更后需要刷新的平台查询前缀。 */
+export const PLATFORM_KEYS = [['platform']] as const;
 
 /** 任何支出/附件/批次写操作后需要刷新的查询前缀。 */
 export const WORKFLOW_KEYS = [

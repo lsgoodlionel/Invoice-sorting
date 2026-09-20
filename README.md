@@ -6,6 +6,7 @@
 
 - 设计文档：[开发蓝图 v2.0](docs/个人发票报销管理工具_开发蓝图_v2.0.md) · [凭证识别与自动归并 v2.1](docs/凭证识别与自动归并_设计_v2.1.md)
 - 接口说明：[API 契约](docs/api-contract.md)
+- 运维手册：[部署与运维](docs/部署与运维.md)（三种部署形态、授权、账套搬迁、备份与排查）
 
 ---
 
@@ -14,6 +15,7 @@
 - [功能概览](#功能概览)
 - [快速开始（本机）](#快速开始本机)
 - [部署到 Ubuntu 服务器](#部署到-ubuntu-服务器)
+  - [部署形态：本机 / 私有化 / SaaS](#部署形态本机--私有化--saas)
 - [使用指南](#使用指南)
   - [典型流程](#典型流程)
   - [收集：导入发票与凭证](#收集导入发票与凭证)
@@ -166,6 +168,27 @@ cd backend && uv export --quiet --frozen --no-dev --no-emit-project --extra ocr 
 
 适用于 Ubuntu 22.04 / 24.04（x86_64 或 arm64）。**安装与升级是同一条命令**，重复执行即升级，数据和登录密码会保留，升级前自动备份数据库。
 
+### 部署形态：本机 / 私有化 / SaaS
+
+同一套代码支持三种用法，安装命令相同，靠环境变量区分。不确定就用默认的单账套。
+
+| 形态 | 适用场景 | 怎么装 |
+| --- | --- | --- |
+| **本机自用** | 一个人在自己电脑上用 | 见[快速开始（本机）](#快速开始本机) |
+| **私有化单账套**（默认） | 一个团队或一家客户独占一套服务 | 下面的一键安装命令，不用加任何变量 |
+| **SaaS 多账套** | 一套服务承载多个客户，每个客户一个独立账套 | 一键安装命令加 `DEPLOY_MODE=saas` |
+
+```bash
+# SaaS 多账套
+curl -fsSL https://raw.githubusercontent.com/lsgoodlionel/Invoice-sorting/main/deploy/install.sh | sudo DEPLOY_MODE=saas bash
+```
+
+单账套模式下界面里不会出现“账套”概念，老部署升级后行为与之前完全一致，数据文件也不搬家。需要定期在线校验的私有化交付，可在安装时加上 `LICENSE_KEY` 与 `LICENSE_SERVER`；升级时不必重复输入，脚本会沿用已配置的值。
+
+还提供 Docker Compose 交付（`deploy/docker/`），镜像非 root 运行、数据挂在 `/data`。
+
+完整说明（形态对比、配置项总表、授权密钥、账套搬迁、备份恢复、故障排查）见 **[部署与运维](docs/部署与运维.md)**。
+
 ### 一键安装 / 升级
 
 ```bash
@@ -205,14 +228,20 @@ sudo -u invoice env INVOICE_SORTING_DATA_DIR=/var/lib/invoice-sorting /opt/invoi
 | `MIRROR` | `auto` | 下载源：`auto` 测速选择 / `cn` 国内镜像 / `global` 官方源 |
 | `NO_OCR` | `0` | 设为 `1` 不安装截图识别（之后可[单独安装](#单独安装-ocr截图识别)） |
 | `FRONTEND_BUILD` | `prebuilt` | `prebuilt`：下载 GitHub Actions 预构建的前端（服务器无需 Node.js），失败时自动改为本地构建；`local`：始终在服务器上构建 |
+| `DEPLOY_MODE` | `single` | 部署形态：`single` 单账套 / `saas` 多账套 |
+| `TENANT_HOST_SUFFIX` | — | 仅 SaaS：账套子域名后缀（如 `example.com`），需泛域名解析与通配符证书 |
+| `LICENSE_KEY` / `LICENSE_SERVER` | — | 私有化授权密钥与校验服务地址；两项都留空则不做任何校验 |
+| `CHECK_INTERVAL_HOURS` / `GRACE_DAYS` | `24` / `14` | 授权校验间隔与过期后的宽限天数 |
+
+> 形态与授权这几项**升级时不用重复输入**，脚本会沿用上次写入的值。完整说明见 [部署与运维](docs/部署与运维.md)。
 
 ### 脚本做了什么
 
 1. 安装 git、Nginx、sqlite3 及 OCR 所需系统库；测速选择下载源后，从选中的源安装 uv
 2. 创建无登录权限的系统用户 `invoice`
-3. 若已有数据库，升级前备份到 `数据目录/备份/upgrade_时间.db`（保留最近 10 份）
+3. 若已有数据库，升级前备份到 `数据目录/备份/upgrade_时间.db`（控制库为 `control_upgrade_时间.db`，各保留最近 10 份）
 4. 拉取代码（已安装则更新到最新提交），安装后端依赖；前端直接下载 CI 预构建版本（约 300KB，校验与代码版本一致），下载失败或版本不一致时才安装 Node.js 22 在服务器上构建
-5. 注册 systemd 服务 `invoice-sorting`（开机自启、异常自动重启，仅监听 127.0.0.1:18765）
+5. 注册 systemd 服务 `invoice-sorting`（开机自启、异常自动重启，仅监听 127.0.0.1:18765）；启动前自检一次后端导入，Python 字节码缓存集中放在 `/var/cache/invoice-sorting/pycache`，崩溃重启有次数上限，不会无限刷日志
 6. 配置 Nginx 反向代理（对外 8765 端口），上传上限 100 MB；登录由应用自身负责（首次打开网页设置初始密码）
 7. 防火墙 ufw 已启用时放行端口；按需申请 HTTPS 证书
 8. 健康检查通过后打印访问信息
@@ -457,6 +486,7 @@ scp *.pdf user@server:/tmp/ && ssh user@server 'sudo install -o invoice -g invoi
 ```text
 数据目录（本机 ~/InvoiceSorting，服务器 /var/lib/invoice-sorting）
 ├── invoice.db        数据库（SQLite）
+├── control.db        账号与账套信息（多账套部署时还有 tenants/ 目录）
 ├── 收件箱/            放进来的文件自动导入
 ├── 文件库/
 │   ├── 2026/09/20260915_京东××店_易耗品_960.00_E0001/
@@ -470,23 +500,23 @@ scp *.pdf user@server:/tmp/ && ssh user@server 'sudo install -o invoice -g invoi
 
 - 原始发票文件入库后不会被修改；修改记录的日期、商家、分类或金额时，文件夹自动重命名。
 - 金额以“分”为单位整数存储，不存在浮点误差。
-- 完整备份 = 复制整个数据目录。本机建议放在 Time Machine / 网盘同步范围内。
+- 完整备份 = 复制整个数据目录。本机建议放在 Time Machine / 网盘同步范围内。服务器上的备份、恢复与搬迁步骤见 [部署与运维](docs/部署与运维.md#九备份与恢复)。
 - 所有数据只保存在本机或你的服务器上，不会发送到任何外部服务。
 
 ---
 
 ## 常见问题
 
-**升级后服务起不来，日志里有 `bad marshal data`？**
-Python 缓存文件（`.pyc`）损坏，常见于升级时旧服务仍在反复重启。新版安装脚本会先停服务、装完后自检并自动修复；已经遇到时执行：
+**升级后服务起不来，日志里有 `bad marshal data`（或页面 502）？**
+Python 字节码缓存（`.pyc`）损坏，常见于升级时旧服务仍在反复重启。新版安装脚本会先停服务、装完后自检并自动修复，服务每次启动前也会再自检一次；已经遇到时执行：
 
 ```bash
-sudo systemctl stop invoice-sorting
-sudo find /opt/invoice-sorting/app/backend -name __pycache__ -type d -prune -exec rm -rf {} +
-sudo systemctl start invoice-sorting
+sudo rm -rf /var/cache/invoice-sorting/pycache/*
+sudo systemctl reset-failed invoice-sorting
+sudo systemctl restart invoice-sorting
 ```
 
-仍不行就删除虚拟环境后重新执行一键安装命令（数据不受影响）：`sudo rm -rf /opt/invoice-sorting/app/backend/.venv`。
+老版本的缓存散落在程序目录里，再补一条 `sudo find /opt/invoice-sorting/app/backend -name __pycache__ -type d -prune -exec rm -rf {} +`。仍不行就删除虚拟环境后重新执行一键安装命令（数据不受影响）：`sudo rm -rf /opt/invoice-sorting/app/backend/.venv`。详见 [部署与运维 · 故障排查](docs/部署与运维.md#112-bad-marshal-data字节码缓存损坏)。
 
 **经费项目在哪里创建、怎么关联？**
 三处都可以：「设置 → 经费项目」集中管理；记录详情的“经费项目”下拉底部「＋ 新建经费项目」；新建批次或批次信息中的项目下拉同样可以新建。记录关联项目后，可在清单和统计中按项目筛选汇总；批次设置项目后，「添加记录」默认只列出该项目的记录。
@@ -516,7 +546,25 @@ sudo systemctl start invoice-sorting
 普通用户：请管理员在「设置 → 用户管理」重置密码。管理员 admin：在服务器执行 `sudo -u invoice env INVOICE_SORTING_DATA_DIR=/var/lib/invoice-sorting /opt/invoice-sorting/app/backend/.venv/bin/invoice-sorting reset-password`（本机：`backend/.venv/bin/invoice-sorting reset-password`），然后重新打开网页为 admin 设置初始密码。也可以用 `reset-password --user 用户名` 清除指定用户的密码。
 
 **如何迁移到另一台电脑或服务器？**
-停止应用后复制整个数据目录到新位置（服务器上注意 `chown -R invoice:invoice /var/lib/invoice-sorting`），再启动即可。
+停止应用后复制整个数据目录到新位置（服务器上注意 `chown -R invoice:invoice /var/lib/invoice-sorting`），再启动即可。也可以用下面的账套导出包搬迁，跨形态（私有化 ↔ SaaS）都适用。
+
+**怎么把账本整体导出、搬到别处？**
+命令行导出一个包含数据库、文件库与资料包的 zip（本机把前缀换成 `backend/.venv/bin/invoice-sorting`）：
+
+```bash
+sudo -u invoice env INVOICE_SORTING_DATA_DIR=/var/lib/invoice-sorting /opt/invoice-sorting/app/backend/.venv/bin/invoice-sorting export-tenant
+```
+
+在新机器上导入：
+
+```bash
+sudo -u invoice env INVOICE_SORTING_DATA_DIR=/var/lib/invoice-sorting /opt/invoice-sorting/app/backend/.venv/bin/invoice-sorting import-tenant --in 搬迁包.zip --slug default --overwrite
+```
+
+多账套部署要加 `--slug 账套标识`。完整步骤与注意事项见 [部署与运维 · 账套搬迁](docs/部署与运维.md#八账套搬迁)。
+
+**界面提示“只读，无法新增和修改”怎么办？**
+这是私有化授权到期（超过宽限期）或密钥被停用后的降级状态：数据不会丢，查看、导出和备份都还能用。打开「设置」页看授权状态的具体原因，联系供应商续期后点「重新检查」即可恢复。如果是服务器连不上授权服务，先恢复网络再重试。没有配置授权密钥的部署不会出现这个提示。排查命令见 [部署与运维 · 故障排查](docs/部署与运维.md#十一故障排查)。
 
 ---
 

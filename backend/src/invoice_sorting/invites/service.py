@@ -15,10 +15,12 @@ from sqlalchemy.orm import Session
 from invoice_sorting.auth.passwords import hash_password
 from invoice_sorting.auth.service import Grant, authenticate, start_session
 from invoice_sorting.common.errors import AppError, ConflictError
+from invoice_sorting.config import Settings
 from invoice_sorting.control.members import Member, find_member
 from invoice_sorting.control.models import TENANT_STATUS_ACTIVE, Invite, Membership, Tenant
 from invoice_sorting.control.repository import create_account, find_account, get_tenant
 from invoice_sorting.db.models import now
+from invoice_sorting.quota.members import ensure_member_capacity
 
 CODE_BYTES = 12
 DEFAULT_VALID_DAYS = 7
@@ -100,10 +102,18 @@ def _account_for(control: Session, request: JoinRequest):
     return existing
 
 
-def redeem_invite(control: Session, request: JoinRequest, user_agent: str) -> Grant:
-    """兑换邀请码：加入账套并直接登录到该账套。"""
+def redeem_invite(
+    control: Session, request: JoinRequest, user_agent: str, settings: Settings | None = None
+) -> Grant:
+    """兑换邀请码：加入账套并直接登录到该账套。
+
+    这是公开入口且前缀 `/api/auth/` 被写守卫豁免，因此成员数额度要在这里单独校验
+    （传入 settings 才校验；不传表示调用方不启用额度，例如单元测试）。
+    """
     invite = _usable_invite(control, request.code)
     tenant = _usable_tenant(control, invite.tenant_id)
+    if settings is not None:
+        ensure_member_capacity(settings, control, tenant)
     account = _account_for(control, request)
     if find_member(control, account.id, tenant.id) is not None:
         raise ConflictError(MSG_ALREADY_MEMBER)

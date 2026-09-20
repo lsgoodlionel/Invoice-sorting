@@ -622,3 +622,195 @@ export interface ChangePasswordInput {
   current_password: string;
   new_password: string;
 }
+
+// —— 私有化授权状态（顶部提示条） ——
+export type LicenseState = 'active' | 'grace' | 'readonly' | 'unlicensed_ok' | 'not_applicable';
+
+export interface LicenseStatus {
+  state: LicenseState;
+  /** 可直接展示的中文说明 */
+  message: string;
+  instance_id: string;
+  valid_until: string | null;
+  grace_until: string | null;
+  max_users: number;
+  last_checked_at: string | null;
+  last_error: string;
+  server_reachable: boolean;
+}
+
+// —— 套餐额度（顶部提示条；单账套部署 enforced=false） ——
+export type QuotaKind = 'users' | 'storage' | 'expenses';
+
+export interface QuotaLimit {
+  key: QuotaKind;
+  label: string;
+  unit: string;
+  limit: number;
+  used: number;
+  remaining: number | null;
+  is_unlimited: boolean;
+  is_exceeded: boolean;
+}
+
+export interface QuotaUsage {
+  users: number;
+  storage_bytes: number;
+  storage_mb: number;
+  expenses_this_month: number;
+  /** 存储用量的测量时间；is_stale 表示是缓存值 */
+  measured_at: string | null;
+  is_stale: boolean;
+}
+
+export interface QuotaStatus {
+  enforced: boolean;
+  status: TenantStatus;
+  plan: { code: string; name: string } | null;
+  usage: QuotaUsage | null;
+  limits: QuotaLimit[];
+  expires_on: string | null;
+  expires_in_days: number | null;
+  is_readonly: boolean;
+  readonly_reason: string;
+  readonly_message: string;
+}
+
+// —— 平台运营后台 ——
+export type TenantStatus = 'active' | 'suspended' | 'closed';
+
+export interface PlatformOverview {
+  tenants: number;
+  active_tenants: number;
+  accounts: number;
+  storage_bytes: number;
+  expenses_created: number;
+}
+
+export interface TenantUsage {
+  day: string;
+  users: number;
+  storage_bytes: number;
+  expenses_created: number;
+}
+
+export interface PlatformTenant {
+  slug: string;
+  name: string;
+  status: TenantStatus;
+  plan: { code: string; name: string } | null;
+  expires_on: string | null;
+  member_count: number;
+  usage: TenantUsage | null;
+  created_at: string;
+}
+
+export interface PlatformTenantPage {
+  items: PlatformTenant[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+/** 开通账套的返回：带首个管理员，或一张管理员邀请码 */
+export interface OpenedTenant extends PlatformTenant {
+  admin: User | null;
+  invite: Invite | null;
+}
+
+export interface TenantCreateInput {
+  slug: string;
+  name?: string;
+  plan_code?: string | null;
+  expires_on?: string | null;
+  admin_username?: string;
+  admin_password?: string;
+  admin_display_name?: string;
+  with_invite?: boolean;
+}
+
+export interface TenantPatch {
+  name?: string;
+  plan_code?: string | null;
+  expires_on?: string | null;
+  status?: TenantStatus;
+}
+
+export interface Plan {
+  id: number;
+  code: string;
+  name: string;
+  max_users: number;
+  max_storage_mb: number;
+  max_expenses_per_month: number;
+  features: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface PlanInput {
+  code: string;
+  name?: string;
+  max_users?: number;
+  max_storage_mb?: number;
+  max_expenses_per_month?: number;
+}
+
+export interface PlanPatch {
+  name?: string;
+  max_users?: number;
+  max_storage_mb?: number;
+  max_expenses_per_month?: number;
+}
+
+export type LicenseRecordStatus = 'active' | 'revoked';
+
+export interface LicenseRecord {
+  id: number;
+  /** 列表中为脱敏后的前后各 4 位；只有签发的那一次是原文 */
+  license_key: string;
+  is_key_visible: boolean;
+  customer_name: string;
+  max_users: number;
+  valid_until: string | null;
+  status: LicenseRecordStatus;
+  bound_instance_id: string;
+  note: string;
+  issued_at: string | null;
+  checked_at: string | null;
+  created_at: string;
+}
+
+export interface LicenseInput {
+  customer_name: string;
+  max_users?: number;
+  valid_until?: string | null;
+  note?: string;
+}
+
+export interface LicensePatch {
+  customer_name?: string;
+  max_users?: number;
+  valid_until?: string | null;
+  status?: LicenseRecordStatus;
+  note?: string;
+}
+
+export type ExportJobStatus = 'running' | 'done' | 'failed';
+
+export interface ExportJob {
+  job: string;
+  slug: string;
+  status: ExportJobStatus;
+  file: string;
+  size: number;
+  file_count: number;
+  error: string;
+  download_url: string;
+}
+
+export interface PlatformMemberInput {
+  username: string;
+  display_name?: string;
+  password?: string;
+  role: UserRole;
+}

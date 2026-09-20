@@ -26,14 +26,18 @@ def is_platform_admin(app: Any, user: AuthUser | None) -> bool:
 
 
 def require_platform_admin(request: Request) -> AuthUser | None:
-    """非平台管理员 403；单租户部署退化为管理员校验；关闭认证时放行。"""
+    """非平台管理员 403；单租户部署退化为管理员校验；关闭认证时放行。
+
+    多租户部署下只看控制面的 `is_platform_admin`，不要求「当前账套的管理员」：
+    平台管理员是全局身份，可能只是某个账套的普通成员，甚至正停留在别人的账套里。
+    """
     settings = request.app.state.settings
     if not settings.auth_enabled:
         return get_current_user(request)
-    user = require_admin(request)
     if not settings.is_saas:
-        return user
-    if not is_platform_admin(request.app, user):
+        return require_admin(request)
+    user = get_current_user(request)
+    if user is None or not is_platform_admin(request.app, user):
         raise AppError(MSG_PLATFORM_ADMIN_REQUIRED, status_code=403)
     return user
 

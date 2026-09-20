@@ -1,0 +1,58 @@
+# 发票账本 · Docker Compose 交付
+#
+#   cd deploy/docker
+#   cp .env.example .env     # 按需修改；不配也能跑（默认单账套、无授权校验）
+#   docker compose up -d --build
+#
+# 需要在前面再挡一层 Nginx（统一端口、上传上限、以后接 HTTPS）时：
+#   docker compose --profile nginx up -d --build
+#
+# 所有配置都来自环境变量或同目录的 .env，镜像里不含任何密钥。
+
+name: invoice-sorting
+
+services:
+  app:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+      args:
+        FRONTEND_SOURCE: ${FRONTEND_SOURCE:-build}
+        INSTALL_OCR: ${INSTALL_OCR:-true}
+        PYPI_INDEX: ${PYPI_INDEX:-https://pypi.org/simple}
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmjs.org}
+    image: ${IMAGE_NAME:-invoice-sorting:local}
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      # 部署形态：single 单账套（默认） / saas 多账套
+      INVOICE_SORTING_DEPLOYMENT_MODE: ${DEPLOY_MODE:-single}
+      # 仅 saas：配置后 t1.example.com 直接定位账套 t1（需泛域名解析 + 通配符证书）
+      INVOICE_SORTING_TENANT_HOST_SUFFIX: ${TENANT_HOST_SUFFIX:-}
+      # 私有化授权：两项都留空时不做任何校验，也不会发起网络请求
+      INVOICE_SORTING_LICENSE_KEY: ${LICENSE_KEY:-}
+      INVOICE_SORTING_LICENSE_SERVER: ${LICENSE_SERVER:-}
+      INVOICE_SORTING_LICENSE_CHECK_INTERVAL_HOURS: ${CHECK_INTERVAL_HOURS:-24}
+      INVOICE_SORTING_LICENSE_GRACE_DAYS: ${GRACE_DAYS:-14}
+      INVOICE_SORTING_AUTH_ENABLED: ${AUTH_ENABLED:-true}
+      INVOICE_SORTING_WATCH_INBOX: ${WATCH_INBOX:-true}
+    volumes:
+      # 默认用命名卷；想直接看到文件就换成宿主机目录，例如 - /srv/invoice-sorting:/data
+      - ${DATA_VOLUME:-invoice-data}:/data
+    ports:
+      # 直连访问端口；启用 nginx 档案时建议改成 127.0.0.1:18765
+      - "${APP_PUBLISH:-8765}:8765"
+
+  nginx:
+    image: ${NGINX_IMAGE:-nginx:1.27-alpine}
+    profiles: ["nginx"]
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "${NGINX_PUBLISH:-80}:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+
+volumes:
+  invoice-data:

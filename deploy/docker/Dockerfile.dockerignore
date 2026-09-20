@@ -1,0 +1,27 @@
+# 构建上下文过滤（BuildKit 会优先使用与 Dockerfile 同名的 .dockerignore）
+# 注意：**不要**忽略 frontend/dist —— FRONTEND_SOURCE=prebuilt 需要它。
+.git
+.github
+.claude
+docs
+**/node_modules
+**/.venv
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+**/.ruff_cache
+**/.coverage
+**/htmlcov
+backend/tests
+frontend/test-results
+frontend/playwright-report
+frontend/coverage
+**/*.db
+**/*.db-wal
+**/*.db-shm
+**/.DS_Store
+# 本地配置绝不进入构建上下文，避免密钥被打进镜像
+deploy/docker/.env
+**/.env
+**/.env.*
+!deploy/docker/.env.example

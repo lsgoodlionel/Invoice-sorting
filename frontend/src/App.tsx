@@ -8,6 +8,7 @@ const ExpensesPage = lazy(() => import('./pages/ExpensesPage').then((m) => ({ de
 const BatchesPage = lazy(() => import('./pages/BatchesPage').then((m) => ({ default: m.BatchesPage })));
 const StatsPage = lazy(() => import('./pages/StatsPage').then((m) => ({ default: m.StatsPage })));
 const SettingsPage = lazy(() => import('./pages/SettingsPage').then((m) => ({ default: m.SettingsPage })));
+const PlatformPage = lazy(() => import('./pages/PlatformPage').then((m) => ({ default: m.PlatformPage })));
 
 export function App() {
   return (
@@ -20,6 +21,7 @@ export function App() {
           <Route path="batches" element={<BatchesPage />} />
           <Route path="stats" element={<StatsPage />} />
           <Route path="settings" element={<SettingsPage />} />
+          <Route path="platform" element={<PlatformPage />} />
           <Route path="*" element={<Navigate to="/expenses" replace />} />
         </Route>
       </Routes>

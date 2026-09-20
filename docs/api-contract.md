@@ -384,3 +384,112 @@ type Stats = {
 - `readonly` 期间所有写接口（POST/PUT/PATCH/DELETE 的 `/api/*`）返回 **403** 并附中文原因；
   GET、`/api/auth/*`（登录）、`/api/backup`（备份）与批次导出仍可用。
 - `message` 可直接作为提示条文案；`server_reachable=false` 表示当前联系不上授权服务（不降级）。
+
+### 套餐与额度（quota 模块）
+
+| 方法 | 路径 | 请求 | 返回 data |
+| --- | --- | --- | --- |
+| GET | `/api/quota` | —（需登录） | `Quota` |
+
+```ts
+type QuotaLine = {
+  key: "users" | "storage" | "expenses";
+  label: string;            // 成员数量 / 存储空间 / 本月新增记录
+  unit: string;             // 人 / MB / 条
+  limit: number;            // 0 表示不限制
+  used: number;             // 与 limit 同单位（存储向下取整到 MB）
+  remaining: number | null; // 不限制时为 null
+  is_unlimited: boolean;
+  is_exceeded: boolean;     // used >= limit，即再做一次就会超
+}
+
+type Quota = {
+  enforced: boolean;        // 单账套部署为 false，plan/usage 为 null、limits 为 []，界面不显示任何上限
+  plan: { code, name, max_users, max_storage_mb, max_expenses_per_month, features } | null;
+  usage: { users, storage_bytes, storage_mb, expenses_this_month, measured_at: string|null, is_stale: boolean } | null;
+  limits: QuotaLine[];
+  is_readonly: boolean;
+  readonly_reason: "" | "tenant_suspended" | "tenant_closed" | "tenant_expired";
+  readonly_message: string; // 可直接作为提示条文案
+  status: "active" | "suspended" | "closed";
+  expires_on: string | null;      // YYYY-MM-DD
+  expires_in_days: number | null; // 负数表示已过期
+}
+```
+
+- 额度**只在多账套部署生效**。账套未绑定套餐时按内置「免费版」（3 人 / 1024 MB / 每月 200 条）计算；
+  控制库中同时有一行 `plan.code = "free"` 供运营后台选用。任一上限为 0 表示该项不限制。
+- 账套 `status != active` 或 `expires_on` 已过（到期日当天仍可写）→ **只读**：GET、`/api/auth/*`、
+  `/api/backup` 与批次导出照常，其余 `/api/*` 写请求返回 **403** 并附 `readonly_message`。
+  停用/关闭/到期三种文案分别说明原因与处理办法。
+- 额度只拦“会让用量变大”的动作，修改与删除始终放行（否则超限后无法清理自救）：
+  - `POST /api/expenses`、`POST /api/attachments/create-expenses` → 当月新增记录
+  - `POST /api/expenses/{id}/attachments`、`POST /api/imports*` → 存储（导入同时看两项）
+  - `POST /api/users`、`POST /api/auth/join`（邀请码加入）→ 成员数量
+- 超限同样返回 **403**，`error` 指明是哪一项、上限多少、当前多少以及可以怎么办，例如
+  “本月新增记录已达套餐上限（团队版：每月 200 条，本月已新增 200 条），无法再新建记录。请升级套餐，或等下月额度重置。”
+- `usage.storage_bytes` 为文件库目录累计字节，带缓存（默认 5 分钟）：过期时先返回旧值
+  （`usage.is_stale = true`）再后台刷新，因此刚上传的文件可能晚几分钟才反映到数字上。
+- 用量每日一行写入控制库 `usage_snapshot`（读取本接口时顺带更新当天行，同账套 5 分钟至多写一次）。
+- 运营后台改套餐、改到期日、停用与恢复**立即生效**：每个写请求都会重新读取控制库中的租户行与套餐，
+  不存在需要重启或等待缓存过期的情况（仅存储用量的数字有上述缓存）。
+
+### 平台运营后台（platform_admin 模块）
+
+前缀 `/api/platform`，**全部仅限平台管理员**（控制库 `account.is_platform_admin`）。
+单账套私有化部署退化为「管理员即平台管理员」，前端不出现入口。
+租户管理员即使访问自己账套的平台路径也返回 **403**（跨账套越权红线）。
+
+多租户部署下平台后台常从**裸域名**访问：`/api/platform/*` 按登录会话所属账号的成员关系
+定位账套，不依赖子域名，因此不会出现「无法确定当前账套」400；未登录为 401，
+登录了但不是平台管理员为 403。
+
+| 方法 | 路径 | 请求 | 返回 data |
+| --- | --- | --- | --- |
+| GET | `/api/platform/overview` | — | `{ tenants, active_tenants, accounts, storage_bytes, expenses_created }` |
+| GET | `/api/platform/tenants` | `?q=&page=1&page_size=20`（q 匹配标识或名称） | `{ items: PlatformTenant[], total, page, page_size }` |
+| POST | `/api/platform/tenants` | `{ slug, name?, plan_code?, expires_on?, admin_username?, admin_password?, admin_display_name?, with_invite? }` | `PlatformTenant & { admin: User\|null, invite: Invite\|null }` |
+| GET | `/api/platform/tenants/{slug}` | — | `PlatformTenant` |
+| PATCH | `/api/platform/tenants/{slug}` | `{ name?, plan_code?, expires_on?, status? }` | `PlatformTenant` |
+| GET/POST | `/api/platform/tenants/{slug}/members` | POST `{ username, display_name?, password?, role }` | `User[]` / `User` |
+| PATCH | `/api/platform/tenants/{slug}/members/{id}` | `{ display_name?, role?, is_active? }` | `User` |
+| POST | `/api/platform/tenants/{slug}/members/{id}/password` | `{ password }` | `null` |
+| GET/POST | `/api/platform/tenants/{slug}/invites` | POST `{ role?, expires_on? }` | `Invite[]` / `Invite` |
+| POST | `/api/platform/tenants/{slug}/export` | `{ include_packages? }` → 异步任务 | `ExportJob` |
+| GET | `/api/platform/tenants/{slug}/export/{job}/status` | — | `ExportJob` |
+| GET | `/api/platform/tenants/{slug}/export/{job}` | — | ZIP 文件流 |
+| GET/POST | `/api/platform/plans` | POST `{ code, name?, max_users?, max_storage_mb?, max_expenses_per_month?, features? }` | `Plan[]` / `Plan` |
+| PATCH/DELETE | `/api/platform/plans/{id}` | PATCH 同上（不含 code）；被账套引用时 DELETE 409 | `Plan` / `null` |
+| GET/POST | `/api/platform/licenses` | POST `{ customer_name, max_users?, valid_until?, note?, features? }` | `LicenseRecord[]` / `LicenseRecord` |
+| PATCH | `/api/platform/licenses/{id}` | `{ customer_name?, max_users?, valid_until?, status?, note? }`（status=`revoked` 即吊销） | `LicenseRecord` |
+| POST | `/api/platform/licenses/{id}/unbind` | — 清空绑定实例，供客户换机 | `LicenseRecord` |
+| DELETE | `/api/platform/licenses/{id}` | — | `null` |
+
+```ts
+type PlatformTenant = {
+  slug: string; name: string; status: "active"|"suspended"|"closed";
+  plan: { code: string; name: string } | null;
+  expires_on: string | null;      // 为空表示长期有效
+  member_count: number;           // 启用中的成员数
+  usage: { day, users, storage_bytes, expenses_created } | null;  // 最近一天的用量快照
+  created_at: string;
+}
+type Plan = { id, code, name, max_users, max_storage_mb, max_expenses_per_month, features, created_at }  // 额度 0 = 不限
+type LicenseRecord = {
+  id: number; license_key: string; is_key_visible: boolean;   // 列表中只有前后各 4 位（ABCD****WXYZ）
+  customer_name: string; max_users: number; valid_until: string | null;
+  status: "active"|"revoked"; bound_instance_id: string; note: string;
+  issued_at: string | null; checked_at: string | null; created_at: string;
+}
+type ExportJob = { job, slug, status: "running"|"done"|"failed", file, size, file_count, error, download_url }
+```
+
+- **授权密钥只在签发响应里返回一次原文**（`is_key_visible=true`），之后只能看到脱敏值，服务端日志也不记录密钥。
+- PATCH 只处理请求里**出现过**的字段：传 `null` 表示清空（`plan_code: null` 取消套餐、`expires_on: null` 长期有效），不传表示不修改。
+- 账套改为 `suspended` 或 `closed` 后立即释放该账套的数据库连接；成员只能登录查看与导出（额度模块负责只读降级）。
+- 开通账套时必须给出 `admin_username` + `admin_password`，或 `with_invite=true` 签发一张管理员邀请码。
+- 成员接口的目标账套由路径中的 slug 指定，与当前请求解析到的账套无关；业务规则（不能停用自己、账套至少保留一名启用且有密码的管理员）与账套内「设置 → 用户管理」一致。
+
+**首个平台管理员（离线开通）**：`invoice-sorting grant-platform-admin --username x [--password ...] [--display-name ...]`。
+命令只读写本机 `control.db`：建号（或复用同名账号）、标记 `is_platform_admin`，并确保该账号至少属于一个账套
+（多租户部署自动开通 `platform`「平台运营」账套，单账套部署挂到 `default`），否则登录会被「尚未加入任何账套」拒绝。

@@ -79,7 +79,8 @@ def post_join(
 def _redeem(request: Request, control: Session, join: JoinRequest, limiter, key: str) -> Grant:
     """邀请码或密码不对都计入失败次数，防止穷举。"""
     try:
-        return redeem_invite(control, join, request.headers.get(USER_AGENT_HEADER, ""))
+        user_agent = request.headers.get(USER_AGENT_HEADER, "")
+        return redeem_invite(control, join, user_agent, request.app.state.settings)
     except AppError:
         limiter.record_failure(key)
         raise

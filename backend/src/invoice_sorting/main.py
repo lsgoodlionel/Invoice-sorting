@@ -34,7 +34,7 @@ from invoice_sorting.expenses.router import router as expenses_router
 from invoice_sorting.importer.router import router as importer_router
 from invoice_sorting.invites.router import router as invites_router
 from invoice_sorting.licensing.deps import license_write_check
-from invoice_sorting.licensing.guard import install_write_guards
+from invoice_sorting.licensing.guard import install_write_guards, register_write_guard
 from invoice_sorting.licensing.middleware import WriteGuardMiddleware
 from invoice_sorting.licensing.platform_router import router as platform_license_router
 from invoice_sorting.licensing.router import router as license_router
@@ -43,6 +43,13 @@ from invoice_sorting.licensing.service import LicenseService
 from invoice_sorting.migration import cli as migration_cli
 from invoice_sorting.migration.jobs import ExportJobStore
 from invoice_sorting.migration.router import router as migration_router
+from invoice_sorting.platform_admin import cli as platform_cli
+from invoice_sorting.platform_admin.router import router as platform_admin_router
+from invoice_sorting.quota.guard import STATE_SERVICE_KEY as QUOTA_SERVICE_KEY
+from invoice_sorting.quota.guard import quota_write_check
+from invoice_sorting.quota.plans import ensure_default_plan
+from invoice_sorting.quota.router import router as quota_router
+from invoice_sorting.quota.service import QuotaService
 from invoice_sorting.settings.router import router as settings_router
 from invoice_sorting.stats.router import router as stats_router
 from invoice_sorting.tenancy.runtime import TenantRuntime
@@ -87,6 +94,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     if not settings.is_saas:
         _prepare_single_tenant(app)
     _prepare_license(app, settings)
+    _prepare_quota(app, settings)
     install_error_handlers(app)
     # 认证在外层：未登录的写请求先得到 401，不会泄漏本机授权状态
     app.add_middleware(WriteGuardMiddleware)
@@ -108,6 +116,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         migration_router,
         license_router,
         platform_license_router,
+        platform_admin_router,
+        quota_router,
     ):
         app.include_router(router)
 
@@ -147,6 +157,20 @@ def _prepare_license(app: FastAPI, settings: Settings) -> None:
     app.state.license_service = service
     app.state.license_limiter = LoginRateLimiter()
     install_write_guards(app, (license_write_check,))
+
+
+def _prepare_quota(app: FastAPI, settings: Settings) -> None:
+    """装配套餐额度：登记第二个写操作守卫（授权在前，额度在后，先命中先返回）。
+
+    多账套部署顺带把内置免费套餐写入控制库，运营后台可直接选用。
+    """
+    setattr(app.state, QUOTA_SERVICE_KEY, QuotaService(settings))
+    register_write_guard(app, quota_write_check)
+    if not settings.is_saas:
+        return
+    with app.state.control_session_factory() as control:
+        ensure_default_plan(control)
+        control.commit()
 
 
 def _start_license_scheduler(app: FastAPI, settings: Settings) -> LicenseScheduler | None:
@@ -197,7 +221,18 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     )
     reset.add_argument("--user", metavar="用户名", help="要清除密码的用户，默认 admin")
     _add_migration_commands(commands)
+    _add_platform_commands(commands)
     return parser.parse_args(argv)
+
+
+def _add_platform_commands(commands) -> None:  # noqa: ANN001 - argparse 的子命令容器
+    """平台运营（设计 5）：离线开通首个平台管理员。"""
+    grant = commands.add_parser(
+        "grant-platform-admin", help="把某个账号设为平台管理员（不存在则新建）"
+    )
+    grant.add_argument("--username", metavar="用户名", required=True, help="平台管理员账号")
+    grant.add_argument("--password", metavar="初始密码", help="新账号必填；留空则交互式询问")
+    grant.add_argument("--display-name", metavar="姓名", default="", help="显示名称，可省略")
 
 
 def _add_migration_commands(commands) -> None:  # noqa: ANN001 - argparse 的子命令容器
@@ -223,6 +258,9 @@ def run(argv: Sequence[str] | None = None) -> None:
         return
     if args.command == "export-tenant":
         migration_cli.run_export(Settings(), args.slug, args.out, args.no_packages)
+        return
+    if args.command == "grant-platform-admin":
+        platform_cli.run_grant(Settings(), args.username, args.password, args.display_name)
         return
     if args.command == "import-tenant":
         migration_cli.run_import(Settings(), args.archive, args.slug, args.overwrite)

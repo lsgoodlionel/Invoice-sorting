@@ -25,10 +25,16 @@ def tenant_for_connection(app: Any, conn: Any) -> TenantContext:
     cached = state.get(STATE_CONTEXT_KEY)
     if isinstance(cached, TenantContext):
         return cached
-    slug = resolve_tenant_slug(app.state.settings, conn)
-    context = load_tenant(app, slug)
+    context = load_tenant(app, _resolve_slug(app, conn))
     state[STATE_CONTEXT_KEY] = context
     return context
+
+
+def _resolve_slug(app: Any, conn: Any) -> str:
+    """平台后台常从裸域名访问，先按登录账号定位账套；其余请求走常规解析规则。"""
+    from invoice_sorting.platform_admin.scope import platform_tenant_slug
+
+    return platform_tenant_slug(app, conn) or resolve_tenant_slug(app.state.settings, conn)
 
 
 def load_tenant(app: Any, slug: str) -> TenantContext:

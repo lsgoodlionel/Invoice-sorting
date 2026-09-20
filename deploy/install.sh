@@ -18,6 +18,16 @@
 #   FRONTEND_BUILD  prebuilt（默认：下载 CI 预构建前端，失败再本地构建）| local（服务器上构建）
 #   INSTALL_DIR     程序目录，默认 /opt/invoice-sorting
 #   DATA_DIR        数据目录，默认 /var/lib/invoice-sorting
+#
+# 部署形态与授权（均可留空，留空即与现在完全一致；升级时不传则沿用上次已配置的值）：
+#   DEPLOY_MODE           single（默认，单账套）| saas（多账套）
+#   TENANT_HOST_SUFFIX    仅 saas：配置后 t1.example.com 直接定位账套 t1，需泛域名与通配符证书
+#   LICENSE_KEY           私有化授权密钥（供应商提供）
+#   LICENSE_SERVER        授权校验服务地址，例如 https://saas.example.com
+#   CHECK_INTERVAL_HOURS  授权校验间隔小时数，默认 24
+#   GRACE_DAYS            授权过期后的宽限天数，默认 14
+#
+# 详细说明见 docs/部署与运维.md。
 set -Eeuo pipefail
 # 任何命令意外失败都打印位置，避免静默退出
 trap 'printf "\033[1;31m[错误]\033[0m 安装中断：第 %s 行命令失败：%s\n" "$LINENO" "$BASH_COMMAND" >&2' ERR
@@ -29,6 +39,9 @@ INSTALL_DIR="${INSTALL_DIR:-/opt/invoice-sorting}"
 APP_DIR="${INSTALL_DIR}/app"
 DATA_DIR="${DATA_DIR:-/var/lib/invoice-sorting}"
 APP_USER="${APP_USER:-invoice}"
+# Python 字节码缓存集中到这里（systemd 里设 PYTHONPYCACHEPREFIX）：
+# 缓存损坏时整目录删掉即可恢复，不会牵连代码目录，也不会再出现散落的 __pycache__
+PYCACHE_DIR="${PYCACHE_DIR:-/var/cache/${APP_NAME}/pycache}"
 APP_PORT="${APP_PORT:-18765}"
 if [ "${ENABLE_HTTPS:-false}" = "true" ]; then
   HTTP_PORT="${HTTP_PORT:-80}"
@@ -44,6 +57,13 @@ LEGACY_HTPASSWD_FILE="/etc/nginx/${APP_NAME}.htpasswd"  # 旧版 Nginx 登录弹
 NGINX_SITE="/etc/nginx/sites-available/${APP_NAME}"
 SERVICE_FILE="/etc/systemd/system/${APP_NAME}.service"
 BACKUP_KEEP=10
+MODE_SINGLE="single"
+MODE_SAAS="saas"
+DEFAULT_CHECK_INTERVAL_HOURS=24
+DEFAULT_GRACE_DAYS=14
+# 注意：DEPLOY_MODE / TENANT_HOST_SUFFIX / LICENSE_* / CHECK_INTERVAL_HOURS / GRACE_DAYS
+# 这几项**不在此处赋默认值**：resolve_deployment_settings 要靠「变量是否被设置过」
+# 区分“用户本次显式传入空值（清空）”和“没传（沿用旧配置）”。
 
 log() { printf '\033[1;32m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m[警告]\033[0m %s\n' "$*" >&2; }
@@ -51,6 +71,55 @@ die() { printf '\033[1;31m[错误]\033[0m %s\n' "$*" >&2; exit 1; }
 
 as_app() { runuser -u "$APP_USER" -- env HOME="$INSTALL_DIR" PATH="/usr/local/bin:/usr/bin:/bin" "$@"; }
 has_systemd() { [ -d /run/systemd/system ]; }
+
+# 读取 systemd 单元中已写入的环境变量值；单元不存在或没配过时输出空
+unit_env() {
+  [ -f "$SERVICE_FILE" ] || return 0
+  sed -n "s/^Environment=$1=//p" "$SERVICE_FILE" | tail -n1
+}
+
+# 解析一项配置：本次显式传入（哪怕是空串）优先，其次沿用单元文件中的旧值，最后用默认值。
+# 这样升级时不带 LICENSE_KEY 重跑安装命令不会把已配置的密钥清空；确实要清空时传 LICENSE_KEY= 即可。
+resolve_setting() {
+  local name="$1" unit_key="$2" fallback="${3:-}" previous
+  if [ -n "${!name+set}" ]; then
+    printf '%s' "${!name}"
+    return 0
+  fi
+  previous="$(unit_env "$unit_key")"
+  printf '%s' "${previous:-$fallback}"
+}
+
+is_positive_int() { [ -n "$1" ] && [ -z "${1//[0-9]/}" ] && [ "$1" -gt 0 ] 2>/dev/null; }
+
+# 解析部署形态与授权配置，并做基本校验（必须在 check_environment 中、写单元文件之前调用）
+resolve_deployment_settings() {
+  DEPLOY_MODE="$(resolve_setting DEPLOY_MODE INVOICE_SORTING_DEPLOYMENT_MODE "$MODE_SINGLE")"
+  TENANT_HOST_SUFFIX="$(resolve_setting TENANT_HOST_SUFFIX INVOICE_SORTING_TENANT_HOST_SUFFIX)"
+  LICENSE_KEY="$(resolve_setting LICENSE_KEY INVOICE_SORTING_LICENSE_KEY)"
+  LICENSE_SERVER="$(resolve_setting LICENSE_SERVER INVOICE_SORTING_LICENSE_SERVER)"
+  CHECK_INTERVAL_HOURS="$(resolve_setting CHECK_INTERVAL_HOURS \
+    INVOICE_SORTING_LICENSE_CHECK_INTERVAL_HOURS "$DEFAULT_CHECK_INTERVAL_HOURS")"
+  GRACE_DAYS="$(resolve_setting GRACE_DAYS INVOICE_SORTING_LICENSE_GRACE_DAYS "$DEFAULT_GRACE_DAYS")"
+
+  case "$DEPLOY_MODE" in
+    "$MODE_SINGLE" | "$MODE_SAAS") ;;
+    *) die "DEPLOY_MODE 只能是 ${MODE_SINGLE} 或 ${MODE_SAAS}（当前：${DEPLOY_MODE}）" ;;
+  esac
+  if [ "$DEPLOY_MODE" = "$MODE_SINGLE" ] && [ -n "$TENANT_HOST_SUFFIX" ]; then
+    warn "TENANT_HOST_SUFFIX 只在 DEPLOY_MODE=saas 下生效，本次已忽略"
+    TENANT_HOST_SUFFIX=""
+  fi
+  TENANT_HOST_SUFFIX="${TENANT_HOST_SUFFIX#.}"
+  if [ "$DEPLOY_MODE" = "$MODE_SAAS" ] && [ -n "$LICENSE_KEY" ]; then
+    warn "多账套（saas）模式不校验私有化授权，LICENSE_KEY 仅记录在配置中，不会生效"
+  fi
+  if [ -n "$LICENSE_KEY" ] && [ -z "$LICENSE_SERVER" ]; then
+    warn "只配置了 LICENSE_KEY、没有 LICENSE_SERVER，授权校验不会启用（按本机自用方式运行）"
+  fi
+  is_positive_int "$CHECK_INTERVAL_HOURS" || die "CHECK_INTERVAL_HOURS 需为正整数（当前：${CHECK_INTERVAL_HOURS}）"
+  is_positive_int "$GRACE_DAYS" || die "GRACE_DAYS 需为正整数（当前：${GRACE_DAYS}）"
+}
 
 check_environment() {
   [ "$(id -u)" -eq 0 ] || die "请使用 root 运行（在命令前加 sudo）"
@@ -62,6 +131,15 @@ check_environment() {
     die "启用 HTTPS 需要同时设置 DOMAIN 与 EMAIL"
   fi
   [ "$HTTP_PORT" != "$APP_PORT" ] || die "HTTP_PORT 与 APP_PORT 不能相同（当前均为 ${APP_PORT}）"
+  resolve_deployment_settings
+  if [ -n "$TENANT_HOST_SUFFIX" ]; then
+    log "多账套子域名已启用：*.${TENANT_HOST_SUFFIX} 将解析为对应账套"
+    [ "$DOMAIN" != "_" ] || warn "未设置 DOMAIN，Nginx 仍按任意域名接收请求；建议同时设置 DOMAIN=${TENANT_HOST_SUFFIX}"
+    if [ "$ENABLE_HTTPS" = "true" ]; then
+      warn "子域名接入需要 *.${TENANT_HOST_SUFFIX} 的通配符证书，Let's Encrypt 的通配符证书只能用 DNS 验证申请；"
+      warn "本脚本只会为 ${DOMAIN} 申请单域名证书，子域名访问需自行配置通配符证书。"
+    fi
+  fi
 }
 
 install_packages() {
@@ -125,25 +203,34 @@ prepare_user_and_dirs() {
     log "创建系统用户 ${APP_USER}"
     useradd --system --home-dir "$INSTALL_DIR" --shell /usr/sbin/nologin "$APP_USER"
   fi
-  mkdir -p "$INSTALL_DIR" "$DATA_DIR"
+  mkdir -p "$INSTALL_DIR" "$DATA_DIR" "$PYCACHE_DIR"
   chown "$APP_USER:$APP_USER" "$INSTALL_DIR"
   chown -R "$APP_USER:$APP_USER" "$DATA_DIR"
   chmod 750 "$DATA_DIR"
+  chown -R "$APP_USER:$APP_USER" "$PYCACHE_DIR"
+  chmod 750 "$PYCACHE_DIR"
 }
 
-backup_database() {
-  local db="${DATA_DIR}/invoice.db"
+# 备份一个 SQLite 库到 数据目录/备份/<前缀><时间>.db，并按前缀清理旧备份
+backup_sqlite_db() {
+  local db="$1" prefix="$2"
   [ -f "$db" ] || return 0
   local dir="${DATA_DIR}/备份"
   local target
-  target="${dir}/upgrade_$(date +%Y%m%d_%H%M%S).db"
+  target="${dir}/${prefix}$(date +%Y%m%d_%H%M%S).db"
   mkdir -p "$dir"
-  log "升级前备份数据库 → ${target}"
+  log "升级前备份 $(basename "$db") → ${target}"
   sqlite3 "$db" ".backup '${target}'"
   chown "$APP_USER:$APP_USER" "$dir" "$target"
   # 仅保留最近若干份升级备份
-  find "$dir" -maxdepth 1 -name 'upgrade_*.db' -printf '%T@ %p\n' | sort -rn |
+  find "$dir" -maxdepth 1 -name "${prefix}*.db" -printf '%T@ %p\n' | sort -rn |
     tail -n +"$((BACKUP_KEEP + 1))" | cut -d' ' -f2- | xargs -r rm -f
+}
+
+backup_database() {
+  # 业务库（沿用原有 upgrade_ 前缀，旧备份文件名不变）与控制库（账套、账号、套餐、授权）
+  backup_sqlite_db "${DATA_DIR}/invoice.db" "upgrade_"
+  backup_sqlite_db "${DATA_DIR}/control.db" "control_upgrade_"
 }
 
 fetch_source() {
@@ -177,14 +264,26 @@ stop_service() {
   fi
 }
 
+# 清空集中缓存目录，并清掉旧版本遗留在 venv / src 下的 __pycache__
+clear_bytecode_cache() {
+  mkdir -p "$PYCACHE_DIR"
+  rm -rf -- "${PYCACHE_DIR:?}"/* 2>/dev/null || true
+  find "${APP_DIR}/backend/.venv" "${APP_DIR}/backend/src" \
+    -name __pycache__ -type d -prune -exec rm -rf {} + 2>/dev/null || true
+  chown -R "$APP_USER:$APP_USER" "$PYCACHE_DIR"
+}
+
 verify_backend() {
-  # 清除 .pyc 缓存后重新编译并试导入；缓存损坏（bad marshal data）或依赖不完整时重建虚拟环境一次
+  # 清除 .pyc 缓存后重新编译并试导入；缓存损坏（bad marshal data）或依赖不完整时重建虚拟环境一次。
+  # 编译与导入都带上 PYTHONPYCACHEPREFIX，保证生成的缓存与服务运行时用的是同一个目录。
   local venv="${APP_DIR}/backend/.venv"
   local attempt
   for attempt in 1 2; do
-    find "$venv" "${APP_DIR}/backend/src" -name __pycache__ -type d -prune -exec rm -rf {} + 2>/dev/null || true
-    as_app "$venv/bin/python" -m compileall -q "$venv/lib" "${APP_DIR}/backend/src" >/dev/null 2>&1 || true
-    if as_app "$venv/bin/python" -c "import invoice_sorting.main" 2>/tmp/invoice-sorting-import.log; then
+    clear_bytecode_cache
+    as_app env PYTHONPYCACHEPREFIX="$PYCACHE_DIR" "$venv/bin/python" \
+      -m compileall -q "$venv/lib" "${APP_DIR}/backend/src" >/dev/null 2>&1 || true
+    if as_app env PYTHONPYCACHEPREFIX="$PYCACHE_DIR" "$venv/bin/python" \
+      -c "import invoice_sorting.main, openpyxl" 2>/tmp/invoice-sorting-import.log; then
       return 0
     fi
     if [ "$attempt" = 2 ]; then
@@ -209,12 +308,33 @@ build_app() {
     bash "${APP_DIR}/scripts/setup.sh"
 }
 
+# 部署形态与授权对应的 Environment= 行；留空的项不写入，保持单元文件干净
+deployment_env_lines() {
+  printf 'Environment=INVOICE_SORTING_DEPLOYMENT_MODE=%s\n' "$DEPLOY_MODE"
+  if [ -n "$TENANT_HOST_SUFFIX" ]; then
+    printf 'Environment=INVOICE_SORTING_TENANT_HOST_SUFFIX=%s\n' "$TENANT_HOST_SUFFIX"
+  fi
+  if [ -n "$LICENSE_KEY" ]; then
+    printf 'Environment=INVOICE_SORTING_LICENSE_KEY=%s\n' "$LICENSE_KEY"
+  fi
+  if [ -n "$LICENSE_SERVER" ]; then
+    printf 'Environment=INVOICE_SORTING_LICENSE_SERVER=%s\n' "$LICENSE_SERVER"
+    printf 'Environment=INVOICE_SORTING_LICENSE_CHECK_INTERVAL_HOURS=%s\n' "$CHECK_INTERVAL_HOURS"
+    printf 'Environment=INVOICE_SORTING_LICENSE_GRACE_DAYS=%s\n' "$GRACE_DAYS"
+  fi
+  return 0
+}
+
 write_service() {
-  log "配置 systemd 服务"
+  log "配置 systemd 服务（形态：${DEPLOY_MODE}）"
   cat >"$SERVICE_FILE" <<EOF
 [Unit]
 Description=发票账本（个人发票报销管理）
 After=network.target
+# 崩溃重启限速：5 分钟内失败超过 5 次就停下，避免无限重启刷爆日志、掩盖真正的错误。
+# 修好之后执行：systemctl reset-failed ${APP_NAME} && systemctl start ${APP_NAME}
+StartLimitIntervalSec=300
+StartLimitBurst=5
 
 [Service]
 Type=simple
@@ -227,17 +347,29 @@ Environment=INVOICE_SORTING_PORT=${APP_PORT}
 Environment=INVOICE_SORTING_OPEN_BROWSER=false
 Environment=INVOICE_SORTING_FRONTEND_DIST=${APP_DIR}/frontend/dist
 Environment=TZ=Asia/Shanghai
+Environment=PYTHONPYCACHEPREFIX=${PYCACHE_DIR}
+$(deployment_env_lines)
+# 启动前自检一次导入；失败会清空字节码缓存后重试，"-" 表示自检本身不阻塞启动
+ExecStartPre=-/usr/bin/env bash ${APP_DIR}/deploy/startup-check.sh
 ExecStart=${APP_DIR}/backend/.venv/bin/invoice-sorting
+# 非正常退出时在日志里留一段排查提示（正常停止不输出）
+ExecStopPost=-/usr/bin/env bash ${APP_DIR}/deploy/startup-check.sh --failure-hint
 Restart=on-failure
-RestartSec=3
+RestartSec=5
 NoNewPrivileges=true
 ProtectSystem=full
 PrivateTmp=true
-ReadWritePaths=${DATA_DIR}
+ReadWritePaths=${DATA_DIR} ${PYCACHE_DIR}
 
 [Install]
 WantedBy=multi-user.target
 EOF
+  # 单元文件里含授权密钥时收紧权限（systemd 以 root 读取，不影响启动）
+  if [ -n "$LICENSE_KEY" ]; then
+    chmod 600 "$SERVICE_FILE"
+  else
+    chmod 644 "$SERVICE_FILE"
+  fi
 }
 
 # 输出监听指定 TCP 端口的进程名（无人监听时为空）
@@ -271,6 +403,15 @@ disable_conflicting_default_site() {
   fi
 }
 
+# server_name：配置了多账套子域名后同时接收泛域名（.example.com 含 example.com 与其所有子域名）
+server_name_value() {
+  if [ -n "$TENANT_HOST_SUFFIX" ] && [ "$DOMAIN" != "_" ]; then
+    printf '%s .%s' "$DOMAIN" "$TENANT_HOST_SUFFIX"
+    return 0
+  fi
+  printf '%s' "$DOMAIN"
+}
+
 ipv6_listen_line() {
   # 系统未启用 IPv6 时监听 [::] 会导致 Nginx 启动失败
   [ -s /proc/net/if_inet6 ] && echo "    listen [::]:${HTTP_PORT};"
@@ -285,7 +426,7 @@ write_nginx() {
 server {
     listen ${HTTP_PORT};
 $(ipv6_listen_line)
-    server_name ${DOMAIN};
+    server_name $(server_name_value);
 
     client_max_body_size ${MAX_UPLOAD_MB}m;
 
@@ -334,6 +475,8 @@ start_services() {
   log "启动服务"
   systemctl daemon-reload
   systemctl enable --quiet "$APP_NAME"
+  # 上次崩溃重启触发了启动次数限制时，单元会停在 failed 状态，直接 restart 会被拒绝
+  systemctl reset-failed "$APP_NAME" 2>/dev/null || true
   systemctl restart "$APP_NAME"
   systemctl enable --quiet nginx
   if ! { systemctl reload nginx 2>/dev/null || systemctl restart nginx; }; then
@@ -361,6 +504,23 @@ password_is_set() {
   curl -fsS "http://127.0.0.1:${APP_PORT}/api/auth/status" 2>/dev/null | grep -q '"password_set":true'
 }
 
+# 部署形态与授权状态摘要（单账套且未配授权时只有一行，与现状观感一致）
+print_deployment_summary() {
+  if [ "$DEPLOY_MODE" = "$MODE_SAAS" ]; then
+    echo " 部署形态：多账套（saas）；账套与套餐在平台运营后台管理"
+    if [ -n "$TENANT_HOST_SUFFIX" ]; then
+      echo " 账套子域名：*.${TENANT_HOST_SUFFIX}（需把泛域名解析到本机，HTTPS 需通配符证书）"
+    fi
+  else
+    echo " 部署形态：单账套（single）；界面不出现账套概念，与升级前一致"
+  fi
+  if [ -n "$LICENSE_KEY" ] && [ -n "$LICENSE_SERVER" ]; then
+    echo " 私有化授权：已配置（校验服务 ${LICENSE_SERVER}，每 ${CHECK_INTERVAL_HOURS} 小时校验，宽限 ${GRACE_DAYS} 天）"
+    echo "             授权状态见网页「设置」页；密钥保存在 ${SERVICE_FILE}"
+  fi
+  return 0
+}
+
 print_summary() {
   local scheme="http" host="$DOMAIN" port_suffix=""
   [ "$ENABLE_HTTPS" = "true" ] && scheme="https"
@@ -381,11 +541,13 @@ EOF
     echo " 管理员：admin，尚未设置密码 ← 请立即打开上面的访问地址，为 admin 设置初始密码"
     echo "          （设置前任何能访问该地址的人都可以设置，请尽快完成）"
   fi
+  print_deployment_summary
   cat <<EOF
  重置 admin 密码：sudo -u ${APP_USER} env INVOICE_SORTING_DATA_DIR=${DATA_DIR} ${APP_DIR}/backend/.venv/bin/invoice-sorting reset-password
  数据目录：${DATA_DIR}（收件箱：${DATA_DIR}/收件箱）
  升级命令：重新执行安装命令即可
  查看日志：journalctl -u ${APP_NAME} -f
+ 日志出现 bad marshal data（字节码缓存损坏）时：sudo rm -rf ${PYCACHE_DIR}/* && sudo systemctl restart ${APP_NAME}
 ────────────────────────────────────────────────
 EOF
 }
