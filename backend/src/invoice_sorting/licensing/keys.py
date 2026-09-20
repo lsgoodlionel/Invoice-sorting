@@ -26,6 +26,24 @@ ENV_PUBLIC_KEY = "INVOICE_SORTING_LICENSE_PUBLIC_KEY"
 DEFAULT_PUBLIC_KEY_B64 = "fE4il5b7JUPfxyo6rO3x7E9FlB6QL6WBi1R1AuhPSQA="
 
 MSG_PUBLIC_KEY_INVALID = "内置授权公钥不可用"
+# 内置公钥对应的私钥在 tests/license_helpers.py 中公开，任何人都能用它伪造授权。
+# 正式交付前必须换成自有密钥对（生成步骤见 docs/部署与运维.md 第七章）。
+MSG_TEST_KEY_IN_USE = (
+    "当前使用的是仓库内置的测试授权公钥，其私钥是公开的，任何人都能伪造授权。"
+    "正式交付前请生成自有密钥对：公钥写入 DEFAULT_PUBLIC_KEY_B64 或环境变量 "
+    f"{ENV_PUBLIC_KEY}，私钥只配置在控制面的 {ENV_PRIVATE_KEY} 中。"
+)
+
+
+def is_test_public_key() -> bool:
+    """当前生效的验签公钥是否仍是仓库内置的测试公钥。"""
+    configured = os.environ.get(ENV_PUBLIC_KEY, "").strip()
+    if not configured:
+        return True
+    try:
+        return _decode(configured) == _decode(DEFAULT_PUBLIC_KEY_B64)
+    except (ValueError, binascii.Error):
+        return True  # 配置无法解析时会回退到内置公钥
 
 
 def _decode(text: str) -> bytes:

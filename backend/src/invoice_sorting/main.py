@@ -42,6 +42,7 @@ from invoice_sorting.importer.router import router as importer_router
 from invoice_sorting.invites.router import router as invites_router
 from invoice_sorting.licensing.deps import license_write_check
 from invoice_sorting.licensing.guard import install_write_guards, register_write_guard
+from invoice_sorting.licensing.keys import MSG_TEST_KEY_IN_USE, is_test_public_key
 from invoice_sorting.licensing.middleware import WriteGuardMiddleware
 from invoice_sorting.licensing.platform_router import router as platform_license_router
 from invoice_sorting.licensing.router import router as license_router
@@ -181,6 +182,8 @@ def _prepare_license(app: FastAPI, settings: Settings) -> None:
 
     守卫是**可组合**的：后续批次（套餐额度、租户状态）用 guard.register_write_guard 追加原因。
     """
+    if settings.is_license_configured and is_test_public_key():
+        logger.warning(MSG_TEST_KEY_IN_USE)
     service = LicenseService(settings, app.state.control_session_factory)
     service.start()
     app.state.license_service = service

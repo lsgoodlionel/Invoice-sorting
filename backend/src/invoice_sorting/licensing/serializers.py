@@ -3,12 +3,17 @@
 from typing import Any
 
 from invoice_sorting.attachments.serializers import iso_datetime
+from invoice_sorting.licensing.keys import is_test_public_key
 from invoice_sorting.licensing.state import LicenseStatus
 
 
 def serialize_status(status: LicenseStatus) -> dict[str, Any]:
-    """字段与前端提示条一一对应；永远不包含授权密钥。"""
+    """字段与前端提示条一一对应；永远不包含授权密钥。
+
+    uses_test_key：仍在用仓库内置的测试公钥（其私钥公开），运维据此知道该换密钥对了。
+    """
     return {
+        "uses_test_key": is_test_public_key(),
         "state": status.state,
         "message": status.message,
         "instance_id": status.instance_id,

@@ -30,6 +30,7 @@ STATUS_FIELDS = {
     "server_reachable",
     "message",
     "instance_id",
+    "uses_test_key",
 }
 EXPENSE = {"spent_on": "2026-09-15", "amount_cents": 1200, "merchant": "便利店"}
 
