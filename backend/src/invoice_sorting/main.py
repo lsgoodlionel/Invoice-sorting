@@ -9,7 +9,7 @@ from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from invoice_sorting.attachments.router import router as attachments_router
@@ -228,18 +228,33 @@ def _start_watcher(app: FastAPI, settings: Settings):
         return None
 
 
+# 资源文件名带内容哈希，可长期缓存；index.html 必须每次回源，
+# 否则升级后浏览器仍按旧 index 去取已被删除的分片，页面会卡在加载中。
+ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable"
+INDEX_CACHE_CONTROL = "no-cache, must-revalidate"
+
+
+class _HashedAssets(StaticFiles):
+    """/assets 下的文件名带哈希，允许浏览器长期缓存。"""
+
+    def file_response(self, *args: object, **kwargs: object) -> Response:
+        response = super().file_response(*args, **kwargs)  # type: ignore[arg-type]
+        response.headers["Cache-Control"] = ASSET_CACHE_CONTROL
+        return response
+
+
 def _mount_frontend(app: FastAPI, dist: Path) -> None:
     index = dist / "index.html"
     if not index.exists():
         return
-    app.mount("/assets", StaticFiles(directory=dist / "assets"), name="assets")
+    app.mount("/assets", _HashedAssets(directory=dist / "assets"), name="assets")
 
     @app.get("/{full_path:path}", include_in_schema=False)
     def spa(full_path: str) -> FileResponse:
         candidate = (dist / full_path).resolve()
         if full_path and candidate.is_file() and dist.resolve() in candidate.parents:
-            return FileResponse(candidate)
-        return FileResponse(index)
+            return FileResponse(candidate, headers={"Cache-Control": INDEX_CACHE_CONTROL})
+        return FileResponse(index, headers={"Cache-Control": INDEX_CACHE_CONTROL})
 
 
 def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:

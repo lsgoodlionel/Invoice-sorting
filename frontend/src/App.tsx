@@ -1,14 +1,15 @@
 import { Loader } from '@mantine/core';
-import { lazy, Suspense } from 'react';
+import { Suspense } from 'react';
 import { Navigate, Route, Routes } from 'react-router';
 import { AppShellLayout } from './components/AppShellLayout';
+import { lazyPage } from './lib/lazyPage';
 
-const CollectPage = lazy(() => import('./pages/CollectPage').then((m) => ({ default: m.CollectPage })));
-const ExpensesPage = lazy(() => import('./pages/ExpensesPage').then((m) => ({ default: m.ExpensesPage })));
-const BatchesPage = lazy(() => import('./pages/BatchesPage').then((m) => ({ default: m.BatchesPage })));
-const StatsPage = lazy(() => import('./pages/StatsPage').then((m) => ({ default: m.StatsPage })));
-const SettingsPage = lazy(() => import('./pages/SettingsPage').then((m) => ({ default: m.SettingsPage })));
-const PlatformPage = lazy(() => import('./pages/PlatformPage').then((m) => ({ default: m.PlatformPage })));
+const CollectPage = lazyPage(() => import('./pages/CollectPage'), 'CollectPage');
+const ExpensesPage = lazyPage(() => import('./pages/ExpensesPage'), 'ExpensesPage');
+const BatchesPage = lazyPage(() => import('./pages/BatchesPage'), 'BatchesPage');
+const StatsPage = lazyPage(() => import('./pages/StatsPage'), 'StatsPage');
+const SettingsPage = lazyPage(() => import('./pages/SettingsPage'), 'SettingsPage');
+const PlatformPage = lazyPage(() => import('./pages/PlatformPage'), 'PlatformPage');
 
 export function App() {
   return (
