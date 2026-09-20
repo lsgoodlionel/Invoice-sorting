@@ -82,7 +82,9 @@ DOMAIN="${DOMAIN:-_}"
 ENABLE_HTTPS="${ENABLE_HTTPS:-false}"
 EMAIL="${EMAIL:-}"
 NODE_MAJOR=22
-MAX_UPLOAD_MB=100
+# 略高于应用自身的单文件上限（config.py MAX_UPLOAD_BYTES = 30 MB），
+# 让超限文件由应用返回中文提示，同时挡住明显过大的请求
+MAX_UPLOAD_MB=40
 LEGACY_HTPASSWD_FILE="/etc/nginx/${APP_NAME}.htpasswd"  # 旧版 Nginx 登录弹窗，升级时删除
 NGINX_SITE="/etc/nginx/sites-available/${APP_NAME}"
 SERVICE_FILE="/etc/systemd/system/${APP_NAME}.service"
