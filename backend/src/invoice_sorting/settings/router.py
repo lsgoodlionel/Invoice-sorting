@@ -2,14 +2,14 @@
 
 from typing import Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter
 
 from invoice_sorting.auth.deps import ADMIN_ONLY
 from invoice_sorting.common.errors import ok
 from invoice_sorting.config import Settings
 from invoice_sorting.expenses.recompute import refresh_open_expenses
 from invoice_sorting.settings import catalog, rules
-from invoice_sorting.settings.deps import ConfigDep, SessionDep
+from invoice_sorting.settings.deps import ConfigDep, EngineDep, SessionDep
 from invoice_sorting.settings.schemas import AppSettingsUpdate, present_values
 from invoice_sorting.settings.service import (
     REGION_KEYS,
@@ -45,6 +45,6 @@ def write_settings(
 
 
 @router.post("/backup", dependencies=ADMIN_ONLY)
-def backup(request: Request, config: ConfigDep) -> dict[str, Any]:
-    path = backup_database(config, request.app.state.engine)
+def backup(config: ConfigDep, engine: EngineDep) -> dict[str, Any]:
+    path = backup_database(config, engine)
     return ok({"file": str(path)})

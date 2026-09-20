@@ -57,3 +57,18 @@ def test_reset_unknown_user_exits_nonzero(admin_client, data_env, capsys):
     assert exited.value.code == 1
     assert "用户不存在：ghost" in capsys.readouterr().err
     assert admin_client.get("/api/expenses").status_code == 200
+
+
+def test_reset_password_refuses_in_saas_mode(tmp_path, capsys):
+    """多租户部署不能用命令行重置密码，也不允许在根目录建出空业务库。"""
+    from invoice_sorting.auth.cli import EXIT_SAAS_UNSUPPORTED, reset_password
+    from tests.conftest import make_saas_settings
+
+    settings = make_saas_settings(tmp_path)
+
+    with pytest.raises(SystemExit) as excinfo:
+        reset_password(settings)
+
+    assert excinfo.value.code == EXIT_SAAS_UNSUPPORTED
+    assert "运营后台" in capsys.readouterr().err
+    assert not settings.db_path.exists()

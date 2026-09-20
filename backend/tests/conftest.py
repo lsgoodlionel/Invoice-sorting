@@ -46,6 +46,29 @@ def session(app) -> Iterator[Session]:
         yield db_session
 
 
+def make_saas_settings(tmp_path: Path, **overrides) -> Settings:
+    """多租户夹具：按子域名定位租户（t1.example.com）。"""
+    return make_settings(
+        tmp_path, deployment_mode="saas", tenant_host_suffix="example.com", **overrides
+    )
+
+
+@pytest.fixture
+def saas_settings(tmp_path: Path) -> Settings:
+    return make_saas_settings(tmp_path)
+
+
+@pytest.fixture
+def saas_app(saas_settings: Settings):
+    return create_app(saas_settings)
+
+
+@pytest.fixture
+def saas_client(saas_app) -> Iterator[TestClient]:
+    with TestClient(saas_app) as test_client:
+        yield test_client
+
+
 @pytest.fixture
 def auth_settings(tmp_path: Path) -> Settings:
     return make_settings(tmp_path, auth_enabled=True)

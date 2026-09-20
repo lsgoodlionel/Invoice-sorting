@@ -1,9 +1,6 @@
 """数据库引擎与会话。"""
 
-from collections.abc import Iterator
-
-from fastapi import Request
-from sqlalchemy import Column, Engine, create_engine, event, inspect
+from sqlalchemy import Column, Engine, MetaData, create_engine, event, inspect
 from sqlalchemy.orm import Session, sessionmaker
 
 from invoice_sorting.db.models import Base
@@ -22,16 +19,19 @@ def create_db_engine(db_url: str) -> Engine:
     return engine
 
 
-def init_db(engine: Engine) -> None:
-    Base.metadata.create_all(engine)
-    add_missing_columns(engine)
+def init_db(engine: Engine, metadata: MetaData | None = None) -> None:
+    """建表并补列；metadata 省略时为业务库，控制库传入自己的 metadata。"""
+    target = metadata if metadata is not None else Base.metadata
+    target.create_all(engine)
+    add_missing_columns(engine, target)
 
 
-def add_missing_columns(engine: Engine) -> None:
+def add_missing_columns(engine: Engine, metadata: MetaData | None = None) -> None:
     """轻量迁移：为已有表补齐模型中新增的列（SQLite 仅支持追加列）。"""
+    target = metadata if metadata is not None else Base.metadata
     inspector = inspect(engine)
     with engine.begin() as conn:
-        for table in Base.metadata.sorted_tables:
+        for table in target.sorted_tables:
             existing = {column["name"] for column in inspector.get_columns(table.name)}
             for column in table.columns:
                 if column.name not in existing:
@@ -64,17 +64,3 @@ def ensure_transaction(session: Session) -> None:
 
 def make_session_factory(engine: Engine) -> sessionmaker[Session]:
     return sessionmaker(bind=engine, expire_on_commit=False)
-
-
-def get_session(request: Request) -> Iterator[Session]:
-    """FastAPI 依赖：每个请求一个会话，异常时回滚。"""
-    factory: sessionmaker[Session] = request.app.state.session_factory
-    session = factory()
-    try:
-        yield session
-        session.commit()
-    except Exception:
-        session.rollback()
-        raise
-    finally:
-        session.close()

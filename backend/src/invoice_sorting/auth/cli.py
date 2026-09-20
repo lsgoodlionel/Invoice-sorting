@@ -9,7 +9,9 @@ from invoice_sorting.db.session import create_db_engine, init_db, make_session_f
 from invoice_sorting.users.repository import ADMIN_USERNAME, normalize_username
 
 RESET_DONE_MESSAGE = "已清除 admin 登录密码，请打开网页重新设置初始密码"
+MSG_SAAS_UNSUPPORTED = "多租户部署无法用命令行重置密码，请在平台运营后台操作"
 EXIT_USER_NOT_FOUND = 1
+EXIT_SAAS_UNSUPPORTED = 2
 
 
 def _reset(settings: Settings, username: str) -> bool:
@@ -27,6 +29,10 @@ def _reset(settings: Settings, username: str) -> bool:
 
 
 def reset_password(settings: Settings, username: str | None = None) -> None:
+    # 多租户模式下 data_dir 根目录没有业务库，不能默默建一个空库
+    if settings.is_saas:
+        print(MSG_SAAS_UNSUPPORTED, file=sys.stderr)
+        raise SystemExit(EXIT_SAAS_UNSUPPORTED)
     name = normalize_username(username or ADMIN_USERNAME)
     if not _reset(settings, name):
         print(f"用户不存在：{name}", file=sys.stderr)
