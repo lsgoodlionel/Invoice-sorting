@@ -282,9 +282,15 @@ def _add_diagnostics_commands(commands) -> None:  # noqa: ANN001 - argparse 的�
 
 
 def _add_platform_commands(commands) -> None:  # noqa: ANN001 - argparse 的子命令容器
-    """平台运营（设计 5）：离线开通首个平台管理员。"""
+    """平台运营（设计 5）：离线开通平台管理员（首个平台管理员也可直接在网页上设置）。"""
     grant = commands.add_parser(
-        "grant-platform-admin", help="把某个账号设为平台管理员（不存在则新建）"
+        "grant-platform-admin",
+        help="把某个账号设为平台管理员（不存在则新建）；首次也可以直接在网页上设置",
+        description=(
+            "把某个账号设为平台管理员（不存在则新建）。"
+            "首次也可以直接在网页上设置：全新部署第一次打开网页即可创建首个平台管理员，"
+            "本命令用于忘记密码、批量运维或没有浏览器的场景。"
+        ),
     )
     grant.add_argument("--username", metavar="用户名", required=True, help="平台管理员账号")
     grant.add_argument("--password", metavar="初始密码", help="新账号必填；留空则交互式询问")

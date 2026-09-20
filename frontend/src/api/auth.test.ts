@@ -55,7 +55,7 @@ describe('authApi', () => {
       'POST /api/auth/password': null,
     });
     await expect(authApi.status()).resolves.toEqual(status);
-    await authApi.setup('password1');
+    await authApi.setup({ password: 'password1' });
     await authApi.login({ username: 'zhangsan', password: 'password1' });
     await authApi.logout();
     await authApi.changePassword({ current_password: 'old-pass1', new_password: 'new-pass1' });
@@ -65,6 +65,14 @@ describe('authApi', () => {
       ['POST', '/api/auth/login', { username: 'zhangsan', password: 'password1' }],
       ['POST', '/api/auth/logout', undefined],
       ['POST', '/api/auth/password', { current_password: 'old-pass1', new_password: 'new-pass1' }],
+    ]);
+  });
+
+  test('sends the username when creating the first platform admin', async () => {
+    const { calls } = mockFetch({ 'POST /api/auth/setup': { authenticated: true } });
+    await authApi.setup({ username: 'ops-boss', password: 'password1' });
+    expect(calls.map((c) => [c.method, c.url, c.body])).toEqual([
+      ['POST', '/api/auth/setup', { username: 'ops-boss', password: 'password1' }],
     ]);
   });
 });

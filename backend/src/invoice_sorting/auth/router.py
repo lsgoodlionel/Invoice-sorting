@@ -33,6 +33,7 @@ from invoice_sorting.common.errors import AppError, ok
 from invoice_sorting.control.deps import ControlSessionDep
 from invoice_sorting.control.models import Tenant
 from invoice_sorting.control.repository import get_tenant
+from invoice_sorting.platform_admin.bootstrap import needs_platform_setup, setup_platform_admin
 from invoice_sorting.tenancy.resolve import MSG_TENANT_REQUIRED
 from invoice_sorting.users.sync import sync_member_into_tenant
 
@@ -82,6 +83,17 @@ def _current_tenant(control: Session, tenant: Tenant | None, token: str | None) 
     return get_tenant(control, tenant_id) if tenant_id is not None else None
 
 
+def _password_set(request: Request, control: Session, current: Tenant | None) -> bool:
+    """是否已完成首次设置。
+
+    定位到账套就看该账套的内置管理员；没定位到账套（SaaS 统一域名）时，
+    空控制库表示还没有首个平台管理员，其余情况直接显示登录表单。
+    """
+    if current is not None:
+        return is_password_set(control, current.id)
+    return not needs_platform_setup(control, request.app.state.settings.is_saas)
+
+
 @router.get("/status")
 def auth_status(
     request: Request, response: Response, control: ControlSessionDep, tenant: AuthTenantDep
@@ -89,8 +101,7 @@ def auth_status(
     settings = request.app.state.settings
     token = read_session_token(request)
     current = _current_tenant(control, tenant, token)
-    # 还没定位到账套（SaaS 统一域名未登录）：直接显示登录表单
-    password_set = is_password_set(control, current.id) if current is not None else True
+    password_set = _password_set(request, control, current)
     authenticated, user = True, None
     if settings.auth_enabled:
         check = validate_session(control, token, current.id) if current is not None else None
@@ -117,9 +128,12 @@ def auth_setup(
     control: ControlSessionDep,
     tenant: AuthTenantDep,
 ) -> dict[str, Any]:
-    grant = setup_initial_password(
-        control, require_tenant(tenant), body.password, _user_agent(request)
-    )
+    """首次设置：单账套为内置管理员 admin 设密码，多账套创建首个平台管理员。"""
+    agent = _user_agent(request)
+    if request.app.state.settings.is_saas:
+        grant = setup_platform_admin(control, body.username, body.password, agent)
+    else:
+        grant = setup_initial_password(control, require_tenant(tenant), body.password, agent)
     return grant_response(request, response, control, grant)
 
 

@@ -583,6 +583,12 @@ export interface AuthStatus {
   tenant?: TenantBrief | null;
 }
 
+/** 首次设置：单账套只传密码；多账套首次启动时还要传平台管理员用户名 */
+export interface SetupInput {
+  password: string;
+  username?: string;
+}
+
 export interface AuthResult {
   authenticated: true;
   user: CurrentUser;

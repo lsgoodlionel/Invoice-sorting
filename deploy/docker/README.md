@@ -4,13 +4,19 @@
 
 ## 快速开始
 
+镜像是从**当前仓库工作副本**构建的，所以先把仓库切到要交付的版本（Ubuntu 一键脚本是按
+[GitHub Release](../../docs/部署与运维.md#十版本与发布) 装固定版本的，Docker 这边用标签对齐）：
+
 ```bash
+git fetch --tags && git checkout v0.2.0     # 换成要部署的版本；跟随 main 则跳过这一行
 cd deploy/docker
 cp .env.example .env     # 不改也能跑：默认单账套、不校验授权
 docker compose up -d --build
 ```
 
-打开 `http://服务器IP:8765`，首次访问为管理员 `admin` 设置初始密码。
+打开 `http://服务器IP:8765`，首次访问为管理员 `admin` 设置初始密码
+（`DEPLOY_MODE=saas` 时是用主域名打开、设置首个平台管理员的用户名与密码）。
+升级 / 回滚：`git checkout` 到目标版本后重新 `docker compose up -d --build`。
 
 需要在前面再挡一层 Nginx（统一端口、上传上限、以后接 HTTPS）：
 
@@ -60,7 +66,7 @@ LOG_TOKEN=细粒度 PAT            # 只给该仓库 Contents 读写权限
 docker compose exec app invoice-sorting diagnose --reason=manual
 ```
 
-脱敏范围、令牌创建步骤与关闭方法见 [部署与运维 · 运行日志与诊断包](../../docs/部署与运维.md#117-运行日志与诊断包把现场交给开发)。
+脱敏范围、令牌创建步骤与关闭方法见 [部署与运维 · 运行日志与诊断包](../../docs/部署与运维.md#127-运行日志与诊断包把现场交给开发)。
 
 ## 注意事项
 

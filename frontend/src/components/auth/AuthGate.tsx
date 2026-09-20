@@ -36,7 +36,8 @@ export function AuthGate({ children }: { children: ReactNode }) {
     if (!data.auth_enabled || data.authenticated) {
       return <CurrentUserProvider value={currentUser}>{children}</CurrentUserProvider>;
     }
-    return data.password_set ? <LoginPage /> : <SetupPasswordPage />;
+    // 多账套部署的首次启动：设置的是平台管理员账号，不是某个账套的 admin
+    return data.password_set ? <LoginPage /> : <SetupPasswordPage isPlatform={data.multi_tenant === true} />;
   }
   if (error) return <StatusError error={error} retrying={isFetching} onRetry={() => void refetch()} />;
   return <AuthLoading />;

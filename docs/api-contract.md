@@ -15,6 +15,8 @@
 
 应用自身负责认证。系统内置管理员账户 `admin`：首次打开网页为 admin 设置初始密码；未设置前，除公开端点外的所有 `/api/*` 均不可访问。管理员可添加用户并设置密码。所有用户共用同一账本，操作记录上传人/操作人。
 
+**首次启动按部署形态分两种**：单账套部署首次打开网页为内置 `admin` 设置初始密码；多账套部署首次打开网页（**裸域名**，没有账套子域名）创建**首个平台管理员**——用户名由使用者填写（默认 `admin`），同时开通「平台运营」账套（`platform`）并设为其管理员。两者都走 `POST /api/auth/setup`，安装命令里不需要任何账号信息。命令行 `grant-platform-admin` 继续可用（忘记密码、批量运维、没有浏览器时）。
+
 账号、密码与会话统一存放在**控制库**（`control.db` 的 `account` / `membership` / `auth_session`）；账套（租户）业务库中的 `app_user` 是同一账号在该账套内的**镜像**（`app_user.id == account.id`，同步用户名/姓名/角色/启用状态，不再使用其 `password_hash`），上传人与操作人展示照旧。角色是**账套内**的：同一账号在不同账套可以有不同角色。
 
 部署形态（`INVOICE_SORTING_DEPLOYMENT_MODE`）影响返回字段：**单账套部署（single，默认）下所有接口都不返回账套字段，界面完全不出现账套概念**；多账套部署（saas）才有下面标注“仅多账套”的字段与端点。
@@ -23,8 +25,8 @@
 
 | 方法 | 路径 | 请求 | 返回 data |
 | --- | --- | --- | --- |
-| GET | `/api/auth/status` | 公开 | `{ auth_enabled: boolean, password_set: boolean, authenticated: boolean, user: CurrentUser \| null }`（password_set 表示 admin 已设置密码）；仅多账套时追加 `multi_tenant: true` 与 `tenant: TenantBrief \| null`（未登录为 null） |
-| POST | `/api/auth/setup` | 公开；`{ password }`，仅在 admin 尚未设置密码时可用，否则 409“已设置过初始密码，请直接登录”；多账套统一域名下定位不到账套 400“无法确定当前账套，请重新登录” | `{ authenticated: true, user: CurrentUser }`，以 admin 身份写入会话 Cookie；仅多账套时追加 `tenant` |
+| GET | `/api/auth/status` | 公开 | `{ auth_enabled: boolean, password_set: boolean, authenticated: boolean, user: CurrentUser \| null }`（password_set 表示 admin 已设置密码；多账套裸域名下表示**控制库已初始化**——已有任意账号或已开通 `platform` 账套，全新部署为 false，提示创建首个平台管理员）；仅多账套时追加 `multi_tenant: true` 与 `tenant: TenantBrief \| null`（未登录为 null） |
+| POST | `/api/auth/setup` | 公开；`{ password, username? }`。**单账套**：只用 `password`，仅在 admin 尚未设置密码时可用，否则 409“已设置过初始密码，请直接登录”。**多账套**（裸域名）：控制库为空时创建首个平台管理员，`username` 默认 `admin`（3–32 位字母数字下划线点连字符，否则 422），一旦已有任意账号或已开通 `platform` 账套即 409“已创建过平台管理员，请直接登录”；带账套子域名访问时照旧按该账套解析，账套不存在 404“账套不存在”。并发只会有一个请求成功（进程内串行 + 用户名与账套 slug 唯一约束） | `{ authenticated: true, user: CurrentUser }`，写入会话 Cookie；仅多账套时追加 `tenant`（首次为 `{ slug: "platform", name: "平台运营" }`），该账号被标记为平台管理员，可直接访问 `/api/platform/*` |
 | POST | `/api/auth/login` | 公开；`{ username, password }`；用户名不存在、密码错误、账户已停用或在本账套内被停用统一 401“用户名或密码错误”；admin 未设置密码 409“请先设置初始密码”；失败过多 429“尝试次数过多，请 N 分钟后再试”；账号完全不是该账套成员 403“当前账号不属于该账套，请联系管理员开通”；账号未加入任何账套 403“当前账号尚未加入任何账套，请联系管理员开通” | `{ authenticated: true, user: CurrentUser }`，写入会话 Cookie；仅多账套时追加 `tenant` |
 | POST | `/api/auth/logout` | 需登录 | `null` |
 | POST | `/api/auth/password` | 需登录；`{ current_password, new_password }`；当前密码错误 400；关闭认证时 400“未启用登录认证，无法修改密码” | `null`；本人其他会话失效，当前会话保留 |

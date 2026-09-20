@@ -15,6 +15,8 @@ export const BETA = { slug: 'beta', name: '贝塔账套' };
 
 export const SAAS_AUTHENTICATED: AuthStatus = { ...AUTHENTICATED, multi_tenant: true, tenant: ALPHA };
 export const SAAS_NEEDS_LOGIN: AuthStatus = { ...NEEDS_LOGIN, multi_tenant: true, tenant: null };
+/** 多账套首次启动：控制库为空，需要在网页上创建首个平台管理员 */
+export const SAAS_NEEDS_SETUP: AuthStatus = { ...NEEDS_SETUP, multi_tenant: true, tenant: null };
 
 export const TENANT_OPTIONS: TenantOption[] = [
   { ...ALPHA, is_current: true },

@@ -6,6 +6,9 @@
 
 多租户部署且该账号还没有任何账套时，自动开通一个运营账套（platform / 平台运营）；
 单账套部署直接挂到 default 账套。
+
+注意：**首次**也可以直接在网页上设置（第一次打开页面即可创建首个平台管理员，见
+platform_admin/bootstrap.py）；本命令主要用于忘记密码、批量运维或没有浏览器的场景。
 """
 
 import getpass
@@ -31,9 +34,8 @@ from invoice_sorting.control.repository import (
     find_account,
     normalize_username,
 )
+from invoice_sorting.platform_admin.bootstrap import PLATFORM_TENANT_NAME, PLATFORM_TENANT_SLUG
 
-PLATFORM_TENANT_SLUG = "platform"
-PLATFORM_TENANT_NAME = "平台运营"
 PROMPT = "请输入该账号的初始密码："
 
 MSG_PASSWORD_REQUIRED = f"新账号需要初始密码（至少 {PASSWORD_MIN} 位），请用 --password 提供"

@@ -178,10 +178,24 @@ cd backend && uv export --quiet --frozen --no-dev --no-emit-project --extra ocr 
 | **私有化单账套**（默认） | 一个团队或一家客户独占一套服务 | 下面的一键安装命令，不用加任何变量 |
 | **SaaS 多账套** | 一套服务承载多个客户，每个客户一个独立账套 | 一键安装命令加 `DEPLOY_MODE=saas` |
 
+**私有化单账套**（默认）：
+
 ```bash
-# SaaS 多账套
+curl -fsSL https://raw.githubusercontent.com/lsgoodlionel/Invoice-sorting/main/deploy/install.sh | sudo bash
+```
+
+**SaaS 多账套**：
+
+```bash
 curl -fsSL https://raw.githubusercontent.com/lsgoodlionel/Invoice-sorting/main/deploy/install.sh | sudo DEPLOY_MODE=saas bash
 ```
+
+两条命令里都**不包含任何账号、密码信息**，首个管理员一律在网页上设置：
+
+- **单账套**：打开 `http://服务器IP:8765`，第一次进入为管理员 `admin` 设置初始密码。
+- **SaaS 多账套**：用**主域名**（不带账套子域名）打开网页，第一次进入设置首个**平台管理员**的用户名（默认 `admin`）与密码；设置完即登录，可从左侧「平台」入口开通账套。忘记密码或服务器上没有浏览器时，可用 `invoice-sorting grant-platform-admin` 命令补一个。
+
+设置之前任何能访问该地址的人都可以抢先设置，装完请尽快打开页面完成。
 
 单账套模式下界面里不会出现“账套”概念，老部署升级后行为与之前完全一致，数据文件也不搬家。需要定期在线校验的私有化交付，可在安装时加上 `LICENSE_KEY` 与 `LICENSE_SERVER`；升级时不必重复输入，脚本会沿用已配置的值。
 
@@ -191,9 +205,19 @@ curl -fsSL https://raw.githubusercontent.com/lsgoodlionel/Invoice-sorting/main/d
 
 ### 一键安装 / 升级
 
+上面两条命令**既是安装也是升级**，重复执行即可。脚本默认从 GitHub Releases 下载**固定版本**的发布包并校验 SHA-256，
+不再依赖“当时的 main”，任何时候装到的都是同一份已通过完整 CI 的产物。
+
 ```bash
+# 装最新正式版（日常升级也是这一条）
 curl -fsSL https://raw.githubusercontent.com/lsgoodlionel/Invoice-sorting/main/deploy/install.sh | sudo bash
+
+# 固定到某个版本（复现问题、或回滚到旧版本）
+curl -fsSL https://raw.githubusercontent.com/lsgoodlionel/Invoice-sorting/main/deploy/install.sh | sudo VERSION=v0.2.0 bash
 ```
+
+查看当前装的是哪个版本：`cat /opt/invoice-sorting/VERSION`。
+回滚：把 `VERSION` 换成旧版本号重跑一次即可，详见 [部署与运维 · 版本与发布](docs/部署与运维.md#十版本与发布)。
 
 完成后通过 `http://服务器IP:8765` 访问（云服务器需在安全组放行 8765 端口）。**首次打开网页会要求为管理员账户 `admin` 设置初始密码**，设置前无法使用任何功能；之后可在「设置 → 用户管理」添加其他用户。安装完成后请尽快打开页面完成设置（设置前任何能访问该地址的人都可以设置）。
 
@@ -222,29 +246,34 @@ sudo -u invoice env INVOICE_SORTING_DATA_DIR=/var/lib/invoice-sorting /opt/invoi
 | `EMAIL` | — | 证书通知邮箱 |
 | `HTTP_PORT` | `8765`（启用 HTTPS 时 `80`） | 对外访问端口（Nginx） |
 | `APP_PORT` | `18765` | 应用内部端口（仅本机，不对外） |
-| `BRANCH` | `main` | 部署的 Git 分支 |
+| `CHANNEL` | `release` | 安装来源：`release` 按版本装 GitHub Release 发布包（校验 SHA-256）；`main` 跟随分支最新源码，仅供尝鲜调试 |
+| `VERSION` | 最新正式版 | 指定版本如 `v0.2.0`；**换成旧版本号重跑即为回滚** |
+| `ALLOW_MAIN_FALLBACK` | `true` | 没有可用 Release 时回退到分支源码并在日志里显著告警；生产环境可设 `false`，宁可报错也不装不确定的版本 |
+| `RECREATE_VENV` | `0` | 设为 `1` 时删除旧的 Python 虚拟环境重建（跨版本回滚后依赖异常时用） |
+| `BRANCH` | `main` | 部署的 Git 分支（仅 `CHANNEL=main` 生效） |
 | `INSTALL_DIR` | `/opt/invoice-sorting` | 程序目录 |
 | `DATA_DIR` | `/var/lib/invoice-sorting` | 数据目录 |
 | `MIRROR` | `auto` | 下载源：`auto` 测速选择 / `cn` 国内镜像 / `global` 官方源 |
 | `NO_OCR` | `0` | 设为 `1` 不安装截图识别（之后可[单独安装](#单独安装-ocr截图识别)） |
-| `FRONTEND_BUILD` | `prebuilt` | `prebuilt`：下载 GitHub Actions 预构建的前端（服务器无需 Node.js），失败时自动改为本地构建；`local`：始终在服务器上构建 |
+| `FRONTEND_BUILD` | `prebuilt` | 仅 `CHANNEL=main` 生效：`prebuilt` 下载 GitHub Actions 预构建的前端（服务器无需 Node.js），失败时自动改为本地构建；`local` 始终在服务器上构建。`CHANNEL=release` 直接用发布包里已构建好的前端 |
 | `DEPLOY_MODE` | `single` | 部署形态：`single` 单账套 / `saas` 多账套 |
 | `TENANT_HOST_SUFFIX` | — | 仅 SaaS：账套子域名后缀（如 `example.com`），需泛域名解析与通配符证书 |
 | `LICENSE_KEY` / `LICENSE_SERVER` | — | 私有化授权密钥与校验服务地址；两项都留空则不做任何校验 |
 | `CHECK_INTERVAL_HOURS` / `GRACE_DAYS` | `24` / `14` | 授权校验间隔与过期后的宽限天数 |
 
 > 形态与授权这几项**升级时不用重复输入**，脚本会沿用上次写入的值。完整说明见 [部署与运维](docs/部署与运维.md)。
+> 发布流程、按版本安装、升级与回滚、校验和验证见 [部署与运维 · 版本与发布](docs/部署与运维.md#十版本与发布)。
 
 ### 脚本做了什么
 
 1. 安装 git、Nginx、sqlite3 及 OCR 所需系统库；测速选择下载源后，从选中的源安装 uv
 2. 创建无登录权限的系统用户 `invoice`
 3. 若已有数据库，升级前备份到 `数据目录/备份/upgrade_时间.db`（控制库为 `control_upgrade_时间.db`，各保留最近 10 份）
-4. 拉取代码（已安装则更新到最新提交），安装后端依赖；前端直接下载 CI 预构建版本（约 300KB，校验与代码版本一致），下载失败或版本不一致时才安装 Node.js 22 在服务器上构建
+4. 下载该版本的发布包（后端源码 + 已构建好的前端 + 部署脚本）并逐个校验 SHA-256，整体替换程序目录（保留已装好的虚拟环境，升级不必重装全部依赖）；再按 `uv.lock` 锁定的版本安装后端依赖。服务器上不需要 Node.js，也不需要 git 拉取代码
 5. 注册 systemd 服务 `invoice-sorting`（开机自启、异常自动重启，仅监听 127.0.0.1:18765）；启动前自检一次后端导入，Python 字节码缓存集中放在 `/var/cache/invoice-sorting/pycache`，崩溃重启有次数上限，不会无限刷日志
 6. 配置 Nginx 反向代理（对外 8765 端口），上传上限 100 MB；登录由应用自身负责（首次打开网页设置初始密码）
 7. 防火墙 ufw 已启用时放行端口；按需申请 HTTPS 证书
-8. 健康检查通过后打印访问信息
+8. 健康检查通过后打印访问信息，并把版本写入 `/opt/invoice-sorting/VERSION`
 
 > 公网部署建议启用 HTTPS，避免登录密码与会话在网络中明文传输。
 
@@ -516,7 +545,7 @@ sudo systemctl reset-failed invoice-sorting
 sudo systemctl restart invoice-sorting
 ```
 
-老版本的缓存散落在程序目录里，再补一条 `sudo find /opt/invoice-sorting/app/backend -name __pycache__ -type d -prune -exec rm -rf {} +`。仍不行就删除虚拟环境后重新执行一键安装命令（数据不受影响）：`sudo rm -rf /opt/invoice-sorting/app/backend/.venv`。详见 [部署与运维 · 故障排查](docs/部署与运维.md#112-bad-marshal-data字节码缓存损坏)。
+老版本的缓存散落在程序目录里，再补一条 `sudo find /opt/invoice-sorting/app/backend -name __pycache__ -type d -prune -exec rm -rf {} +`。仍不行就删除虚拟环境后重新执行一键安装命令（数据不受影响）：`sudo rm -rf /opt/invoice-sorting/app/backend/.venv`。详见 [部署与运维 · 故障排查](docs/部署与运维.md#122-bad-marshal-data字节码缓存损坏)。
 
 **经费项目在哪里创建、怎么关联？**
 三处都可以：「设置 → 经费项目」集中管理；记录详情的“经费项目”下拉底部「＋ 新建经费项目」；新建批次或批次信息中的项目下拉同样可以新建。记录关联项目后，可在清单和统计中按项目筛选汇总；批次设置项目后，「添加记录」默认只列出该项目的记录。
@@ -572,10 +601,10 @@ sudo -u invoice /opt/invoice-sorting/app/backend/.venv/bin/invoice-sorting diagn
 
 命令会打印 zip 路径（默认落在 `<数据目录>/日志/诊断包/`，只保留最近 10 个），把这个文件发给开发即可。包里是版本、系统与磁盘信息、应用日志与 systemd 日志的尾部、以及环境变量的**名字和“已设置/未设置”**；邮箱、手机号、证件号、卡号、发票号、金额、商家与人名、公网地址、密钥令牌密码都会替换成占位符，打包后还会再自检一遍。
 
-**默认不上传到任何地方**，诊断包只留在本机。如果希望出故障时自动发到自家的**私有** GitHub 仓库（开发侧直接拉取分析），配置 `INVOICE_SORTING_LOG_REPO` 与 `INVOICE_SORTING_LOG_TOKEN` 即可；令牌只需要该仓库的 Contents 读写权限，清空仓库配置就立刻停止上传。步骤见 [部署与运维 · 运行日志与诊断包](docs/部署与运维.md#117-运行日志与诊断包把现场交给开发)。
+**默认不上传到任何地方**，诊断包只留在本机。如果希望出故障时自动发到自家的**私有** GitHub 仓库（开发侧直接拉取分析），配置 `INVOICE_SORTING_LOG_REPO` 与 `INVOICE_SORTING_LOG_TOKEN` 即可；令牌只需要该仓库的 Contents 读写权限，清空仓库配置就立刻停止上传。步骤见 [部署与运维 · 运行日志与诊断包](docs/部署与运维.md#127-运行日志与诊断包把现场交给开发)。
 
 **界面提示“只读，无法新增和修改”怎么办？**
-这是私有化授权到期（超过宽限期）或密钥被停用后的降级状态：数据不会丢，查看、导出和备份都还能用。打开「设置」页看授权状态的具体原因，联系供应商续期后点「重新检查」即可恢复。如果是服务器连不上授权服务，先恢复网络再重试。没有配置授权密钥的部署不会出现这个提示。排查命令见 [部署与运维 · 故障排查](docs/部署与运维.md#十一故障排查)。
+这是私有化授权到期（超过宽限期）或密钥被停用后的降级状态：数据不会丢，查看、导出和备份都还能用。打开「设置」页看授权状态的具体原因，联系供应商续期后点「重新检查」即可恢复。如果是服务器连不上授权服务，先恢复网络再重试。没有配置授权密钥的部署不会出现这个提示。排查命令见 [部署与运维 · 故障排查](docs/部署与运维.md#十二故障排查)。
 
 ---
 

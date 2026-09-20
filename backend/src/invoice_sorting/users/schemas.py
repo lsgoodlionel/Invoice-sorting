@@ -1,25 +1,26 @@
-"""用户管理请求体：用户名 3–32 位字母数字下划线点连字符；姓名 1–32 个字符；密码 8–128。"""
+"""用户管理请求体：用户名 3–32 位字母数字下划线点连字符；姓名 1–32 个字符；密码 8–128。
 
-import re
+用户名与密码规则由 `auth.schemas` 统一定义（首次设置初始密码也要用同一份规则），这里直接复用。
+"""
+
 from typing import Annotated
 
 from pydantic import AfterValidator, BaseModel, StrictStr
 from pydantic_core import PydanticCustomError
 
-from invoice_sorting.auth.schemas import NewPassword
+from invoice_sorting.auth.schemas import USERNAME_PATTERN, NewPassword, Username
 from invoice_sorting.users.repository import UserRole
 
-USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9_.\-]{3,32}$")
 DISPLAY_NAME_MAX = 32
 
-
-def _check_username(value: str) -> str:
-    candidate = value.strip()
-    if not USERNAME_PATTERN.fullmatch(candidate):
-        raise PydanticCustomError(
-            "username_format", "用户名需为 3–32 个字符，只能包含字母、数字、下划线、点、连字符"
-        )
-    return candidate.lower()
+__all__ = [
+    "USERNAME_PATTERN",
+    "DisplayName",
+    "PasswordReset",
+    "UserCreate",
+    "UserUpdate",
+    "Username",
+]
 
 
 def _check_display_name(value: str) -> str:
@@ -29,7 +30,6 @@ def _check_display_name(value: str) -> str:
     return candidate
 
 
-Username = Annotated[StrictStr, AfterValidator(_check_username)]
 DisplayName = Annotated[StrictStr, AfterValidator(_check_display_name)]
 
 

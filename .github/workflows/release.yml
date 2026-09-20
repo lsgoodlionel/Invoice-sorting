@@ -1,0 +1,250 @@
+name: 发布版本
+
+# 推送 v* 标签（或手动触发）时：跑完质量闸门 → 打包发布物 → 创建 GitHub Release。
+# 安装脚本默认从 Release 下载并校验 SHA-256 安装（CHANNEL=release），保证任何时刻装到的都是
+# 通过了完整 CI 的同一份产物，而不是"当时的 main"。发布步骤见 docs/部署与运维.md「版本与发布」。
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "版本号（含 v 前缀，需与 backend/pyproject.toml 的 version 一致）"
+        required: true
+        type: string
+      prerelease:
+        description: "标记为预发布（不会成为 latest）"
+        required: false
+        default: false
+        type: boolean
+
+# 最小权限：只需要创建 Release 与推送标签所需的仓库写权限
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.event.inputs.version || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  # ---------- 质量闸门：任一失败都不会产生 Release ----------
+  backend:
+    name: 后端测试与 ruff
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+
+      - name: 校验 uv.lock 与 pyproject.toml 一致
+        working-directory: backend
+        run: uv lock --check
+
+      - name: 安装依赖（严格按 uv.lock）
+        working-directory: backend
+        run: uv sync --frozen
+
+      - name: ruff
+        working-directory: backend
+        run: uv run ruff check .
+
+      - name: pytest
+        working-directory: backend
+        run: uv run pytest
+
+  frontend:
+    name: 前端测试、lint 与构建
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: frontend/package.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: 安装依赖（严格按 pnpm-lock.yaml）
+        run: pnpm --dir frontend install --frozen-lockfile
+
+      - name: lint（类型检查）
+        run: pnpm --dir frontend lint
+
+      - name: 测试
+        run: pnpm --dir frontend test
+
+      - name: 构建
+        run: pnpm --dir frontend build
+
+      - name: 上传构建产物给发布作业
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist
+          retention-days: 1
+          if-no-files-found: error
+
+  # ---------- 打包并发布 ----------
+  release:
+    name: 打包并创建 Release
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # 生成更新说明需要完整历史
+
+      - name: 取回前端构建产物
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist
+
+      - name: 确定版本号并与 backend/pyproject.toml 核对
+        id: ver
+        run: |
+          set -euo pipefail
+          tag="${{ github.event.inputs.version || github.ref_name }}"
+          case "$tag" in
+            v[0-9]*) ;;
+            *) echo "::error::版本号需形如 v0.2.0（当前：${tag}）"; exit 1 ;;
+          esac
+          declared="$(sed -n 's/^version = "\(.*\)"$/\1/p' backend/pyproject.toml | head -n1)"
+          if [ "v${declared}" != "$tag" ]; then
+            echo "::error::标签 ${tag} 与 backend/pyproject.toml 的 version=${declared} 不一致，请先提交版本号再打标签"
+            exit 1
+          fi
+          {
+            echo "tag=${tag}"
+            echo "commit=${GITHUB_SHA}"
+          } >>"$GITHUB_OUTPUT"
+
+      - name: 打包发布物
+        id: pack
+        env:
+          TAG: ${{ steps.ver.outputs.tag }}
+        run: |
+          set -euo pipefail
+          out="$GITHUB_WORKSPACE/release-assets"
+          mkdir -p "$out"
+
+          # 后端源码包：git 跟踪的 backend/（含 uv.lock）与顶层 scripts/（安装与构建脚本）。
+          # 用 git archive 只取已提交的文件，天然排除 .venv、__pycache__ 等本地产物。
+          git archive --format=tar HEAD backend scripts | gzip -n >"$out/backend.tar.gz"
+          # 部署脚本包：install.sh、startup-check.sh 与 Docker 交付文件
+          git archive --format=tar HEAD deploy | gzip -n >"$out/deploy.tar.gz"
+          # 前端：解包后即为 dist/，安装脚本放到 <程序目录>/frontend/dist
+          tar -czf "$out/frontend.tar.gz" -C frontend dist
+          # 安装脚本单独作为资产，便于按版本固定安装器本身
+          cp deploy/install.sh "$out/install.sh"
+
+          python3 - "$out" "$TAG" "$GITHUB_SHA" <<'PY'
+          import hashlib, json, pathlib, sys, datetime
+
+          out, tag, commit = pathlib.Path(sys.argv[1]), sys.argv[2], sys.argv[3]
+          names = ["backend.tar.gz", "frontend.tar.gz", "deploy.tar.gz", "install.sh"]
+          files = {}
+          for name in names:
+              data = (out / name).read_bytes()
+              files[name] = {"sha256": hashlib.sha256(data).hexdigest(), "size": len(data)}
+          manifest = {
+              "version": tag,
+              "commit": commit,
+              "built_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+              "files": files,
+          }
+          (out / "manifest.json").write_text(
+              json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+          )
+          # SHA256SUMS 用标准 sha256sum 格式，安装脚本与人工都能直接校验
+          lines = [f"{v['sha256']}  {k}\n" for k, v in files.items()]
+          digest = hashlib.sha256((out / "manifest.json").read_bytes()).hexdigest()
+          lines.append(f"{digest}  manifest.json\n")
+          (out / "SHA256SUMS").write_text("".join(lines), encoding="utf-8")
+          PY
+
+          echo "--- 发布物 ---"
+          ls -l "$out"
+          cat "$out/SHA256SUMS"
+          echo "dir=${out}" >>"$GITHUB_OUTPUT"
+
+      - name: 生成更新说明
+        id: notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.ver.outputs.tag }}
+        run: |
+          set -euo pipefail
+          notes="$RUNNER_TEMP/notes.md"
+          repo="${GITHUB_REPOSITORY}"
+          cat >"$notes" <<EOF
+          ## 安装 / 升级
+
+          单账套（私有化）：
+
+          \`\`\`bash
+          curl -fsSL https://raw.githubusercontent.com/${repo}/main/deploy/install.sh | sudo VERSION=${TAG} bash
+          \`\`\`
+
+          SaaS 多账套：
+
+          \`\`\`bash
+          curl -fsSL https://raw.githubusercontent.com/${repo}/main/deploy/install.sh | sudo DEPLOY_MODE=saas VERSION=${TAG} bash
+          \`\`\`
+
+          不带 \`VERSION\` 时安装最新正式版。首个管理员在**首次打开网页**时设置密码，安装命令里不包含任何账号信息。
+          校验和见 \`SHA256SUMS\`，构建信息见 \`manifest.json\`；安装脚本会自动校验 SHA-256。
+
+          ## 变更
+          EOF
+          # 优先用 GitHub 自动生成的说明；失败（例如标签尚未建立）时退回提交列表
+          if gh api -X POST "repos/${repo}/releases/generate-notes" \
+              -f tag_name="$TAG" -q .body >"$RUNNER_TEMP/generated.md" 2>/dev/null \
+              && [ -s "$RUNNER_TEMP/generated.md" ]; then
+            cat "$RUNNER_TEMP/generated.md" >>"$notes"
+          else
+            previous="$(git describe --tags --abbrev=0 --match 'v*' "${TAG}^" 2>/dev/null || true)"
+            if [ -n "$previous" ]; then
+              git log --no-merges --pretty=format:'- %s' "${previous}..HEAD" >>"$notes"
+            else
+              git log --no-merges --pretty=format:'- %s' -n 50 >>"$notes"
+            fi
+            printf '\n' >>"$notes"
+          fi
+          echo "file=${notes}" >>"$GITHUB_OUTPUT"
+
+      - name: 创建或更新 Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.ver.outputs.tag }}
+          ASSETS: ${{ steps.pack.outputs.dir }}
+          NOTES: ${{ steps.notes.outputs.file }}
+          PRERELEASE: ${{ github.event.inputs.prerelease || 'false' }}
+        run: |
+          set -euo pipefail
+          files=(
+            "$ASSETS/backend.tar.gz"
+            "$ASSETS/frontend.tar.gz"
+            "$ASSETS/deploy.tar.gz"
+            "$ASSETS/install.sh"
+            "$ASSETS/manifest.json"
+            "$ASSETS/SHA256SUMS"
+          )
+          flags=(--title "发票账本 ${TAG}" --notes-file "$NOTES" --target "$GITHUB_SHA")
+          if [ "$PRERELEASE" = "true" ]; then flags+=(--prerelease); fi
+          # 幂等：重跑同一个标签时更新既有 Release，不会重复创建
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --title "发票账本 ${TAG}" --notes-file "$NOTES"
+            gh release upload "$TAG" "${files[@]}" --clobber
+          else
+            gh release create "$TAG" "${files[@]}" "${flags[@]}"
+          fi
+          echo "已发布：https://github.com/${GITHUB_REPOSITORY}/releases/tag/${TAG}"

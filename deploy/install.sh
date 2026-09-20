@@ -2,8 +2,18 @@
 # 发票账本 · Ubuntu 一键安装 / 升级脚本
 #
 # 首次安装与升级使用同一条命令（重复执行即升级，数据与登录密码保留）。
-# 安装完成后打开网页为管理员 admin 设置初始密码，再在「设置 → 用户管理」添加其他用户：
+# **安装命令里不含任何账号、密码信息**，首个管理员一律在首次打开网页时设置：
+#   - 单账套（默认）：为管理员 admin 设置初始密码，再在「设置 → 用户管理」添加其他用户
+#   - SaaS 多账套：用主域名打开网页，设置首个平台管理员的用户名（默认 admin）与密码，随后从「平台」入口开通账套
 #   curl -fsSL https://raw.githubusercontent.com/lsgoodlionel/Invoice-sorting/main/deploy/install.sh | sudo bash
+#
+# 安装来源（默认按 GitHub Release 安装，保证同一条命令在任何时刻装到的都是同一份已通过 CI 的产物）：
+#   CHANNEL         release（默认，装固定版本的发布包）| main（跟随 main 分支源码，尝鲜与调试用）
+#   VERSION         指定版本，例如 v0.2.0；留空即最新正式版。**回滚就是把它改成旧版本号重跑本命令**
+#   ALLOW_MAIN_FALLBACK  true（默认）：没有可用 Release 时回退到 main 分支并在日志中显著告警；
+#                        false：直接报错退出（对生产环境更保险）
+#   RELEASE_BASE_URL     发布包下载前缀，默认 https://github.com/<仓库>/releases/download（可指向内网镜像）
+#   RECREATE_VENV        设为 1 时删除旧的 Python 虚拟环境重建（跨大版本回滚后依赖异常时使用）
 #
 # 可选环境变量（写在 sudo 之后，例如 `| sudo DOMAIN=invoice.example.com bash`）：
 #   DOMAIN          访问域名，默认 _（任意域名/IP）
@@ -11,11 +21,11 @@
 #   EMAIL           证书通知邮箱
 #   HTTP_PORT       对外访问端口（Nginx），默认 8765；启用 HTTPS 时默认 80（证书验证需要）
 #   APP_PORT        应用内部端口（仅本机），默认 18765
-#   BRANCH          Git 分支，默认 main
+#   BRANCH          Git 分支，默认 main（仅 CHANNEL=main 生效）
 #   REPO_URL        仓库地址
 #   MIRROR          下载源：auto（默认，测速选择官方源或国内镜像）| cn | global
 #   NO_OCR          设为 1 时不安装截图文字识别（OCR）
-#   FRONTEND_BUILD  prebuilt（默认：下载 CI 预构建前端，失败再本地构建）| local（服务器上构建）
+#   FRONTEND_BUILD  仅 CHANNEL=main 生效：prebuilt（默认：下载 CI 预构建前端，失败再本地构建）| local
 #   INSTALL_DIR     程序目录，默认 /opt/invoice-sorting
 #   DATA_DIR        数据目录，默认 /var/lib/invoice-sorting
 #
@@ -37,6 +47,26 @@ REPO_URL="${REPO_URL:-https://github.com/lsgoodlionel/Invoice-sorting.git}"
 BRANCH="${BRANCH:-main}"
 INSTALL_DIR="${INSTALL_DIR:-/opt/invoice-sorting}"
 APP_DIR="${INSTALL_DIR}/app"
+# 安装来源：release（按版本装发布包）/ main（跟随分支源码）
+CHANNEL_RELEASE="release"
+CHANNEL_MAIN="main"
+CHANNEL="${CHANNEL:-$CHANNEL_RELEASE}"
+VERSION="${VERSION:-}"
+ALLOW_MAIN_FALLBACK="${ALLOW_MAIN_FALLBACK:-true}"
+# owner/repo，用于拼接 Release 下载地址
+REPO_SLUG="$(printf '%s' "${REPO_URL%.git}" | sed -E 's#^.*github\.com[:/]##')"
+RELEASE_BASE_URL="${RELEASE_BASE_URL:-https://github.com/${REPO_SLUG}/releases/download}"
+RELEASE_LATEST_URL="${RELEASE_LATEST_URL:-https://github.com/${REPO_SLUG}/releases/latest}"
+RELEASE_API_URL="${RELEASE_API_URL:-https://api.github.com/repos/${REPO_SLUG}/releases/latest}"
+# 发布包里的资产名（由 .github/workflows/release.yml 生成）
+RELEASE_ASSETS=(SHA256SUMS manifest.json backend.tar.gz frontend.tar.gz deploy.tar.gz)
+RELEASE_ARCHIVES=(backend.tar.gz frontend.tar.gz deploy.tar.gz manifest.json)
+# 已安装版本记录：cat /opt/invoice-sorting/VERSION 即可查看
+VERSION_FILE="${INSTALL_DIR}/VERSION"
+# 本次安装的来源与版本，由 fetch_source 填充
+SOURCE_CHANNEL="$CHANNEL"
+TARGET_VERSION=""
+TARGET_COMMIT=""
 DATA_DIR="${DATA_DIR:-/var/lib/invoice-sorting}"
 APP_USER="${APP_USER:-invoice}"
 # Python 字节码缓存集中到这里（systemd 里设 PYTHONPYCACHEPREFIX）：
@@ -151,6 +181,27 @@ resolve_deployment_settings() {
   is_positive_int "$GRACE_DAYS" || die "GRACE_DAYS 需为正整数（当前：${GRACE_DAYS}）"
 }
 
+# 校验安装来源相关的参数（CHANNEL / VERSION / ALLOW_MAIN_FALLBACK）
+check_source_settings() {
+  case "$CHANNEL" in
+    "$CHANNEL_RELEASE" | "$CHANNEL_MAIN") ;;
+    *) die "CHANNEL 只能是 ${CHANNEL_RELEASE} 或 ${CHANNEL_MAIN}（当前：${CHANNEL}）" ;;
+  esac
+  case "$ALLOW_MAIN_FALLBACK" in
+    true | false) ;;
+    *) die "ALLOW_MAIN_FALLBACK 只能是 true 或 false（当前：${ALLOW_MAIN_FALLBACK}）" ;;
+  esac
+  if [ -n "$VERSION" ]; then
+    case "$VERSION" in
+      v[0-9]*) ;;
+      *) die "VERSION 需形如 v0.2.0（当前：${VERSION}）" ;;
+    esac
+    [ "$CHANNEL" = "$CHANNEL_RELEASE" ] ||
+      warn "CHANNEL=${CHANNEL_MAIN} 时不按版本安装，VERSION=${VERSION} 本次忽略"
+  fi
+  [ -n "$REPO_SLUG" ] || die "无法从 REPO_URL 解析出 owner/repo（当前：${REPO_URL}）"
+}
+
 check_environment() {
   [ "$(id -u)" -eq 0 ] || die "请使用 root 运行（在命令前加 sudo）"
   [ -r /etc/os-release ] || die "无法识别操作系统"
@@ -161,6 +212,7 @@ check_environment() {
     die "启用 HTTPS 需要同时设置 DOMAIN 与 EMAIL"
   fi
   [ "$HTTP_PORT" != "$APP_PORT" ] || die "HTTP_PORT 与 APP_PORT 不能相同（当前均为 ${APP_PORT}）"
+  check_source_settings
   resolve_deployment_settings
   if [ -n "$TENANT_HOST_SUFFIX" ]; then
     log "多账套子域名已启用：*.${TENANT_HOST_SUFFIX} 将解析为对应账套"
@@ -183,6 +235,11 @@ install_packages() {
 }
 
 load_mirrors() {
+  # release 通道不会用到 Node.js / npm（前端是发布包里现成的），跳过这两项测速省下十几秒
+  if [ "$SOURCE_CHANNEL" = "$CHANNEL_RELEASE" ]; then
+    export NPM_REGISTRY="${NPM_REGISTRY:-https://registry.npmjs.org}"
+    export NODE_DIST="${NODE_DIST:-https://nodejs.org/dist}"
+  fi
   # shellcheck source=/dev/null
   . "${APP_DIR}/scripts/lib/mirrors.sh"
   select_mirrors
@@ -263,19 +320,195 @@ backup_database() {
   backup_sqlite_db "${DATA_DIR}/control.db" "control_upgrade_"
 }
 
-fetch_source() {
+# ---------------------------------------------------------------------------
+# 代码来源：release 通道下载固定版本的发布包并校验 SHA-256；main 通道走 git。
+# ---------------------------------------------------------------------------
+
+# 读取已安装版本（<程序目录>/VERSION 里的 VERSION= 行）；没装过时输出空
+installed_version() {
+  [ -f "$VERSION_FILE" ] || return 0
+  sed -n 's/^VERSION=//p' "$VERSION_FILE" | tail -n1
+}
+
+# 记录本次安装的版本，供下次升级对比与人工查看。
+# 放在服务起来、健康检查通过之后写：这样文件里始终是"当前真正在跑的版本"，
+# 装到一半失败时保留旧记录，重跑安装命令仍能正确打印「旧版本 → 新版本」。
+record_version() {
+  cat >"$VERSION_FILE" <<EOF
+# 由 deploy/install.sh 写入，记录当前已安装的版本；回滚见 docs/部署与运维.md
+VERSION=${TARGET_VERSION}
+CHANNEL=${SOURCE_CHANNEL}
+COMMIT=${TARGET_COMMIT}
+INSTALLED_AT=$(date -Iseconds)
+EOF
+  chmod 644 "$VERSION_FILE"
+}
+
+# 下载单个文件：重试 + 超时，失败返回非 0（由调用方决定是否回退）
+download_file() {
+  curl -fL -# --retry 5 --retry-all-errors --retry-delay 3 \
+    --connect-timeout 20 --max-time 1800 -o "$2" "$1"
+}
+
+# 按 SHA256SUMS 校验一个文件；不匹配直接终止（下载被截断或文件被篡改）
+verify_sha256() {
+  local file="$1" sums="$2" name expected actual
+  name="$(basename "$file")"
+  expected="$(awk -v n="$name" '$2 == n { print $1 }' "$sums" | head -n1)"
+  [ -n "$expected" ] || die "校验和文件 SHA256SUMS 里没有 ${name} 的记录，发布包不完整，请换一个 VERSION 重试"
+  actual="$(sha256sum "$file" | awk '{ print $1 }')"
+  [ "$actual" = "$expected" ] ||
+    die "${name} 的 SHA-256 校验失败（期望 ${expected}，实际 ${actual}）；下载被截断或文件被篡改，请重新执行安装命令"
+}
+
+# 解析最新正式版的标签：先跟随 /releases/latest 的跳转（不消耗 API 配额），再退回 API
+resolve_latest_version() {
+  local final tag=""
+  final="$(curl -fsSL --retry 3 --retry-all-errors --connect-timeout 15 --max-time 60 \
+    -o /dev/null -w '%{url_effective}' "$RELEASE_LATEST_URL" 2>/dev/null || true)"
+  case "$final" in
+    */releases/tag/*) tag="${final##*/tag/}" ;;
+  esac
+  if [ -z "$tag" ]; then
+    # 退回 GitHub API（跳转被中间层改写时）；查不到只当作"没有 Release"，不算错误
+    tag="$( { curl -fsSL --retry 3 --retry-all-errors --connect-timeout 15 --max-time 60 \
+      "$RELEASE_API_URL" 2>/dev/null || true; } |
+      sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)"
+  fi
+  printf '%s' "$tag"
+}
+
+# 用暂存目录整体替换程序目录：先换再删，尽量缩短不可用窗口；
+# 保留已有的 Python 虚拟环境，升级时不必重装全部依赖（RECREATE_VENV=1 时由 build_app 重建）。
+swap_app_dir() {
+  local stage="$1" old="${APP_DIR}.old"
+  rm -rf "$old"
+  if [ -d "$APP_DIR" ]; then
+    mv "$APP_DIR" "$old"
+    if [ -d "${old}/backend/.venv" ]; then
+      mv "${old}/backend/.venv" "${stage}/backend/.venv"
+    fi
+  fi
+  mv "$stage" "$APP_DIR"
+  rm -rf "$old"
+  chown -R "$APP_USER:$APP_USER" "$APP_DIR"
+}
+
+# 发布包解包后必须具备的文件，缺任何一个都说明这个 Release 不可用
+assert_release_complete() {
+  local stage="$1" path
+  for path in backend/pyproject.toml backend/uv.lock scripts/setup.sh \
+    deploy/startup-check.sh frontend/dist/index.html; do
+    [ -e "${stage}/${path}" ] || die "发布包 ${TARGET_VERSION} 内容不完整（缺少 ${path}），请换一个 VERSION 重试"
+  done
+}
+
+# 下载并安装指定版本的发布包；下载不到（没有 Release / 网络不通）时返回非 0 交给调用方决定回退
+fetch_release() {
+  local work="${INSTALL_DIR}/.download" stage="${INSTALL_DIR}/.stage" base name
+  TARGET_VERSION="$VERSION"
+  if [ -z "$TARGET_VERSION" ]; then
+    log "查询最新正式版本（${RELEASE_LATEST_URL}）"
+    TARGET_VERSION="$(resolve_latest_version)"
+  fi
+  if [ -z "$TARGET_VERSION" ]; then
+    warn "未找到可用的 Release：仓库 ${REPO_SLUG} 可能还没有发布过版本，或当前网络无法访问 GitHub"
+    return 1
+  fi
+
+  base="${RELEASE_BASE_URL}/${TARGET_VERSION}"
+  rm -rf "$work" "$stage"
+  mkdir -p "$work" "${stage}/frontend"
+  log "下载发布包 ${TARGET_VERSION}（${base}）"
+  for name in "${RELEASE_ASSETS[@]}"; do
+    if ! download_file "${base}/${name}" "${work}/${name}"; then
+      warn "下载失败：${base}/${name}"
+      warn "请确认版本 ${TARGET_VERSION} 存在（见 https://github.com/${REPO_SLUG}/releases），以及服务器能访问 GitHub"
+      rm -rf "$work" "$stage"
+      return 1
+    fi
+  done
+
+  log "校验 SHA-256"
+  for name in "${RELEASE_ARCHIVES[@]}"; do
+    verify_sha256 "${work}/${name}" "${work}/SHA256SUMS"
+  done
+
+  tar -xzf "${work}/backend.tar.gz" -C "$stage"
+  tar -xzf "${work}/deploy.tar.gz" -C "$stage"
+  tar -xzf "${work}/frontend.tar.gz" -C "${stage}/frontend"
+  assert_release_complete "$stage"
+  TARGET_COMMIT="$(sed -n 's/.*"commit"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+    "${work}/manifest.json" | head -n1)"
+  cp "${work}/manifest.json" "${stage}/RELEASE.json"
+  swap_app_dir "$stage"
+  rm -rf "$work"
+  SOURCE_CHANNEL="$CHANNEL_RELEASE"
+  return 0
+}
+
+# main 通道：仍然用 git 拉取分支最新代码（内容随分支变动，适合尝鲜与调试）
+fetch_from_git() {
   if [ -d "${APP_DIR}/.git" ]; then
     log "更新代码（${BRANCH}）"
     as_app git -C "$APP_DIR" fetch --quiet origin "$BRANCH"
     as_app git -C "$APP_DIR" reset --quiet --hard "origin/${BRANCH}"
   else
+    # 目录存在但不是 git 仓库（上次是 release 通道装的）：先腾空再克隆，
+    # 虚拟环境先挪到一边，克隆完再放回去，避免重装全部依赖。
+    local kept="${INSTALL_DIR}/.venv-keep"
+    rm -rf "$kept"
+    if [ -d "${APP_DIR}/backend/.venv" ]; then
+      mv "${APP_DIR}/backend/.venv" "$kept"
+    fi
+    rm -rf "$APP_DIR"
     log "下载代码 ${REPO_URL}"
     as_app git clone --quiet --branch "$BRANCH" "$REPO_URL" "$APP_DIR"
+    if [ -d "$kept" ]; then
+      mv "$kept" "${APP_DIR}/backend/.venv"
+      chown -R "$APP_USER:$APP_USER" "${APP_DIR}/backend/.venv"
+    fi
   fi
-  log "当前版本：$(as_app git -C "$APP_DIR" log -1 --format='%h %s')"
+  TARGET_COMMIT="$(as_app git -C "$APP_DIR" rev-parse HEAD)"
+  TARGET_VERSION="${BRANCH}@${TARGET_COMMIT:0:7}"
+  SOURCE_CHANNEL="$CHANNEL_MAIN"
+  log "当前代码：$(as_app git -C "$APP_DIR" log -1 --format='%h %s')"
+}
+
+fetch_source() {
+  local previous
+  previous="$(installed_version)"
+  if [ -n "$previous" ]; then
+    log "已安装版本：${previous}"
+  else
+    log "未检测到已安装版本（按全新安装处理）"
+  fi
+
+  if [ "$CHANNEL" = "$CHANNEL_RELEASE" ] && fetch_release; then
+    log "版本变更：${previous:-无} → ${TARGET_VERSION}（来源：Release，已校验 SHA-256）"
+    return 0
+  fi
+  if [ "$CHANNEL" = "$CHANNEL_RELEASE" ]; then
+    [ "$ALLOW_MAIN_FALLBACK" = "true" ] ||
+      die "无法从 Release 安装（原因见上方），且 ALLOW_MAIN_FALLBACK=false。请指定一个存在的 VERSION 重试，或临时改用 CHANNEL=main"
+    warn "──────────────────────────────────────────────"
+    warn "注意：本次**没有**按固定版本安装，已回退到 ${BRANCH} 分支的最新源码。"
+    warn "分支内容随时会变，不同时间安装结果可能不同；正式环境请改用 VERSION=vX.Y.Z 指定版本，"
+    warn "或加 ALLOW_MAIN_FALLBACK=false 让脚本在没有 Release 时直接报错而不是回退。"
+    warn "──────────────────────────────────────────────"
+  fi
+  fetch_from_git
+  log "版本变更：${previous:-无} → ${TARGET_VERSION}（来源：${BRANCH} 分支源码，非固定版本）"
 }
 
 prepare_frontend() {
+  # release 通道：前端 dist 已随发布包解包到位，无需再下载或构建
+  if [ "$SOURCE_CHANNEL" = "$CHANNEL_RELEASE" ]; then
+    [ "${FRONTEND_BUILD:-}" != "local" ] ||
+      warn "release 通道直接使用发布包内已构建好的前端，FRONTEND_BUILD=local 本次忽略"
+    FRONTEND_READY=1
+    return 0
+  fi
   # 优先下载 CI 预构建前端：服务器无需 Node.js/pnpm，也不依赖 npm 源
   if [ "${FRONTEND_BUILD:-prebuilt}" != "local" ] && as_app bash "${APP_DIR}/scripts/fetch-frontend.sh"; then
     FRONTEND_READY=1
@@ -329,6 +562,10 @@ verify_backend() {
 }
 
 build_app() {
+  if [ "${RECREATE_VENV:-0}" = "1" ] && [ -d "${APP_DIR}/backend/.venv" ]; then
+    log "按 RECREATE_VENV=1 重建 Python 虚拟环境"
+    rm -rf "${APP_DIR}/backend/.venv"
+  fi
   # UV_NO_CONFIG：不读取任何 uv.toml，避免受调用者目录或用户配置影响
   as_app env MIRROR="$MIRROR" NO_OCR="${NO_OCR:-0}" UV_NO_CONFIG=1 \
     SKIP_FRONTEND="${FRONTEND_READY:-0}" FRONTEND_BUILD=local \
@@ -552,6 +789,25 @@ password_is_set() {
   curl -fsS "http://127.0.0.1:${APP_PORT}/api/auth/status" 2>/dev/null | grep -q '"password_set":true'
 }
 
+# 首个管理员的提示。安装命令里从不包含账号密码，首个管理员一律在首次打开网页时设置：
+#   单账套 → 为管理员 admin 设置初始密码；SaaS → 在主域名上设置首个平台管理员的用户名与密码。
+print_admin_hint() {
+  local role="管理员 admin"
+  if [ "$DEPLOY_MODE" = "$MODE_SAAS" ]; then
+    role="平台管理员（用户名默认 admin）"
+  fi
+  if password_is_set; then
+    echo " ${role}：沿用网页中已设置的密码；其他用户由管理员在网页中添加"
+  else
+    echo " ${role}：尚未设置密码 ← 请立即打开上面的访问地址完成设置"
+    if [ "$DEPLOY_MODE" = "$MODE_SAAS" ]; then
+      echo "          （用**主域名**打开，不要带账套子域名；设置完即登录，可从「平台」入口开通账套）"
+    fi
+    echo "          （设置前任何能访问该地址的人都可以设置，请尽快完成）"
+  fi
+  return 0
+}
+
 # 部署形态与授权状态摘要（单账套且未配授权时只有一行，与现状观感一致）
 print_deployment_summary() {
   if [ "$DEPLOY_MODE" = "$MODE_SAAS" ]; then
@@ -581,19 +837,17 @@ print_summary() {
 
 ────────────────────────────────────────────────
  发票账本已就绪
+ 版本：${TARGET_VERSION}（来源：${SOURCE_CHANNEL}）
  访问地址：${scheme}://${host}${port_suffix}
 EOF
-  if password_is_set; then
-    echo " 管理员：admin（沿用网页中已设置的密码；其他用户由管理员在网页中添加）"
-  else
-    echo " 管理员：admin，尚未设置密码 ← 请立即打开上面的访问地址，为 admin 设置初始密码"
-    echo "          （设置前任何能访问该地址的人都可以设置，请尽快完成）"
-  fi
+  print_admin_hint
   print_deployment_summary
   cat <<EOF
  重置 admin 密码：sudo -u ${APP_USER} env INVOICE_SORTING_DATA_DIR=${DATA_DIR} ${APP_DIR}/backend/.venv/bin/invoice-sorting reset-password
  数据目录：${DATA_DIR}（收件箱：${DATA_DIR}/收件箱）
- 升级命令：重新执行安装命令即可
+ 当前版本：cat ${VERSION_FILE}
+ 升级命令：重新执行安装命令即可（默认装最新正式版）
+ 回滚版本：重新执行安装命令并指定旧版本，例如 | sudo VERSION=v0.1.0 bash
  查看日志：journalctl -u ${APP_NAME} -f
  日志出现 bad marshal data（字节码缓存损坏）时：sudo rm -rf ${PYCACHE_DIR}/* && sudo systemctl restart ${APP_NAME}
 ────────────────────────────────────────────────
@@ -619,6 +873,7 @@ main() {
   write_nginx
   open_firewall
   start_services
+  record_version
   enable_https
   print_summary
 }
