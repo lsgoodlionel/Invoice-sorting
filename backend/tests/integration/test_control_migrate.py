@@ -14,7 +14,7 @@ from tests.conftest import make_settings
 LEGACY_TOKEN = "a" * 64
 
 
-def _seed_legacy_business_db(settings) -> None:
+def _seed_legacy_business_db(settings, token_hash: str = LEGACY_TOKEN) -> None:
     """模拟老部署：只有业务库，账号与会话都在其中。"""
     settings.ensure_dirs()
     engine = create_db_engine(f"sqlite:///{settings.db_path}")
@@ -47,7 +47,7 @@ def _seed_legacy_business_db(settings) -> None:
             db.flush()
             db.add(
                 AuthSession(
-                    token_hash=LEGACY_TOKEN,
+                    token_hash=token_hash,
                     user_id=1,
                     created_at=current,
                     last_seen_at=current,
@@ -128,3 +128,28 @@ def test_migration_is_idempotent(upgraded):
         assert control.scalar(select(func.count(Membership.id))) == 2
         assert control.scalar(select(func.count(ControlAuthSession.token_hash))) == 1
         assert control.scalar(select(func.count(Tenant.id))) == 1
+
+
+def test_existing_sessions_keep_working_after_upgrade(tmp_path):
+    """老部署升级后不需要重新登录：会话已随批次一搬到控制库，密码哈希原样保留。"""
+    from fastapi.testclient import TestClient
+
+    from invoice_sorting.auth.passwords import hash_password
+    from invoice_sorting.auth.sessions import hash_token
+    from invoice_sorting.control.models import Account
+    from tests.auth_helpers import COOKIE
+
+    settings = make_settings(tmp_path, auth_enabled=True)
+    _seed_legacy_business_db(settings, token_hash=hash_token("old-token"))
+    with make_session_factory(create_db_engine(f"sqlite:///{settings.db_path}"))() as db:
+        db.get(User, 1).password_hash = hash_password("old-pass-123")
+        db.commit()
+
+    app = create_app(settings)
+
+    with app.state.control_session_factory() as control:
+        assert control.get(Account, 1).password_hash is not None
+    with TestClient(app) as client:
+        client.cookies.set(COOKIE, "old-token")
+        assert client.get("/api/expenses").status_code == 200
+        assert client.get("/api/auth/status").json()["data"]["user"]["username"] == "admin"

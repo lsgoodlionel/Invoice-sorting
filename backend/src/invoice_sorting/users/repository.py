@@ -1,13 +1,18 @@
-"""用户数据访问：按用户名查找、内置管理员、合格管理员计数。"""
+"""业务库中的用户镜像查询：按用户名查找、内置管理员。
+
+登录与角色以控制库为准（control/members.py），这里只服务于镜像本身
+（启动迁移、上传人/操作人展示）。
+"""
 
 from enum import StrEnum
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from invoice_sorting.control.members import BUILTIN_ADMIN_USERNAME
 from invoice_sorting.db.models import User
 
-ADMIN_USERNAME = "admin"
+ADMIN_USERNAME = BUILTIN_ADMIN_USERNAME
 ADMIN_DISPLAY_NAME = "管理员"
 
 
@@ -30,13 +35,3 @@ def get_admin(db: Session) -> User | None:
 
 def list_users(db: Session) -> list[User]:
     return list(db.scalars(select(User).order_by(User.created_at, User.id)))
-
-
-def count_ready_admins(db: Session, exclude_id: int | None = None) -> int:
-    """启用中且已设置密码的管理员数量（可排除某个用户，用于预判修改后的状态）。"""
-    query = select(func.count(User.id)).where(
-        User.role == UserRole.ADMIN, User.is_active.is_(True), User.password_hash.is_not(None)
-    )
-    if exclude_id is not None:
-        query = query.where(User.id != exclude_id)
-    return db.scalar(query) or 0

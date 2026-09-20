@@ -1,10 +1,23 @@
-"""命令行：reset-password 清除 admin（或 --user 指定用户）的密码与其全部会话。"""
+"""命令行：reset-password 清除 admin（或 --user 指定用户）的密码与其全部会话。
+
+密码已统一存放在控制库，因此这里先确保老部署的账号已迁移过去，再清除。
+"""
 
 import sys
 
+from sqlalchemy import Engine
+from sqlalchemy.orm import Session, sessionmaker
+
 from invoice_sorting.auth.migrate import migrate_users
 from invoice_sorting.auth.service import reset_credentials
-from invoice_sorting.config import Settings
+from invoice_sorting.config import DEFAULT_TENANT_NAME, DEFAULT_TENANT_SLUG, Settings
+from invoice_sorting.control.database import (
+    create_control_engine,
+    init_control_db,
+    make_control_session_factory,
+)
+from invoice_sorting.control.migrate import migrate_tenant_accounts
+from invoice_sorting.control.repository import ensure_tenant
 from invoice_sorting.db.session import create_db_engine, init_db, make_session_factory
 from invoice_sorting.users.repository import ADMIN_USERNAME, normalize_username
 
@@ -14,18 +27,37 @@ EXIT_USER_NOT_FOUND = 1
 EXIT_SAAS_UNSUPPORTED = 2
 
 
-def _reset(settings: Settings, username: str) -> bool:
+def _open_business(settings: Settings) -> tuple[Engine, sessionmaker[Session]]:
     settings.ensure_dirs()
     engine = create_db_engine(f"sqlite:///{settings.db_path}")
+    init_db(engine)
+    factory = make_session_factory(engine)
+    with factory() as db:
+        migrate_users(db)
+    return engine, factory
+
+
+def _reset_in_control(settings: Settings, factory: sessionmaker[Session], username: str) -> bool:
+    engine = create_control_engine(settings)
     try:
-        init_db(engine)
-        with make_session_factory(engine)() as db:
-            migrate_users(db)
-            is_found = reset_credentials(db, username)
-            db.commit()
+        init_control_db(engine)
+        with make_control_session_factory(engine)() as control:
+            tenant = ensure_tenant(control, DEFAULT_TENANT_SLUG, DEFAULT_TENANT_NAME)
+            control.commit()
+            migrate_tenant_accounts(control, tenant.id, factory)
+            is_found = reset_credentials(control, username)
+            control.commit()
     finally:
         engine.dispose()
     return is_found
+
+
+def _reset(settings: Settings, username: str) -> bool:
+    business, factory = _open_business(settings)
+    try:
+        return _reset_in_control(settings, factory, username)
+    finally:
+        business.dispose()
 
 
 def reset_password(settings: Settings, username: str | None = None) -> None:

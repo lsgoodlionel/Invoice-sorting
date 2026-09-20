@@ -24,6 +24,8 @@ MODE_SINGLE = "single"
 MODE_SAAS = "saas"
 DeploymentMode = Literal["single", "saas"]
 DEFAULT_TENANT_SLUG = "default"
+# 默认授权服务地址；正式发布时改为自家 SaaS 控制面地址，留空表示不校验
+DEFAULT_LICENSE_SERVER = ""
 DEFAULT_TENANT_NAME = "默认账套"
 
 
@@ -39,6 +41,16 @@ class Settings(BaseSettings):
     auth_enabled: bool = True  # 应用内登录认证；仅本机单人使用时可关闭
     deployment_mode: DeploymentMode = MODE_SINGLE
     tenant_host_suffix: str = ""  # 配置后 t1.example.com 直接定位租户 t1（仅 SaaS 模式）
+    # 私有化授权（设计 6）：两项都留空时不做校验，按本机自用处理
+    license_key: str = ""
+    license_server: str = DEFAULT_LICENSE_SERVER
+    license_check_interval_hours: int = 24
+    license_grace_days: int = 14
+
+    @property
+    def is_license_configured(self) -> bool:
+        """单租户且配置了密钥与服务地址时才启用在线校验（SaaS 控制面自身不校验）。"""
+        return bool(self.license_key and self.license_server) and not self.is_saas
 
     @property
     def is_saas(self) -> bool:

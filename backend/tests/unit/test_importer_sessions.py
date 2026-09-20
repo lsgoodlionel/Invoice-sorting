@@ -67,10 +67,22 @@ def test_get_returns_immutable_set():
 def test_store_is_attached_to_app_state_once():
     app = SimpleNamespace(state=SimpleNamespace())
 
-    store = get_session_store(app)
+    store = get_session_store(app, "default")
 
-    assert get_session_store(app) is store
-    assert app.state.import_sessions is store
+    assert get_session_store(app, "default") is store
+    assert app.state.import_sessions == {"default": store}
+
+
+def test_each_tenant_gets_its_own_store():
+    app = SimpleNamespace(state=SimpleNamespace())
+
+    alpha = get_session_store(app, "alpha")
+    beta = get_session_store(app, "beta")
+
+    assert alpha is not beta
+    session_id = alpha.create([1])
+    assert beta.get(session_id) is None
+    assert alpha.get(session_id) == frozenset({1})
 
 
 def test_start_creates_empty_session_snapshot():

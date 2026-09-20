@@ -15,42 +15,56 @@
 
 应用自身负责认证。系统内置管理员账户 `admin`：首次打开网页为 admin 设置初始密码；未设置前，除公开端点外的所有 `/api/*` 均不可访问。管理员可添加用户并设置密码。所有用户共用同一账本，操作记录上传人/操作人。
 
+账号、密码与会话统一存放在**控制库**（`control.db` 的 `account` / `membership` / `auth_session`）；账套（租户）业务库中的 `app_user` 是同一账号在该账套内的**镜像**（`app_user.id == account.id`，同步用户名/姓名/角色/启用状态，不再使用其 `password_hash`），上传人与操作人展示照旧。角色是**账套内**的：同一账号在不同账套可以有不同角色。
+
+部署形态（`INVOICE_SORTING_DEPLOYMENT_MODE`）影响返回字段：**单账套部署（single，默认）下所有接口都不返回账套字段，界面完全不出现账套概念**；多账套部署（saas）才有下面标注“仅多账套”的字段与端点。
+
 ### 0.1 认证
 
 | 方法 | 路径 | 请求 | 返回 data |
 | --- | --- | --- | --- |
-| GET | `/api/auth/status` | 公开 | `{ auth_enabled: boolean, password_set: boolean, authenticated: boolean, user: CurrentUser \| null }`（password_set 表示 admin 已设置密码） |
-| POST | `/api/auth/setup` | 公开；`{ password }`，仅在 admin 尚未设置密码时可用，否则 409“已设置过初始密码，请直接登录” | `{ authenticated: true, user: CurrentUser }`，以 admin 身份写入会话 Cookie |
-| POST | `/api/auth/login` | 公开；`{ username, password }`；用户名不存在、密码错误或账户已停用统一 401“用户名或密码错误”；admin 未设置密码 409“请先设置初始密码”；失败过多 429“尝试次数过多，请 N 分钟后再试” | `{ authenticated: true, user: CurrentUser }`，写入会话 Cookie |
+| GET | `/api/auth/status` | 公开 | `{ auth_enabled: boolean, password_set: boolean, authenticated: boolean, user: CurrentUser \| null }`（password_set 表示 admin 已设置密码）；仅多账套时追加 `multi_tenant: true` 与 `tenant: TenantBrief \| null`（未登录为 null） |
+| POST | `/api/auth/setup` | 公开；`{ password }`，仅在 admin 尚未设置密码时可用，否则 409“已设置过初始密码，请直接登录”；多账套统一域名下定位不到账套 400“无法确定当前账套，请重新登录” | `{ authenticated: true, user: CurrentUser }`，以 admin 身份写入会话 Cookie；仅多账套时追加 `tenant` |
+| POST | `/api/auth/login` | 公开；`{ username, password }`；用户名不存在、密码错误、账户已停用或在本账套内被停用统一 401“用户名或密码错误”；admin 未设置密码 409“请先设置初始密码”；失败过多 429“尝试次数过多，请 N 分钟后再试”；账号完全不是该账套成员 403“当前账号不属于该账套，请联系管理员开通”；账号未加入任何账套 403“当前账号尚未加入任何账套，请联系管理员开通” | `{ authenticated: true, user: CurrentUser }`，写入会话 Cookie；仅多账套时追加 `tenant` |
 | POST | `/api/auth/logout` | 需登录 | `null` |
 | POST | `/api/auth/password` | 需登录；`{ current_password, new_password }`；当前密码错误 400；关闭认证时 400“未启用登录认证，无法修改密码” | `null`；本人其他会话失效，当前会话保留 |
+| POST | `/api/auth/join` | 公开；`{ code, username, password, display_name? }` 凭邀请码加入账套，见 0.4 | 同 login |
+| GET | `/api/auth/tenants` | 需登录；**仅多账套**，单账套 404“当前为单账套部署，无需切换账套” | `TenantOption[]`（当前账号可进入的账套，按加入顺序） |
+| POST | `/api/auth/switch-tenant` | 需登录；**仅多账套**；`{ slug }`（小写字母数字连字符，否则 422）；账套不存在 404；不是成员 403“当前账号不属于该账套，请联系管理员开通” | `{ authenticated: true, user: CurrentUser, tenant: TenantBrief }`，会话的当前账套被改写 |
 
 ```ts
 type UserRole = "admin" | "member"
 type CurrentUser = { id: number; username: string; display_name: string; role: UserRole }
 type UserRef = { id: number; display_name: string } // 用于上传人/操作人展示
+// 仅多账套部署返回
+type TenantBrief = { slug: string; name: string }
+type TenantOption = TenantBrief & { is_current: boolean }
 ```
 
 - 用户名：3–32 个字符，字母、数字、下划线、点、连字符（不区分大小写唯一，存储为小写，首尾空白忽略）；`admin` 为内置管理员用户名。不符合 422“用户名需为 3–32 个字符，只能包含字母、数字、下划线、点、连字符”。login 的 username 不校验格式（去首尾空白、按小写匹配），仅超过 1024 字符 422。
 - 姓名 display_name：1–32 个字符（去首尾空白后计算），默认同用户名；不符合 422。
 - 密码规则：8–128 个字符（setup、new_password、创建用户、管理员重置密码）；不符合 422。login 的 password 与 current_password 不校验下限，仅超过 1024 字符 422。
-- 会话 Cookie `invoice_session`：HttpOnly、SameSite=Lax、Path=/，30 天，按小时续期；HTTPS 时 Secure；服务端只存令牌 SHA-256，会话关联用户。
+- 会话 Cookie `invoice_session`：HttpOnly、SameSite=Lax、Path=/，30 天，按小时续期；HTTPS 时 Secure；服务端（控制库）只存令牌 SHA-256，会话关联账号与**当前所选账套**。
+- 账套定位顺序：子域名（配置了 `tenant_host_suffix` 时）→ 会话记录的当前账套。子域名指定了账套时会校验该账号在其中有启用中的成员关系，否则 403“当前账号不属于该账套，请联系管理员开通”；多账套部署定位不到账套时 400“无法确定当前账套，请重新登录”，**绝不回退到默认账套**。账套不存在 404“账套不存在”。
 - 未认证：401“请先登录”；admin 未设置密码时 401“请先设置初始密码”（此时其他用户也无法访问，status 的 authenticated=false、user=null）。已登录但账户被停用：该用户所有会话立即失效（401“请先登录”）。
 - 权限不足：403“需要管理员权限”（先于请求体校验，普通用户提交非法请求体也返回 403）。
-- 公开端点：`/api/health`、`/api/auth/status`、`/api/auth/setup`、`/api/auth/login`。
+- 公开端点：`/api/health`、`/api/auth/status`、`/api/auth/setup`、`/api/auth/login`、`/api/auth/join`。
 - 登录失败限制：按客户端 IP，15 分钟内失败 5 次锁定 15 分钟（同前）。
 - `INVOICE_SORTING_AUTH_ENABLED=false`：关闭认证，status 返回 auth_enabled=false、authenticated=true、user=null；所有端点放行，管理员限定端点也放行；操作人记为空。
-- 旧版单一密码自动迁移（启动时幂等执行）：若不存在 admin 用户则创建 admin（姓名“管理员”），有旧密码时沿用该密码，并删除旧密码设置；未关联用户的旧会话全部失效（需重新登录）。新库启动即有未设置密码的 admin。
+- 旧版单一密码自动迁移（启动时幂等执行）：若不存在 admin 用户则创建 admin（姓名“管理员”），有旧密码时沿用该密码，并删除旧密码设置；未关联用户的旧会话全部失效（需重新登录）。新库启动即有未设置密码的 admin。多账套部署的账套由控制面开通成员，业务库不预置 admin 镜像。
+- 升级到控制面账号后：账号 id 与密码哈希不变、已有会话一并搬到控制库，**老用户无需重新登录、密码不变**。业务库 `app_user.password_hash` 列保留但不再使用（便于回退旧版本）。
 - 忘记 admin 密码：服务器执行 `invoice-sorting reset-password`（清除 admin 密码与 admin 全部会话，网页回到“设置初始密码”；其他用户会话保留，但在 admin 重新设置密码前同样 401“请先设置初始密码”）；`invoice-sorting reset-password --user 用户名` 清除指定用户密码并删除其全部会话（has_password=false，该用户需管理员在网页中重新设置密码）。用户不存在时 stderr 输出“用户不存在：用户名”并以退出码 1 结束。
 
 ### 0.2 用户管理（仅管理员）
 
 | 方法 | 路径 | 请求 | 返回 data |
 | --- | --- | --- | --- |
-| GET | `/api/users` | — | `User[]`（按创建时间） |
-| POST | `/api/users` | `{ username, display_name?, password, role? }`（role 默认 `member`）；用户名已存在 409“用户名已存在” | `User` |
-| PATCH | `/api/users/{id}` | `{ display_name?, role?, is_active? }`；用户不存在 404“用户不存在” | `User`；停用后其会话全部失效 |
-| POST | `/api/users/{id}/password` | `{ password }` 管理员重置；用户不存在 404 | `null`；该用户所有会话失效（重置自己的密码时当前会话也失效，需重新登录） |
+| GET | `/api/users` | — | `User[]`（**本账套**的成员，按加入顺序） |
+| POST | `/api/users` | `{ username, display_name?, password, role? }`（role 默认 `member`）；用户名已存在 409“用户名已存在”（用户名全局唯一，别的账套占用了也算） | `User`，同时加入本账套 |
+| PATCH | `/api/users/{id}` | `{ display_name?, role?, is_active? }`；不是本账套成员 404“用户不存在” | `User`；`role`/`is_active` 改的是**本账套内**的身份，停用后其会话全部失效 |
+| POST | `/api/users/{id}/password` | `{ password }` 管理员重置；不是本账套成员 404 | `null`；该用户所有会话失效（重置自己的密码时当前会话也失效，需重新登录） |
+
+管理员只能管理**自己账套**的成员：别的账套的账号一律按“用户不存在”处理，平台级用户管理属于运营后台（后续批次）。
 
 ```ts
 type User = {
@@ -59,7 +73,7 @@ type User = {
 }
 ```
 
-- 约束（400，中文说明）：不能停用自己（“不能停用自己”）或把自己改为普通用户（“不能把自己改为普通用户”）；系统必须至少保留一名启用中且已设置密码的管理员（修改会让最后一名这样的管理员失去资格时 400“系统必须至少保留一名启用中且已设置密码的管理员”）；内置 `admin` 不能改用户名（本接口不提供改用户名）。关闭认证时无“自己”，仅检查管理员保留规则。
+- 约束（400，中文说明）：不能停用自己（“不能停用自己”）或把自己改为普通用户（“不能把自己改为普通用户”）；**每个账套**必须至少保留一名启用中且已设置密码的管理员（修改会让最后一名这样的管理员失去资格时 400“系统必须至少保留一名启用中且已设置密码的管理员”）；内置 `admin` 不能改用户名（本接口不提供改用户名）。关闭认证时无“自己”，仅检查管理员保留规则。
 - 普通用户（member）可使用：收集、清单、批次、统计、附件、导入、经费项目新建/编辑、修改自己的密码。
 - 仅管理员：用户管理；`PUT /api/settings`；分类的新建/修改/删除；凭证清单规则的新建/修改/删除；`POST /api/backup`。对应 GET 端点所有登录用户可读。
 
@@ -70,6 +84,27 @@ type User = {
 - `StatusEvent.actor: UserRef | null`（自动推进时为触发该变化的用户，收件箱为 null）
 - `Batch.created_by: UserRef | null`、`ExportRecord.created_by: UserRef | null`
 - 已停用用户的历史记录仍显示其姓名。
+
+### 0.4 邀请码
+
+租户管理员生成邀请码，受邀人凭邀请码 + 用户名 + 密码加入本账套。单账套部署接口同样可用，只是界面不暴露入口。
+
+| 方法 | 路径 | 请求 | 返回 data |
+| --- | --- | --- | --- |
+| GET | `/api/invites` | 仅管理员 | `Invite[]`（本账套，新的在前） |
+| POST | `/api/invites` | 仅管理员；`{ role?, expires_on? }`（role 默认 `member`，非法 422；expires_on 默认 7 天后） | `Invite` |
+| POST | `/api/auth/join` | 公开；`{ code, username, password, display_name? }` | 同 `/api/auth/login`，并写入会话 Cookie |
+
+```ts
+type Invite = {
+  id: number; code: string; role: UserRole; expires_on: string | null;
+  is_used: boolean; used_at: string | null; created_at: string
+}
+```
+
+- 邀请码一次性使用：已用 409“邀请码已被使用，请向管理员重新索取”；不存在 404“邀请码无效，请向管理员重新索取”；过期 410“邀请码已过期，请向管理员重新索取”；账套不可用 403“该账套当前不可加入，请联系管理员”。
+- 用户名已存在时必须填写**该账号的登录密码**，否则 401“该用户名已存在，请填写它的登录密码”；已经是本账套成员 409“该账号已在此账套中，请直接登录”。用户名不存在则按该用户名开通新账号。
+- 与登录共用失败限制（按客户端 IP），防止穷举邀请码。
 
 ## 1 数据形状
 
@@ -333,3 +368,19 @@ type Stats = {
 `ChecklistRule = { id, category_id: number|null, attachment_kind, level, condition: { amount_gte?: number, amount_lt?: number, is_online?: boolean, is_nonlocal?: boolean, detail_platform?: boolean, content_keywords?: string[], exclude_keywords?: string[] }, hint }`
 
 条件全部满足才触发：`is_nonlocal` 为外地发票；`detail_platform` 为销售方属于已带明细平台；`invoice_exempt` 为免发票记录；`content_keywords` 为发票内容（税收分类、商品名称、销售方）或记录商家、摘要包含任一关键词（每个 1–20 字，最多 20 个），`exclude_keywords` 为包含任一关键词则不触发。默认规则（版本 5）：差旅交通的“订单明细”仅在含“住宿/酒店/宾馆/旅馆/民宿/客栈”时必需（酒店订单），“行程单”对这些住宿发票不触发。版本 6：同条件下“往来交通凭证”（`transport`）必需，提示“往返酒店所在地与本地的火车/飞机/汽车/轮船票或行程单”；该项在记录有 `transport` 类型附件，或有 details.vehicle 非空的发票（交通票发票）时视为已有。旧库启动时追加一次（幂等）。默认新增通用规则：`{ is_nonlocal: true, detail_platform: false }` → 订单明细（必需），提示“外地发票需附网购订单截图（京东、当当、圆迈等已带明细平台可免）；非网购外地购品需随差旅报销并说明”。
+
+### 私有化授权（licensing 模块）
+
+| 方法 | 路径 | 请求 | 返回 data |
+| --- | --- | --- | --- |
+| GET | `/api/license/status` | — | `LicenseStatus` |
+| POST | `/api/license/recheck` | —（仅管理员，60 秒内只能触发一次，超频 429） | `LicenseStatus` |
+| POST | `/api/platform/license/verify` | `{ license_key, instance_id, app_version?, users?, tenants? }`（控制面签发，无需登录） | `{ token: string }` |
+
+`LicenseStatus = { state: "active"|"grace"|"readonly"|"unlicensed_ok"|"not_applicable", message: string, instance_id: string, valid_until: string|null, grace_until: string|null, max_users: number, last_checked_at: string|null, last_error: string, server_reachable: boolean }`
+
+- `active` 正常；`grace` 已过期但在宽限期内（顶部提示条，仍可写）；`readonly` 只读；
+  `unlicensed_ok` 未配置授权密钥（本机自用，不限制）；`not_applicable` 多租户模式不适用。
+- `readonly` 期间所有写接口（POST/PUT/PATCH/DELETE 的 `/api/*`）返回 **403** 并附中文原因；
+  GET、`/api/auth/*`（登录）、`/api/backup`（备份）与批次导出仍可用。
+- `message` 可直接作为提示条文案；`server_reachable=false` 表示当前联系不上授权服务（不降级）。

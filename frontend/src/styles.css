@@ -629,6 +629,16 @@ body {
   color: var(--ink-muted);
 }
 
+/* 账套切换（仅多租户部署出现）：与退出登录同一层级，但当前账套名要能被读出来 */
+.nav-tenant {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.nav-tenant:hover {
+  background: var(--paper-tint, rgba(0, 0, 0, 0.04));
+}
+
 .nav-user {
   border-top: 1px solid var(--paper-line);
   padding-top: 10px;

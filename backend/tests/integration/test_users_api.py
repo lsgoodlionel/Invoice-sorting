@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 from tests.auth_helpers import (
     MEMBER_PASSWORD,
     PASSWORD,
-    auth_rows,
+    account_ids,
     create_user,
     logged_in_client,
     login,
@@ -133,7 +133,7 @@ def test_admin_reset_password_revokes_sessions(auth_app, admin_client):
 
     assert response.json() == {"ok": True, "data": None, "error": None}
     assert member.get("/api/expenses").status_code == 401
-    assert [row.user_id for row in auth_rows(auth_app)] == [1]
+    assert account_ids(auth_app) == [1]
     assert login(TestClient(auth_app), MEMBER_PASSWORD, "wei").status_code == 401
     assert login(TestClient(auth_app), "reset-pass-789", "wei").status_code == 200
 
@@ -150,6 +150,6 @@ def test_reactivated_user_can_login_again(auth_app, admin_client):
 def test_concurrent_duplicate_create_maps_to_conflict(auth_app, admin_client, monkeypatch):
     from invoice_sorting.users import service
 
-    monkeypatch.setattr(service, "find_user", lambda _db, _name: None)
+    monkeypatch.setattr(service, "find_account", lambda _db, _name: None)
     body = {"username": "admin", "password": PASSWORD, "role": "member"}
     assert error(admin_client.post("/api/users", json=body)) == (409, "用户名已存在")

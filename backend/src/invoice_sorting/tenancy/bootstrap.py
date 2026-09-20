@@ -26,17 +26,18 @@ def open_business_db(settings: Settings) -> tuple[Engine, sessionmaker[Session]]
         init_db(engine)
         factory = make_session_factory(engine)
         with factory() as session:
-            _seed(session)
+            _seed(session, settings)
     except Exception:
         engine.dispose()  # 初始化失败时不泄漏连接池
         raise
     return engine, factory
 
 
-def _seed(session: Session) -> None:
+def _seed(session: Session, settings: Settings) -> None:
     seed_defaults(session)
     sync_default_keywords(session)
     sync_default_rules(session)
     reset_polluted_memory(session)
     backfill_file_keys(session)
-    migrate_users(session)
+    # SaaS 租户的成员由控制面开通，业务库不预置 admin 镜像
+    migrate_users(session, create_admin=not settings.is_saas)

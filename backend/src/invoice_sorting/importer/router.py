@@ -26,8 +26,9 @@ from invoice_sorting.importer.service import (
     import_files,
 )
 from invoice_sorting.importer.sessions import ImportSessionStore, get_session_store
-from invoice_sorting.settings.deps import ConfigDep, SessionDep
+from invoice_sorting.settings.deps import ConfigDep, SessionDep, TenantDep
 from invoice_sorting.settings.service import buyer_identity, region_policy
+from invoice_sorting.tenancy.runtime import TenantContext
 
 router = APIRouter(prefix="/api", tags=["导入"])
 
@@ -63,11 +64,17 @@ def _save_uploads(
     return saved, failures
 
 
+def _store(request: Request, tenant: TenantContext) -> ImportSessionStore:
+    """导入会话按租户分区，别的租户拿到 session_id 也查不到附件。"""
+    return get_session_store(request.app, tenant.slug)
+
+
 @router.post("/imports")
 def post_import(
     request: Request,
     session: SessionDep,
     config: ConfigDep,
+    tenant: TenantDep,
     files: Annotated[list[UploadFile], File()],
 ) -> dict[str, Any]:
     config.data_dir.mkdir(parents=True, exist_ok=True)
@@ -77,17 +84,17 @@ def post_import(
         session.commit()
     for name, message in failures:
         result.add_error(name, message)
-    session_id = get_session_store(request.app).create(result.attachment_ids)
+    session_id = _store(request, tenant).create(result.attachment_ids)
     return ok(serialize_import(session_id, result, buyer_identity(session), region_policy(session)))
 
 
 @router.post("/imports/start")
-def post_import_start(request: Request) -> dict[str, Any]:
-    return ok({"session_id": get_session_store(request.app).start()})
+def post_import_start(request: Request, tenant: TenantDep) -> dict[str, Any]:
+    return ok({"session_id": _store(request, tenant).start()})
 
 
-def _live_store(request: Request, session_id: str) -> ImportSessionStore:
-    store = get_session_store(request.app)
+def _live_store(request: Request, tenant: TenantContext, session_id: str) -> ImportSessionStore:
+    store = _store(request, tenant)
     if store.get(session_id) is None:
         raise ImportSessionExpiredError()
     return store
@@ -111,17 +118,20 @@ def post_import_file(
     request: Request,
     session: SessionDep,
     config: ConfigDep,
+    tenant: TenantDep,
     file: Annotated[UploadFile, File()],
 ) -> dict[str, Any]:
-    store = _live_store(request, session_id)
+    store = _live_store(request, tenant, session_id)
     outcome = _import_upload(session, config, file)
     record_outcome(store, session_id, outcome)
     return ok(serialize_file_outcome(outcome, buyer_identity(session), region_policy(session)))
 
 
 @router.post("/imports/{session_id}/finish")
-def post_import_finish(session_id: str, request: Request, session: SessionDep) -> dict[str, Any]:
-    snapshot = get_session_store(request.app).snapshot(session_id)
+def post_import_finish(
+    session_id: str, request: Request, session: SessionDep, tenant: TenantDep
+) -> dict[str, Any]:
+    snapshot = _store(request, tenant).snapshot(session_id)
     if snapshot is None:
         raise ImportSessionExpiredError()
     result = finish_session(session, snapshot)
@@ -135,8 +145,9 @@ def post_confirm(
     request: Request,
     session: SessionDep,
     config: ConfigDep,
+    tenant: TenantDep,
 ) -> dict[str, Any]:
-    store = get_session_store(request.app)
+    store = _store(request, tenant)
     allowed = store.get(session_id)
     if allowed is None:
         raise ImportSessionExpiredError()

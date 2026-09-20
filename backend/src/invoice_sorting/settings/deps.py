@@ -15,6 +15,7 @@ def get_engine(tenant: Annotated[TenantContext, Depends(get_tenant)]) -> Engine:
     return tenant.engine
 
 
+TenantDep = Annotated[TenantContext, Depends(get_tenant)]
 SessionDep = Annotated[Session, Depends(get_session)]
 ConfigDep = Annotated[Settings, Depends(get_config)]
 EngineDep = Annotated[Engine, Depends(get_engine)]

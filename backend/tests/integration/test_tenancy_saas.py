@@ -110,3 +110,18 @@ def test_auth_middleware_fails_closed_without_tenant(tmp_path):
     assert no_tenant.status_code == 400
     assert unknown.status_code == 404
     assert known.status_code == 401  # 租户找到了，但未登录
+
+
+def test_import_sessions_are_partitioned_by_tenant(saas_app, saas_client):
+    """导入会话按账套分区：别的账套拿到 session_id 也查不到这批附件。"""
+    open_tenants(saas_app, "alpha", "beta")
+
+    started = saas_client.post("/api/imports/start", headers=host_headers("alpha"))
+    session_id = started.json()["data"]["session_id"]
+
+    assert started.status_code == 200, started.text
+    stolen = saas_client.post(f"/api/imports/{session_id}/finish", headers=host_headers("beta"))
+    assert stolen.status_code == 404
+    assert stolen.json()["error"] == "导入会话已过期，请重新导入"
+    own = saas_client.post(f"/api/imports/{session_id}/finish", headers=host_headers("alpha"))
+    assert own.status_code == 200, own.text

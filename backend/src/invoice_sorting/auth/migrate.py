@@ -33,12 +33,13 @@ def _create_admin(db: Session, password_hash: str | None) -> None:
     )
 
 
-def migrate_users(db: Session) -> None:
+def migrate_users(db: Session, create_admin: bool = True) -> None:
+    """create_admin=False 用于 SaaS 租户：成员由控制面开通，镜像不凭空多一行 admin。"""
     legacy = _legacy_password(db)
     db.execute(delete(AppSetting).where(AppSetting.key == LEGACY_PASSWORD_KEY))
     # 旧版会话不关联用户，全部失效（需重新登录）
     db.execute(delete(AuthSession).where(AuthSession.user_id.is_(None)))
-    if get_admin(db) is None:
+    if create_admin and get_admin(db) is None:
         _create_admin(db, legacy)
     try:
         db.commit()

@@ -627,6 +627,7 @@ name = "invoice-sorting"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "cryptography" },
     { name = "fastapi" },
     { name = "openpyxl" },
     { name = "pdfplumber" },
@@ -658,6 +659,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "cryptography", specifier = ">=45" },
     { name = "fastapi", specifier = ">=0.141.1" },
     { name = "onnxruntime", marker = "extra == 'ocr'", specifier = ">=1.20" },
     { name = "openpyxl", specifier = ">=3.1.5" },

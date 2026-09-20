@@ -7,7 +7,7 @@ from invoice_sorting import main
 from tests.auth_helpers import (
     MEMBER_PASSWORD,
     PASSWORD,
-    auth_rows,
+    account_ids,
     create_user,
     logged_in_client,
     login,
@@ -26,7 +26,7 @@ def test_reset_admin_keeps_member_sessions(auth_app, admin_client, data_env, cap
     main.run(["reset-password"])
 
     assert "已清除 admin 登录密码" in capsys.readouterr().out
-    assert [row.user_id for row in auth_rows(auth_app)] == [created["id"]]
+    assert account_ids(auth_app) == [created["id"]]
     assert member.get("/api/expenses").json()["error"] == "请先设置初始密码"
     assert admin_client.post("/api/auth/setup", json={"password": PASSWORD}).status_code == 200
     assert member.get("/api/expenses").status_code == 200

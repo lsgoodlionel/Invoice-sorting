@@ -142,7 +142,11 @@ class UsageSnapshot(ControlBase):
 
 
 class LicenseRecord(ControlBase):
-    """控制面签发的私有化授权（批次五使用）。"""
+    """控制面签发的私有化授权。valid_until 为空表示永久授权。
+
+    平台管理员的增删改查在批次四补齐；本表已包含签发所需的全部字段：
+    客户名、用户数上限、有效期、状态、可选功能开关，以及首次校验时绑定的实例。
+    """
 
     __tablename__ = "license_record"
 
@@ -152,6 +156,34 @@ class LicenseRecord(ControlBase):
     max_users: Mapped[int] = mapped_column(Integer, default=0)
     valid_until: Mapped[date | None] = mapped_column(Date, nullable=True)
     status: Mapped[str] = mapped_column(String(20), default=LICENSE_STATUS_ACTIVE)
+    features: Mapped[dict] = mapped_column(JSON, default=dict)
+    # 首次校验成功后绑定的实例；换机需由平台管理员清空
+    bound_instance_id: Mapped[str] = mapped_column(String(64), default="")
+    note: Mapped[str] = mapped_column(String(200), default="")
     issued_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class LicenseToken(ControlBase):
+    """私有化实例本地缓存的授权令牌与最近校验结果（单行，id 固定为 1）。
+
+    与 `license_record` 分开：那张表是**签发方**的账本，这张表是**被授权实例**的本地状态。
+    出于安全考虑只保存密钥的 SHA-256，不保存密钥本身与原始令牌。
+    """
+
+    __tablename__ = "license_token"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    instance_id: Mapped[str] = mapped_column(String(64), default="")
+    license_key_hash: Mapped[str] = mapped_column(String(64), default="")
+    valid_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    max_users: Mapped[int] = mapped_column(Integer, default=0)
+    features: Mapped[dict] = mapped_column(JSON, default=dict)
+    issued_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_error: Mapped[str] = mapped_column(String(300), default="")
+    server_reachable: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_revoked: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)

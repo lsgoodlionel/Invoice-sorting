@@ -164,11 +164,19 @@ class ImportSessionStore:
             self._entries[session_id] = replace(entry, data=data)
 
 
-def get_session_store(app: Any) -> ImportSessionStore:
-    """取（必要时创建）挂在 `app.state.import_sessions` 上的会话存储。"""
+def get_session_store(app: Any, tenant_slug: str) -> ImportSessionStore:
+    """取（必要时创建）**该租户**的导入会话存储。
+
+    存储挂在 `app.state.import_sessions`（slug → store），按租户分区：
+    一个租户的导入会话 id 在别的租户下查不到，避免跨租户拿到他人附件。
+    """
     with _STORE_LOCK:
-        store = getattr(app.state, "import_sessions", None)
+        stores = getattr(app.state, "import_sessions", None)
+        if not isinstance(stores, dict):
+            stores = {}
+            app.state.import_sessions = stores
+        store = stores.get(tenant_slug)
         if store is None:
             store = ImportSessionStore()
-            app.state.import_sessions = store
+            stores[tenant_slug] = store
         return store

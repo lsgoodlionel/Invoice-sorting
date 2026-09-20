@@ -8,6 +8,7 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
+    "cryptography>=45",  # 私有化授权令牌的 Ed25519 签名与验签
     "fastapi>=0.141.1",
     "openpyxl>=3.1.5",
     "pdfplumber>=0.11.10",

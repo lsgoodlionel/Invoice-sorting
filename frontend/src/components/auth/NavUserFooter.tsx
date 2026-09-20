@@ -3,8 +3,12 @@ import { IconUserCircle } from '@tabler/icons-react';
 import { userLabel } from '../../lib/users';
 import { useCurrentUser } from './CurrentUserContext';
 import { LogoutButton } from './LogoutButton';
+import { TenantSwitcher } from './TenantSwitcher';
 
-/** 侧边栏底部：当前用户“姓名（管理员）”与退出登录；关闭认证时不显示。 */
+/**
+ * 侧边栏底部：当前用户“姓名（管理员）”、账套切换与退出登录；关闭认证时不显示。
+ * 账套切换只在多租户部署且账号有多个账套时出现（见 TenantSwitcher）。
+ */
 export function NavUserFooter() {
   const { user, authEnabled } = useCurrentUser();
   if (!authEnabled) return null;
@@ -18,6 +22,7 @@ export function NavUserFooter() {
           </Text>
         </Group>
       )}
+      <TenantSwitcher />
       <LogoutButton variant="subtle" color="gray" size="xs" justify="flex-start" className="nav-logout" />
     </Stack>
   );

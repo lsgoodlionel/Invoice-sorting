@@ -7,6 +7,7 @@
 import logging
 import threading
 from collections import OrderedDict
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from sqlalchemy import Engine
@@ -34,11 +35,18 @@ class TenantContext:
 class TenantRuntime:
     """租户缓存。get() 命中直接返回，未命中时在锁内完成初始化，避免重复建库。"""
 
-    def __init__(self, base_settings: Settings, capacity: int = DEFAULT_CAPACITY) -> None:
+    def __init__(
+        self,
+        base_settings: Settings,
+        capacity: int = DEFAULT_CAPACITY,
+        on_open: Callable[[TenantContext], None] | None = None,
+    ) -> None:
         if capacity < 1:
             raise ValueError(MSG_CAPACITY_INVALID)
         self._base = base_settings
         self._capacity = capacity
+        # 首次加载某租户后的回调（用于按 membership 补齐业务库中的用户镜像）
+        self._on_open = on_open
         self._contexts: OrderedDict[str, TenantContext] = OrderedDict()
         self._lock = threading.RLock()
 
@@ -81,7 +89,20 @@ class TenantRuntime:
         settings = self._base.for_tenant(slug)
         engine, factory = open_business_db(settings)
         logger.info("已加载租户业务库：%s（%s）", slug, settings.data_dir)
-        return TenantContext(slug=slug, settings=settings, engine=engine, session_factory=factory)
+        context = TenantContext(
+            slug=slug, settings=settings, engine=engine, session_factory=factory
+        )
+        self._notify_open(context)
+        return context
+
+    def _notify_open(self, context: TenantContext) -> None:
+        """首次加载回调失败不应阻断请求：记录后继续（下次登录会再次同步）。"""
+        if self._on_open is None:
+            return
+        try:
+            self._on_open(context)
+        except Exception:
+            logger.exception("租户首次加载回调失败：%s", context.slug)
 
     def _evict_overflow(self) -> None:
         while len(self._contexts) > self._capacity:

@@ -1,18 +1,25 @@
 """多用户登录：用户名密码、统一错误、计时一致、停用用户会话立即失效、修改本人密码。"""
 
 from fastapi.testclient import TestClient
-from sqlalchemy import select
 
 from invoice_sorting.auth import service
-from invoice_sorting.db.models import AuthSession, User
+from invoice_sorting.control.models import Account
 from tests.auth_helpers import (
     MEMBER_PASSWORD,
     PASSWORD,
-    auth_rows,
+    account_ids,
     create_user,
     logged_in_client,
     login,
 )
+
+
+def _deactivate_account(app, account_id: int) -> None:
+    """直接在控制库停用账号（绕过接口，模拟平台侧操作）。"""
+    with app.state.control_session_factory() as control:
+        control.get(Account, account_id).is_active = False
+        control.commit()
+
 
 WRONG = {"ok": False, "data": None, "error": "用户名或密码错误"}
 
@@ -29,9 +36,7 @@ def test_member_login_returns_current_user(auth_app, admin_client):
     assert client.get("/api/auth/status").json()["data"]["user"] == user
     listed = next(u for u in admin_client.get("/api/users").json()["data"] if u["id"] == user["id"])
     assert listed["last_login_at"] is not None
-    with auth_app.state.session_factory() as db:
-        rows = db.scalars(select(AuthSession.user_id)).all()
-    assert sorted(rows) == [1, created["id"]]
+    assert account_ids(auth_app) == [1, created["id"]]
 
 
 def test_unknown_user_and_wrong_password_share_error(auth_app, admin_client, monkeypatch):
@@ -54,9 +59,9 @@ def test_unknown_user_and_wrong_password_share_error(auth_app, admin_client, mon
 
 def test_user_without_password_cannot_login(auth_app, admin_client):
     created = create_user(admin_client, "wangwu")
-    with auth_app.state.session_factory() as db:
-        db.get(User, created["id"]).password_hash = None
-        db.commit()
+    with auth_app.state.control_session_factory() as control:
+        control.get(Account, created["id"]).password_hash = None
+        control.commit()
     assert login(TestClient(auth_app), MEMBER_PASSWORD, "wangwu").json() == WRONG
 
 
@@ -72,19 +77,17 @@ def test_deactivated_user_cannot_login_and_sessions_end(auth_app, admin_client):
     assert (blocked.status_code, blocked.json()["error"]) == (401, "请先登录")
     assert member.get("/api/auth/status").json()["data"]["authenticated"] is False
     assert login(TestClient(auth_app), MEMBER_PASSWORD, "zhaoliu").json() == WRONG
-    assert [row.user_id for row in auth_rows(auth_app)] == [1]
+    assert account_ids(auth_app) == [1]
 
 
 def test_session_of_user_deactivated_directly_in_db_is_revoked(auth_app, admin_client):
     created = create_user(admin_client, "sunqi")
     member = logged_in_client(auth_app, "sunqi")
     other = logged_in_client(auth_app, "sunqi")
-    with auth_app.state.session_factory() as db:
-        db.get(User, created["id"]).is_active = False
-        db.commit()
+    _deactivate_account(auth_app, created["id"])
 
     assert member.get("/api/expenses").status_code == 401
-    assert [row.user_id for row in auth_rows(auth_app)] == [1]
+    assert account_ids(auth_app) == [1]
     assert other.get("/api/expenses").status_code == 401
 
 
@@ -113,9 +116,9 @@ def test_change_password_when_auth_disabled(client):
 def test_change_password_for_missing_user(auth_app, admin_client):
     from invoice_sorting.common.errors import NotFoundError
 
-    with auth_app.state.session_factory() as db:
+    with auth_app.state.control_session_factory() as control:
         try:
-            service.change_password(db, 999, PASSWORD, "whatever-pass", None)
+            service.change_password(control, 999, PASSWORD, "whatever-pass", None)
         except NotFoundError as exc:
             assert exc.message == "用户不存在"
         else:

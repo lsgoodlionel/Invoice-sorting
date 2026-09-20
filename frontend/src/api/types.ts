@@ -562,16 +562,55 @@ export interface ChecklistRule {
 export type ChecklistRuleInput = Omit<ChecklistRule, 'id'>;
 
 // —— 登录认证 ——
+
+/** 账套；单租户部署接口不返回账套字段，界面完全不出现账套概念 */
+export interface TenantBrief {
+  slug: string;
+  name: string;
+}
+
+export interface TenantOption extends TenantBrief {
+  is_current: boolean;
+}
+
 export interface AuthStatus {
   auth_enabled: boolean;
   password_set: boolean;
   authenticated: boolean;
   user: CurrentUser | null;
+  /** 仅多租户部署返回 */
+  multi_tenant?: boolean;
+  tenant?: TenantBrief | null;
 }
 
 export interface AuthResult {
   authenticated: true;
   user: CurrentUser;
+  /** 仅多租户部署返回：本次进入的账套 */
+  tenant?: TenantBrief | null;
+}
+
+export interface JoinInput {
+  code: string;
+  username: string;
+  password: string;
+  display_name?: string;
+}
+
+// —— 邀请码 ——
+export interface Invite {
+  id: number;
+  code: string;
+  role: UserRole;
+  expires_on: string | null;
+  is_used: boolean;
+  used_at: string | null;
+  created_at: string;
+}
+
+export interface InviteCreate {
+  role: UserRole;
+  expires_on?: string;
 }
 
 export interface LoginInput {

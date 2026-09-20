@@ -1,10 +1,14 @@
-"""认证测试辅助：设置密码、登录、创建用户、读取 Set-Cookie。"""
+"""认证测试辅助：设置密码、登录、创建用户、读取 Set-Cookie。
+
+会话统一存放在控制库，因此 auth_rows / shift_sessions 读写的是 control.db。
+"""
 
 from datetime import timedelta
 
 from sqlalchemy import select
 
-from invoice_sorting.db.models import AuthSession, now
+from invoice_sorting.control.models import ControlAuthSession
+from invoice_sorting.db.models import now
 
 PASSWORD = "initial-pass-123"
 MEMBER_PASSWORD = "member-pass-123"
@@ -57,14 +61,18 @@ def logged_in_client(app, username: str, password: str = MEMBER_PASSWORD):
     return client
 
 
-def auth_rows(app) -> list[AuthSession]:
-    with app.state.session_factory() as db:
-        return list(db.scalars(select(AuthSession)))
+def auth_rows(app) -> list[ControlAuthSession]:
+    with app.state.control_session_factory() as control:
+        return list(control.scalars(select(ControlAuthSession)))
+
+
+def account_ids(app) -> list[int]:
+    return sorted(row.account_id for row in auth_rows(app))
 
 
 def shift_sessions(app, *, last_seen_ago: timedelta, expires_in: timedelta) -> None:
-    with app.state.session_factory() as db:
-        for row in db.scalars(select(AuthSession)):
+    with app.state.control_session_factory() as control:
+        for row in control.scalars(select(ControlAuthSession)):
             row.last_seen_at = now() - last_seen_ago
             row.expires_at = now() + expires_in
-        db.commit()
+        control.commit()

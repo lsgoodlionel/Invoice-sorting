@@ -145,16 +145,17 @@ def test_concurrent_setup_only_one_succeeds(auth_app):
 
 
 def test_setup_conflict_from_other_process_maps_to_409(auth_app, auth_client, monkeypatch):
+    """另一个进程抢先在控制库写入了 admin 密码。"""
     from sqlalchemy import update
 
     from invoice_sorting.auth import service
-    from invoice_sorting.db.models import User
+    from invoice_sorting.control.models import Account
 
     original_hash = service.hash_password
 
     def racing_hash(password):
-        with auth_app.state.session_factory() as other:
-            other.execute(update(User).values(password_hash="scrypt$other"))
+        with auth_app.state.control_session_factory() as other:
+            other.execute(update(Account).values(password_hash="scrypt$other"))
             other.commit()
         return original_hash(password)
 
