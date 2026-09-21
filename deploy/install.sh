@@ -210,7 +210,7 @@ check_source_settings() {
 # 版本参数（Ubuntu 上是 "24.04.5 LTS (Noble Numbat)"），导致后续版本校验必然失败。
 os_release_field() {
   (
-    # shellcheck disable=SC1091
+    # shellcheck disable=SC1090,SC1091
     . "$OS_RELEASE_FILE" >/dev/null 2>&1 || exit 0
     printf '%s' "${!1:-}"
   )

@@ -92,10 +92,29 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
+  scripts:
+    name: 部署脚本检查
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 语法检查（bash -n）
+        run: |
+          for file in deploy/install.sh deploy/startup-check.sh deploy/tests/*.sh \
+            scripts/setup.sh scripts/fetch-frontend.sh scripts/lib/*.sh; do
+            bash -n "$file"
+          done
+
+      - name: shellcheck
+        run: shellcheck -S warning deploy/install.sh deploy/startup-check.sh deploy/tests/*.sh scripts/setup.sh scripts/fetch-frontend.sh
+
+      - name: 安装脚本回归测试
+        run: bash deploy/tests/install_env_test.sh
+
   # ---------- 打包并发布 ----------
   release:
     name: 打包并创建 Release
-    needs: [backend, frontend]
+    needs: [backend, frontend, scripts]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
