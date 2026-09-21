@@ -34,6 +34,7 @@ export const queryKeys = {
   platformApplications: (query: PlatformApplicationQuery) => ['platform', 'applications', query] as const,
   platformReferrals: (query: PlatformReferralQuery) => ['platform', 'referrals', query] as const,
   platformSignupSettings: ['platform', 'signup-settings'] as const,
+  platformMailSettings: ['platform', 'mail-settings'] as const,
   signupReferral: (code: string) => ['signup', 'referral', code] as const,
   signupRegister: (code: string) => ['signup', 'register', code] as const,
   myReferrals: ['referrals', 'me'] as const,

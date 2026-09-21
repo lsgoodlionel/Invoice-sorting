@@ -86,7 +86,7 @@ def post_application(body: ApplyBody, request: Request, control: ControlSessionD
         ref=body.ref,
         ip=client_ip(request),
     )
-    return ok(_submitted(submit(control, submission, notifier_of(request))))
+    return ok(_submitted(submit(control, submission, notifier_of(request, control))))
 
 
 def _guarded(request: Request, action):  # noqa: ANN001, ANN202 - 包装一次码校验

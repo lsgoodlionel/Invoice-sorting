@@ -3,11 +3,13 @@
 from typing import Any
 
 from fastapi import Depends, Request
+from sqlalchemy.orm import Session
 
 from invoice_sorting.auth.http import client_ip
 from invoice_sorting.auth.ratelimit import LoginRateLimiter, minutes_label
 from invoice_sorting.common.errors import AppError
-from invoice_sorting.mailer.service import STATE_MAILER_KEY, Mailer
+from invoice_sorting.mailer.resolve import ResolvedMail, resolve_mail
+from invoice_sorting.mailer.service import STATE_MAILER_KEY, MailerFactory
 from invoice_sorting.signup.constants import (
     APPLY_MAX_PER_WINDOW,
     APPLY_WINDOW_SECONDS,
@@ -31,9 +33,9 @@ def require_saas(request: Request) -> None:
 SAAS_ONLY = [Depends(require_saas)]
 
 
-def install_signup_state(app: Any, mailer: Mailer) -> None:
+def install_signup_state(app: Any, mailer_factory: MailerFactory) -> None:
     """装配发信服务与两个限流器（申请提交按次数计，码校验按失败次数计）。"""
-    setattr(app.state, STATE_MAILER_KEY, mailer)
+    setattr(app.state, STATE_MAILER_KEY, mailer_factory)
     setattr(
         app.state,
         STATE_APPLY_LIMITER,
@@ -50,11 +52,20 @@ def install_signup_state(app: Any, mailer: Mailer) -> None:
     )
 
 
-def notifier_of(request: Request) -> Notifier:
-    app = request.app
+def mailer_factory_of(request: Request) -> MailerFactory:
+    return getattr(request.app.state, STATE_MAILER_KEY)
+
+
+def resolved_mail_of(request: Request, control: Session) -> ResolvedMail:
+    """当前生效的发信配置（环境变量 → 网页配置 → 未配置），每次请求现取。"""
+    return resolve_mail(request.app.state.settings, control)
+
+
+def notifier_of(request: Request, control: Session) -> Notifier:
+    resolved = resolved_mail_of(request, control)
     return Notifier(
-        mailer=getattr(app.state, STATE_MAILER_KEY),
-        base_url=app.state.settings.public_base_url,
+        mailer=mailer_factory_of(request).build(resolved.config),
+        base_url=resolved.base_url,
     )
 
 

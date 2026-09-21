@@ -4,6 +4,7 @@ import { useState } from 'react';
 import type { PlatformApplicationQuery } from '../../../api/hooks/keys';
 import { usePlatformApplications } from '../../../api/hooks/platformSignup';
 import type { PlatformApplication } from '../../../api/signupTypes';
+import { MailNotConfiguredHint } from '../mail/MailNotConfiguredHint';
 import { ApplicationDrawer } from './ApplicationDrawer';
 import { ApplicationTable } from './ApplicationTable';
 
@@ -19,8 +20,8 @@ const STATUS_OPTIONS: { value: StatusFilter; label: string }[] = [
 ];
 const ALL_VALUE = 'all';
 
-/** 注册申请：按状态筛选、搜索、分页，点开详情抽屉审批。 */
-export function ApplicationManager() {
+/** 注册申请：按状态筛选、搜索、分页，点开详情抽屉审批；未配置邮件时顶部提示并可跳到「邮件」页签。 */
+export function ApplicationManager({ onOpenMail }: { onOpenMail?: () => void }) {
   const [status, setStatus] = useState<StatusFilter>('pending');
   const [keyword, setKeyword] = useState('');
   const [page, setPage] = useState(1);
@@ -41,6 +42,7 @@ export function ApplicationManager() {
 
   return (
     <Stack gap="sm">
+      <MailNotConfiguredHint onOpenMail={onOpenMail} />
       <Group justify="space-between" gap="xs">
         <SegmentedControl
           size="xs"

@@ -39,7 +39,11 @@ DEFAULT_LOG_LEVEL = "INFO"
 DEFAULT_SMTP_PORT = 465
 SMTP_TLS_SSL = "ssl"
 SMTP_TLS_STARTTLS = "starttls"
-SmtpTls = Literal["ssl", "starttls"]
+SMTP_TLS_NONE = "none"  # 明文连接：仅限内网中继等特殊场景
+SmtpTls = Literal["ssl", "starttls", "none"]
+SMTP_TLS_MODES: tuple[str, ...] = (SMTP_TLS_SSL, SMTP_TLS_STARTTLS, SMTP_TLS_NONE)
+# 加密网页填写的 SMTP 密码用的 Fernet 密钥文件（位于 data_dir 根目录，不入库、不随账本导出）
+SECRET_KEY_FILENAME = "secret.key"
 
 
 class Settings(BaseSettings):
@@ -66,8 +70,9 @@ class Settings(BaseSettings):
     log_app: str = DEFAULT_LOG_APP  # 仓库内的应用命名空间（该仓库由多个应用共用）
     log_instance: str = ""  # 实例名，留空时用主机短名
     log_branch: str = DEFAULT_LOG_BRANCH
-    # 注册申请通知邮件：smtp_host 与 smtp_from 都配置了才发信；凭证只从环境变量读，
-    # 不落库、不进日志、不进诊断包（密码用 SecretStr，打印配置时也只显示星号）
+    # 注册申请通知邮件：以平台管理员在网页上填写的配置为主（密码加密入库）；
+    # 环境变量 smtp_host 与 smtp_from 都配置了时整体以环境变量为准，网页只读。
+    # 凭证不进日志、不进诊断包（密码用 SecretStr，打印配置时也只显示星号）
     smtp_host: str = ""
     smtp_port: int = DEFAULT_SMTP_PORT
     smtp_user: str = ""
@@ -75,11 +80,18 @@ class Settings(BaseSettings):
     smtp_from: str = ""
     smtp_tls: SmtpTls = SMTP_TLS_SSL
     public_base_url: str = ""  # 生成注册链接与推荐链接用的站点地址，如 https://fp.example.com
+    # 网页 SMTP 密码的加密密钥（base64 Fernet key）；留空时首次需要时在 data_dir 生成 secret.key
+    secret_key: SecretStr = SecretStr("")
 
     @property
     def is_smtp_configured(self) -> bool:
         """服务器与发件人都配置了才发信；缺任意一项都由管理员自行转告。"""
         return bool(self.smtp_host.strip() and self.smtp_from.strip())
+
+    @property
+    def is_smtp_env_incomplete(self) -> bool:
+        """环境变量只配了服务器与发件人中的一项：不会生效，但运维多半以为已经生效。"""
+        return bool(self.smtp_host.strip()) != bool(self.smtp_from.strip())
 
     @property
     def is_log_upload_configured(self) -> bool:
@@ -112,6 +124,10 @@ class Settings(BaseSettings):
         if target == self.data_dir:
             return self
         return Settings(**{**self.model_dump(), "data_dir": target})
+
+    @cached_property
+    def secret_key_path(self) -> Path:
+        return self.data_dir / SECRET_KEY_FILENAME
 
     @cached_property
     def db_path(self) -> Path:

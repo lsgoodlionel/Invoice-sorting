@@ -4,6 +4,7 @@ import smtplib
 
 import pytest
 
+from invoice_sorting.mailer.resolve import env_config
 from invoice_sorting.mailer.service import (
     MAX_ATTEMPTS,
     MSG_SERVER_REFUSED,
@@ -23,12 +24,12 @@ def settings(tmp_path):
 
 def _mailer(settings, transport: FakeTransport, sleeps: list[float] | None = None) -> Mailer:
     record = sleeps if sleeps is not None else []
-    return Mailer(settings, transport=transport, sleep=record.append)
+    return Mailer(env_config(settings), transport=transport, sleep=record.append)
 
 
 def test_unconfigured_mailer_skips_without_touching_transport(tmp_path):
     transport = FakeTransport([AssertionError("不应被调用")])
-    mailer = Mailer(make_settings(tmp_path), transport=transport)
+    mailer = Mailer(env_config(make_settings(tmp_path)), transport=transport)
 
     result = mailer.send("a@example.org", "主题", "正文")
 

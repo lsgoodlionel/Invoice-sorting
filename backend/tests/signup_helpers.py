@@ -9,7 +9,8 @@ from sqlalchemy import select
 
 from invoice_sorting.auth.ratelimit import LoginRateLimiter
 from invoice_sorting.control.signup_models import SignupApplication
-from invoice_sorting.mailer.service import STATE_MAILER_KEY, Mailer
+from invoice_sorting.mailer.service import STATE_MAILER_KEY, MailerFactory
+from invoice_sorting.mailer.transport import SmtpConfig
 from invoice_sorting.signup.deps import STATE_APPLY_LIMITER
 from tests.platform_helpers import platform_app
 
@@ -31,24 +32,38 @@ LINK_PATTERN = re.compile(r"/register\?code=([A-Za-z0-9_\-%]+)")
 
 
 class FakeTransport:
-    """记录每一封信；errors 非空时按顺序抛出（用完后正常发送）。"""
+    """记录每一封信与每次连接检查；errors 非空时按顺序抛出（用完后正常）。
+
+    同时充当 transport_factory：被调用时记下所用配置并返回自身，便于断言用的是哪套配置。
+    """
 
     def __init__(self, errors: list[BaseException] | None = None) -> None:
         self.messages: list[EmailMessage] = []
         self.errors = list(errors or [])
+        self.configs: list[SmtpConfig] = []
+        self.checks = 0
+
+    def __call__(self, config: SmtpConfig) -> "FakeTransport":
+        self.configs.append(config)
+        return self
 
     def send(self, message: EmailMessage) -> None:
         if self.errors:
             raise self.errors.pop(0)
         self.messages.append(message)
 
+    def check(self) -> None:
+        self.checks += 1
+        if self.errors:
+            raise self.errors.pop(0)
+
     def last_body(self) -> str:
         return self.messages[-1].get_content()
 
 
 def install_transport(app: Any, transport: FakeTransport) -> FakeTransport:
-    mailer = Mailer(app.state.settings, transport=transport, sleep=lambda _seconds: None)
-    setattr(app.state, STATE_MAILER_KEY, mailer)
+    factory = MailerFactory(transport_factory=transport, sleep=lambda _seconds: None)
+    setattr(app.state, STATE_MAILER_KEY, factory)
     return transport
 
 
@@ -61,7 +76,7 @@ def signup_app(tmp_path, *, with_smtp: bool = True, **overrides):
 
 
 def transport_of(app: Any) -> FakeTransport:
-    return getattr(app.state, STATE_MAILER_KEY)._transport
+    return getattr(app.state, STATE_MAILER_KEY).transport_factory
 
 
 def relax_apply_limit(app: Any) -> None:

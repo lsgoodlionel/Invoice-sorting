@@ -21,7 +21,7 @@ from invoice_sorting.signup.applications import (
     require_application,
 )
 from invoice_sorting.signup.constants import SEARCH_MAX
-from invoice_sorting.signup.deps import SAAS_ONLY, notifier_of
+from invoice_sorting.signup.deps import SAAS_ONLY, notifier_of, resolved_mail_of
 from invoice_sorting.signup.provision import TenantOptions
 from invoice_sorting.signup.referrals import list_referral_records, set_referral_disabled
 from invoice_sorting.signup.review import ReviewResult, approve, reject, resend
@@ -100,7 +100,8 @@ def post_approve(
         slug=body.slug, name=body.name, plan_code=body.plan_code, expires_on=body.expires_on
     )
     application = require_application(control, application_id)
-    result = approve(control, application, options, _operator_id(user), notifier_of(request))
+    notifier = notifier_of(request, control)
+    result = approve(control, application, options, _operator_id(user), notifier)
     return ok(_reviewed(control, result))
 
 
@@ -113,7 +114,8 @@ def post_reject(
     user: CurrentUserDep,
 ) -> dict[str, Any]:
     application = require_application(control, application_id)
-    result = reject(control, application, body.reason, _operator_id(user), notifier_of(request))
+    notifier = notifier_of(request, control)
+    result = reject(control, application, body.reason, _operator_id(user), notifier)
     return ok(_reviewed(control, result))
 
 
@@ -123,7 +125,7 @@ def post_resend(
 ) -> dict[str, Any]:
     """已批准待注册：换发新注册码（旧链接失效）并重发；已否决：重发否决通知。"""
     application = require_application(control, application_id)
-    result = resend(control, application, notifier_of(request), _operator_id(user))
+    result = resend(control, application, notifier_of(request, control), _operator_id(user))
     return ok(_reviewed(control, result))
 
 
@@ -155,7 +157,7 @@ def patch_referrer(account_id: int, body: ReferrerPatch, control: ControlSession
 
 @router.get("/signup-settings")
 def read_signup_settings(request: Request, control: ControlSessionDep) -> dict[str, Any]:
-    is_mail = notifier_of(request).mailer.is_configured
+    is_mail = resolved_mail_of(request, control).is_configured
     return ok(serialize_settings(load_settings(control), is_mail))
 
 
@@ -169,4 +171,4 @@ def patch_signup_settings(
         code_valid_days=body.code_valid_days,
     )
     row = update_settings(control, change, _operator_id(user))
-    return ok(serialize_settings(row, notifier_of(request).mailer.is_configured))
+    return ok(serialize_settings(row, resolved_mail_of(request, control).is_configured))

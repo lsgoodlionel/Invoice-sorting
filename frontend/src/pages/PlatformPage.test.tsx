@@ -1,7 +1,9 @@
 import { screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, expect, test } from 'vitest';
 import { AUTHENTICATED, SAAS_AUTHENTICATED } from '../test/authStatus';
 import { mockFetch } from '../test/fetchMock';
+import { UNCONFIGURED_MAIL, makeMailSettings } from '../test/mailFixtures';
 import { OVERVIEW, makeTenantPage } from '../test/platformFixtures';
 import { ADMIN_CONTEXT, renderWithProviders } from '../test/render';
 import { makeApplication, makeApplicationPage } from '../test/signupFixtures';
@@ -81,5 +83,28 @@ describe('申请与推荐页签', () => {
     setup({});
     expect(await screen.findByRole('tab', { name: /申请/ })).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByTestId('pending-badge')).not.toBeInTheDocument());
+  });
+});
+
+describe('邮件页签', () => {
+  test('未配置邮件时「申请」页签顶部提示，点击跳到「邮件」页签', async () => {
+    const user = userEvent.setup();
+    setup({ 'GET /api/platform/mail-settings': UNCONFIGURED_MAIL });
+
+    await user.click(await screen.findByRole('tab', { name: /申请/ }));
+    expect(await screen.findByTestId('mail-not-configured')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '去配置邮件' }));
+
+    expect(screen.getByRole('tab', { name: '邮件' })).toHaveAttribute('aria-selected', 'true');
+    expect(await screen.findByLabelText('SMTP 服务器')).toBeInTheDocument();
+  });
+
+  test('已配置邮件时不显示提示', async () => {
+    const user = userEvent.setup();
+    const { calls } = setup({ 'GET /api/platform/mail-settings': makeMailSettings() });
+
+    await user.click(await screen.findByRole('tab', { name: /申请/ }));
+    await waitFor(() => expect(calls.some((call) => call.url === '/api/platform/mail-settings')).toBe(true));
+    expect(screen.queryByTestId('mail-not-configured')).not.toBeInTheDocument();
   });
 });

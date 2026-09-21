@@ -15,7 +15,7 @@ from invoice_sorting.common.errors import AppError, ok
 from invoice_sorting.control.deps import ControlSessionDep
 from invoice_sorting.control.signup_models import ReferralCode
 from invoice_sorting.signup.constants import MSG_LOGIN_REQUIRED, REFERRALS_API
-from invoice_sorting.signup.deps import SAAS_ONLY
+from invoice_sorting.signup.deps import SAAS_ONLY, resolved_mail_of
 from invoice_sorting.signup.notices import referral_link
 from invoice_sorting.signup.referrals import (
     auto_approved_this_month,
@@ -39,7 +39,7 @@ def _my_referral(request: Request, control: Session, referral: ReferralCode) -> 
     settings = load_settings(control)
     referred = referred_applications(control, referral.account_id)
     is_usable = not referral.is_disabled
-    base_url = request.app.state.settings.public_base_url
+    base_url = resolved_mail_of(request, control).base_url
     return {
         "code": referral.code if is_usable else None,
         "link": referral_link(base_url, referral.code) if is_usable else None,

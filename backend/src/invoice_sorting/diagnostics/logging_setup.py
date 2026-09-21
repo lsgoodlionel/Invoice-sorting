@@ -96,6 +96,11 @@ def log_startup_summary(settings: Settings) -> None:
         settings.log_level,
         "已启用" if settings.is_log_upload_configured else "未启用",
     )
+    if settings.is_smtp_env_incomplete:
+        logger.warning(
+            "SMTP 环境变量不完整：INVOICE_SORTING_SMTP_HOST 与 INVOICE_SORTING_SMTP_FROM "
+            "只配置了一项，环境变量配置未生效，将使用网页中的邮件设置"
+        )
     if settings.is_log_upload_configured:
         # 设计 8：上传属于把数据发往外部服务，启用时显著提示
         logger.warning(
