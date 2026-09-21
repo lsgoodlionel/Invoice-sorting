@@ -88,9 +88,9 @@ export function GeneralSettings({ readOnly = false }: { readOnly?: boolean }) {
         </SimpleGrid>
         <RegionSettingsFields localRegion={form.localRegion} detailPlatforms={form.detailPlatforms} onChange={patch} />
         <Group justify="space-between" align="flex-end">
-          <Stack gap={2}>
-            <Text size="xs" c="dimmed">数据目录：<span className="num">{data?.data_dir ?? '—'}</span></Text>
-            <Text size="xs" c="dimmed">收件箱：<span className="num">{data?.inbox_dir ?? '—'}</span>（可把发票直接放进该文件夹，程序会自动导入）</Text>
+          <Stack gap={2} className="settings-paths">
+            <Text size="xs" c="dimmed">数据目录：<span className="path-text">{data?.data_dir ?? '—'}</span></Text>
+            <Text size="xs" c="dimmed">收件箱：<span className="path-text">{data?.inbox_dir ?? '—'}</span>（可把发票直接放进该文件夹，程序会自动导入）</Text>
           </Stack>
           {!readOnly && (
             <Group gap="xs">

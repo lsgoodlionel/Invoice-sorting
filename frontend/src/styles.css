@@ -40,6 +40,75 @@ body {
   letter-spacing: 0.02em;
 }
 
+/* —— 设置页：左侧分组导航 + 右侧单个分区 —— */
+.settings-layout {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  gap: 32px;
+  align-items: start;
+}
+
+.settings-nav {
+  position: sticky;
+  top: 16px;
+  padding-right: 16px;
+  border-right: 1px solid var(--paper-line);
+}
+
+.settings-nav-group {
+  padding: 0 12px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  color: var(--ink-muted);
+}
+
+.settings-nav-link {
+  border-radius: 4px;
+  transition: background-color var(--duration-fast) ease;
+}
+
+.settings-nav-link[data-active] {
+  font-weight: 600;
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.settings-content {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+  max-width: 1080px;
+}
+
+.settings-section-header {
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--paper-line);
+}
+
+/* 长路径允许在任意位置折行，不撑破布局 */
+.settings-paths {
+  flex: 1 1 320px;
+  min-width: 0;
+}
+
+.path-text {
+  font-family: var(--mantine-font-family-monospace);
+  word-break: break-all;
+}
+
+.settings-section-title {
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+@media (max-width: 767px) {
+  .settings-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .rule {
   border: 0;
   border-top: 1px solid var(--paper-line);
