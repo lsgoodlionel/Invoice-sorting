@@ -44,6 +44,7 @@ class ExportJob:
     size: int = 0
     file_count: int = 0
     error: str = ""
+    include_packages: bool = True
 
     @property
     def filename(self) -> str:
@@ -58,8 +59,14 @@ class ExportJobStore:
         self._capacity = max(1, capacity)
         self._lock = threading.RLock()
 
-    def create(self, slug: str) -> ExportJob:
-        job = ExportJob(id=uuid.uuid4().hex, slug=slug, status=STATUS_RUNNING, created_at=now())
+    def create(self, slug: str, include_packages: bool = True) -> ExportJob:
+        job = ExportJob(
+            id=uuid.uuid4().hex,
+            slug=slug,
+            status=STATUS_RUNNING,
+            created_at=now(),
+            include_packages=include_packages,
+        )
         with self._lock:
             self._jobs[job.id] = job
             while len(self._jobs) > self._capacity:

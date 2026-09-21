@@ -50,6 +50,7 @@ from invoice_sorting.licensing.scheduler import LicenseScheduler, interval_secon
 from invoice_sorting.licensing.serializers import serialize_status
 from invoice_sorting.licensing.service import LicenseService
 from invoice_sorting.migration import cli as migration_cli
+from invoice_sorting.migration import import_service
 from invoice_sorting.migration.jobs import ExportJobStore
 from invoice_sorting.migration.router import router as migration_router
 from invoice_sorting.platform_admin import cli as platform_cli
@@ -99,6 +100,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.tenants = runtime
     app.state.login_limiter = LoginRateLimiter()
     app.state.export_jobs = ExportJobStore()
+    import_service.install(app)  # 网页导入会话；顺带清理超过 24 小时的暂存
     # SaaS 模式不预置业务库：租户业务库在首次访问时按 slug 懒加载
     if not settings.is_saas:
         _prepare_single_tenant(app)
@@ -308,11 +310,25 @@ def _add_migration_commands(commands) -> None:  # noqa: ANN001 - argparse 的子
     export.add_argument("--slug", metavar="账套标识", help="要导出的账套，单租户部署可省略")
     export.add_argument("--out", metavar="输出文件", help="输出 zip 路径，省略时写入备份目录")
     export.add_argument("--no-packages", action="store_true", help="不导出资料包（可再次生成）")
-    restore = commands.add_parser("import-tenant", help="把账套数据包导入为指定账套")
+    restore = commands.add_parser(
+        "import-tenant",
+        help="导入账套数据包：默认合并到已有账套（自动去重），--mode replace 整套替换",
+        description="退出码：0 成功；1 导入失败（已回滚）；2 校验失败（未写入任何数据）。",
+    )
     restore.add_argument("--in", dest="archive", metavar="搬迁包", required=True, help="zip 路径")
-    restore.add_argument("--slug", metavar="账套标识", required=True, help="导入到哪个账套")
+    restore.add_argument("--slug", metavar="账套标识", help="导入到哪个账套，单租户部署可省略")
     restore.add_argument(
-        "--overwrite", action="store_true", help="覆盖已存在的账套（覆盖前自动备份）"
+        "--mode",
+        choices=("merge", "replace"),
+        help="merge（默认）并入已有账套、已存在的跳过；replace 用包内数据整体替换",
+    )
+    restore.add_argument(
+        "--dry-run", action="store_true", help="只输出预览报告（将新增/跳过/冲突多少），不写入"
+    )
+    restore.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="replace 模式下覆盖已存在的账套（覆盖前自动备份）；单独使用等同 --mode replace",
     )
 
 
@@ -331,7 +347,9 @@ def run(argv: Sequence[str] | None = None) -> None:
         diagnostics_cli.run_diagnose(Settings(), args.reason, args.upload)
         return
     if args.command == "import-tenant":
-        migration_cli.run_import(Settings(), args.archive, args.slug, args.overwrite)
+        migration_cli.run_import(
+            Settings(), args.archive, args.slug, args.mode, args.dry_run, args.overwrite
+        )
         return
     settings = Settings()
     logging.basicConfig(level=logging.INFO)

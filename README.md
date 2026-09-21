@@ -6,7 +6,7 @@
 要报销时一键生成分类整理好的资料包。可以在自己电脑上跑，也可以装到服务器上让一个团队甚至多家客户共用。
 
 设计与运维文档：[部署与运维](docs/部署与运维.md) · [多租户与私有化](docs/多租户与私有化_设计.md) · [日志与故障上报](docs/日志与故障上报_设计.md) ·
-[凭证识别与自动归并](docs/凭证识别与自动归并_设计_v2.1.md) · [差旅住宿凭证](docs/差旅住宿凭证_设计.md) ·
+[凭证识别与自动归并](docs/凭证识别与自动归并_设计_v2.1.md) · [差旅住宿凭证](docs/差旅住宿凭证_设计.md) · [账本搬迁](docs/账本搬迁_设计.md) ·
 [开发蓝图](docs/个人发票报销管理工具_开发蓝图_v2.0.md) · [API 契约](docs/api-contract.md)
 
 ---
@@ -288,14 +288,21 @@ sudo -u invoice env INVOICE_SORTING_DATA_DIR=/var/lib/invoice-sorting /opt/invoi
 > 生成密钥对、替换公钥常量、把私钥只注入控制面的完整步骤见
 > [部署与运维 · 私有化授权](docs/部署与运维.md#七私有化授权)。**私钥不要写进任何文件或提交到仓库。**
 
-**账套搬迁**：`export-tenant` 导出一个包含数据库一致快照、文件库与资料包的 zip，在别处用 `import-tenant --in 搬迁包.zip --slug default --overwrite` 导入，SaaS 与私有化可以互相搬。命令要带上与服务相同的环境变量（数据目录、部署形态），否则会找错目录：
+**账本搬迁**：在「设置 → 账本搬迁」一键导出整本账（记录、附件原件、分类与项目、凭证清单、批次、时间线），
+在另一个账户、账套或服务器上同一位置上传导入。本机、私有化、SaaS 之间可以互相搬。导入前先给预览，确认后才写入，失败整体回滚：
+
+- **合并**（默认）：并入现有账本，按附件内容与发票号去重，已有的跳过，**不修改你已有的任何记录**；分类与项目按名称对应，冲突保留本地。重复导入同一个包不会产生重复数据。
+- **覆盖**：整本替换为包内容，执行前自动备份，需要输入账套名称二次确认。
+
+包里的上传人、操作人按用户名匹配本地账号，匹配不到就建一个停用的占位账号，历史记录仍显示是谁传的。
+网页上传支持 2 GB 以内的包（分片上传，显示进度）；更大的包在服务器上用命令行：
 
 ```bash
-sudo -u invoice env INVOICE_SORTING_DATA_DIR=/var/lib/invoice-sorting /opt/invoice-sorting/app/backend/.venv/bin/invoice-sorting export-tenant
+sudo -u invoice env INVOICE_SORTING_DATA_DIR=/var/lib/invoice-sorting /opt/invoice-sorting/app/backend/.venv/bin/invoice-sorting import-tenant --in 账本.zip --mode merge
 ```
 
-多账套部署要加 `--slug 账套标识`；本机把命令前缀换成 `backend/.venv/bin/invoice-sorting`。
-完整步骤见 [部署与运维 · 账套搬迁](docs/部署与运维.md#八账套搬迁)。
+先加 `--dry-run` 看预览不写入；`--mode replace` 为覆盖。多账套部署要加 `--slug 账套标识`，本机把命令前缀换成 `backend/.venv/bin/invoice-sorting`。
+设计与规则见 [账本搬迁](docs/账本搬迁_设计.md)，运维步骤见 [部署与运维 · 账套搬迁](docs/部署与运维.md#八账套搬迁)。
 
 ---
 
@@ -347,7 +354,7 @@ sudo -u invoice env INVOICE_SORTING_DATA_DIR=/var/lib/invoice-sorting /opt/invoi
 
 **识别出来的金额或日期不对？** 确认表里可以直接改，确认后在记录详情里也能改。识别不出的发票会作为附件导入，手工填写即可。欢迎把识别有误的发票版式反馈到 Issues。
 
-**怎么迁移到另一台机器？** 停止应用后复制整个数据目录（服务器上注意 `chown -R invoice:invoice /var/lib/invoice-sorting`），或用上面的[账套搬迁](#私有化交付与授权)命令。
+**怎么迁移到另一台机器？** 停止应用后复制整个数据目录（服务器上注意 `chown -R invoice:invoice /var/lib/invoice-sorting`），或用「设置 → 账本搬迁」导出后在新机器上导入（见[私有化交付与授权](#私有化交付与授权)）。
 
 ---
 

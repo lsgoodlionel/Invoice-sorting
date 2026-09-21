@@ -44,6 +44,8 @@ from invoice_sorting.tenancy.runtime import TenantRuntime
 logger = logging.getLogger(__name__)
 
 STAGING_DIRNAME = ".导入暂存"
+# 解包区放在暂存目录的子目录里：整个 `.导入暂存` 还存着网页分片上传的会话，不能整体清空
+UNPACK_DIRNAME = ".解包"
 MANIFEST_MAX_BYTES = 64 * 1024 * 1024
 SQLITE_SIDECARS = ("-wal", "-shm", "-journal")
 
@@ -127,7 +129,7 @@ def _backup_existing(runtime: TenantRuntime, slug: str, moment: datetime | None)
 
 def _unpack(archive_path: Path, settings: Settings, manifest: Manifest) -> None:
     """解包到暂存目录并逐文件核对，全部通过后再替换正式目录。"""
-    staging = settings.data_dir / STAGING_DIRNAME
+    staging = settings.data_dir / STAGING_DIRNAME / UNPACK_DIRNAME
     shutil.rmtree(staging, ignore_errors=True)
     staging.mkdir(parents=True, exist_ok=True)
     try:

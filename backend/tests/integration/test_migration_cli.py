@@ -76,35 +76,41 @@ def test_export_invalid_slug_exits_nonzero(seeded_env, tmp_path, capsys):
     assert "账套标识" in capsys.readouterr().err
 
 
+def _replace(out: Path, *extra: str) -> None:
+    main.run(
+        ["import-tenant", "--in", str(out), "--slug", TARGET_SLUG, "--mode", "replace", *extra]
+    )
+
+
 def test_import_creates_new_tenant(seeded_env, tmp_path, capsys):
     out = tmp_path / "搬迁包.zip"
     _export(out)
     capsys.readouterr()
 
-    main.run(["import-tenant", "--in", str(out), "--slug", TARGET_SLUG])
+    _replace(out)
 
     target_db = seeded_env.data_dir / "tenants" / TARGET_SLUG / "invoice.db"
-    assert f"已导入账套 {TARGET_SLUG}" in capsys.readouterr().out
+    assert f"覆盖导入完成：账套 {TARGET_SLUG}" in capsys.readouterr().out
     assert _expense_count(target_db) == len(SAMPLE_EXPENSES)
 
 
 def test_import_refuses_existing_tenant(seeded_env, tmp_path, capsys):
     out = tmp_path / "搬迁包.zip"
     _export(out)
-    main.run(["import-tenant", "--in", str(out), "--slug", TARGET_SLUG])
+    _replace(out)
     capsys.readouterr()
 
     with pytest.raises(SystemExit) as exited:
-        main.run(["import-tenant", "--in", str(out), "--slug", TARGET_SLUG])
+        _replace(out)
 
-    assert exited.value.code == 1
+    assert exited.value.code == 2  # 校验失败：未写入任何数据
     assert "已存在" in capsys.readouterr().err
 
 
 def test_import_overwrite_backs_up_first(seeded_env, tmp_path, capsys):
     out = tmp_path / "搬迁包.zip"
     _export(out)
-    main.run(["import-tenant", "--in", str(out), "--slug", TARGET_SLUG])
+    _replace(out)
     capsys.readouterr()
 
     main.run(["import-tenant", "--in", str(out), "--slug", TARGET_SLUG, "--overwrite"])
@@ -124,5 +130,5 @@ def test_import_rejects_broken_archive(seeded_env, tmp_path, capsys):
     with pytest.raises(SystemExit) as exited:
         main.run(["import-tenant", "--in", str(fake), "--slug", TARGET_SLUG])
 
-    assert exited.value.code == 1
+    assert exited.value.code == 2
     assert "zip" in capsys.readouterr().err

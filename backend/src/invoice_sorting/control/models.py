@@ -29,6 +29,12 @@ ROLE_MEMBER = "member"
 
 LICENSE_STATUS_ACTIVE = "active"
 
+# 账号来源：空串为正常开通；import 为合并导入账本时创建的停用占位账号（账本搬迁设计 4.3）
+ACCOUNT_SOURCE_IMPORT = "import"
+
+# 账号来源：空串为正常开通；import 为合并导入账本时创建的停用占位账号（账本搬迁设计 4.3）
+ACCOUNT_SOURCE_IMPORT = "import"
+
 ACCOUNT_FK = "account.id"
 TENANT_FK = "tenant.id"
 
@@ -81,6 +87,7 @@ class Account(ControlBase):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    source: Mapped[str] = mapped_column(String(20), default="")
 
 
 class Membership(ControlBase):

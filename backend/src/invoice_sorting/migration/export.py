@@ -2,7 +2,8 @@
 
 - 数据库用 `VACUUM INTO` 生成快照，不直接拷贝正在写入的 db 文件，也不改动源库的 WAL；
 - 文件逐个流式写入 zip，大库不会整包读进内存；
-- 收件箱与备份目录不导出（前者是临时投递区，后者是本机历史备份）。
+- 收件箱与备份目录不导出（前者是临时投递区，后者是本机历史备份）；
+- 根目录另写 ledger.json（账本搬迁设计 2）：来源与导出范围，供合并导入的报告与批次改名使用。
 """
 
 import logging
@@ -22,11 +23,18 @@ from invoice_sorting.config import DB_FILENAME, Settings
 from invoice_sorting.db.models import AppSetting, now
 from invoice_sorting.db.seed import KEYWORDS_VERSION_KEY, MEMORY_VERSION_KEY, RULES_VERSION_KEY
 from invoice_sorting.migration.archive import add_file, walk_files
+from invoice_sorting.migration.ledger import (
+    LEDGER_NAME,
+    LedgerInfo,
+    LedgerSource,
+    scope_of_snapshot,
+)
 from invoice_sorting.migration.manifest import (
     DATA_PREFIX,
     MANIFEST_NAME,
     FileEntry,
     Manifest,
+    app_version,
     build_manifest,
 )
 from invoice_sorting.tenancy.runtime import TenantContext
@@ -66,6 +74,7 @@ def export_tenant(
     tenant_name: str = "",
     include_packages: bool = True,
     moment: datetime | None = None,
+    exported_by: str = "",
 ) -> ExportResult:
     """导出一个租户的全部数据到 out_path；先写临时文件再原子改名。"""
     moment = moment or now()
@@ -76,6 +85,13 @@ def export_tenant(
         with tempfile.TemporaryDirectory(dir=out_path.parent) as workdir:
             snapshot = Path(workdir) / DB_FILENAME
             snapshot_database(context.engine, snapshot)
+            source = LedgerSource(
+                deployment=settings.deployment_mode,
+                tenant=tenant_name or context.slug,
+                exported_by=exported_by,
+                app_version=app_version(),
+            )
+            ledger = LedgerInfo(source=source, scope=scope_of_snapshot(snapshot))
             entries = _write_archive(temp, settings, snapshot, include_packages)
         manifest = build_manifest(
             context.slug,
@@ -84,7 +100,7 @@ def export_tenant(
             entries,
             _schema_versions(context.session_factory),
         )
-        _append_manifest(temp, manifest)
+        _append_metadata(temp, manifest, ledger)
         os.replace(temp, out_path)
     except BaseException:
         temp.unlink(missing_ok=True)
@@ -135,9 +151,10 @@ def _write_archive(
     return tuple(entries)
 
 
-def _append_manifest(temp: Path, manifest: Manifest) -> None:
-    """清单在全部文件写完后追加（校验和此时才算得出来）。"""
+def _append_metadata(temp: Path, manifest: Manifest, ledger: LedgerInfo) -> None:
+    """清单在全部文件写完后追加（校验和此时才算得出来）；账本描述 ledger.json 一并写入。"""
     with zipfile.ZipFile(temp, "a", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr(LEDGER_NAME, ledger.to_bytes())
         archive.writestr(MANIFEST_NAME, manifest.to_bytes())
 
 

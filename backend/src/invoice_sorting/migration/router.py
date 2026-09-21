@@ -4,7 +4,8 @@
 - 私有化侧 `/api/backup/export-tenant*`：管理员导出自己所在账套，与现有 `/api/backup` 同风格。
 
 导出是耗时操作，POST 只登记任务并立即返回任务号与下载地址，打包在后台线程进行。
-导入不提供接口：搬迁包通常很大，统一走 `invoice-sorting import-tenant` 命令行。
+网页导入（分片上传 + 预览 + 确认）见 import_router；
+超过 2 GB 的包仍走 `invoice-sorting import-tenant` 命令行。
 """
 
 import logging
@@ -15,12 +16,12 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from invoice_sorting.auth.deps import ADMIN_ONLY
-from invoice_sorting.common.errors import AppError, NotFoundError, ok
-from invoice_sorting.config import DEFAULT_TENANT_SLUG
+from invoice_sorting.common.errors import AppError, ok
 from invoice_sorting.control.platform_deps import PLATFORM_ADMIN_ONLY
-from invoice_sorting.control.repository import find_tenant, require_slug
+from invoice_sorting.control.repository import require_slug
 from invoice_sorting.db.models import now
 from invoice_sorting.migration.export import export_filename, export_tenant
+from invoice_sorting.migration.import_router import router as import_router
 from invoice_sorting.migration.jobs import (
     ExportJob,
     ExportJobStore,
@@ -28,12 +29,12 @@ from invoice_sorting.migration.jobs import (
     prune_exports,
     require_download,
 )
+from invoice_sorting.migration.tenants import require_known_tenant, tenant_name
 from invoice_sorting.tenancy.deps import get_tenant, load_tenant
 
 logger = logging.getLogger(__name__)
 
 ZIP_MEDIA_TYPE = "application/zip"
-WHAT_TENANT = "账套"
 MSG_EXPORT_FAILED = "导出失败，请查看服务端日志"
 
 platform_router = APIRouter(prefix="/api/platform", tags=["平台搬迁"])
@@ -51,23 +52,6 @@ def _job_store(app: Any) -> ExportJobStore:
     return app.state.export_jobs
 
 
-def _tenant_name(app: Any, slug: str) -> str:
-    with app.state.control_session_factory() as control:
-        tenant = find_tenant(control, slug)
-        return tenant.name if tenant is not None else slug
-
-
-def _require_known_tenant(app: Any, slug: str) -> str:
-    """校验 slug 形态并确认账套已开通，避免导出时误建一个空账套。"""
-    normalized = require_slug(slug)
-    if not app.state.settings.is_saas and normalized != DEFAULT_TENANT_SLUG:
-        raise NotFoundError(WHAT_TENANT)
-    with app.state.control_session_factory() as control:
-        if find_tenant(control, normalized) is None:
-            raise NotFoundError(WHAT_TENANT)
-    return normalized
-
-
 def _payload(job: ExportJob, download_url: str) -> dict[str, Any]:
     return ok(
         {
@@ -77,6 +61,7 @@ def _payload(job: ExportJob, download_url: str) -> dict[str, Any]:
             "file": job.filename,
             "size": job.size,
             "file_count": job.file_count,
+            "include_packages": job.include_packages,
             "error": job.error,
             "download_url": download_url,
         }
@@ -94,7 +79,7 @@ def _run_export(app: Any, job_id: str, slug: str, include_packages: bool) -> Non
         result = export_tenant(
             load_tenant(app, slug),
             directory / export_filename(slug, now(), job_id[:JOB_TOKEN_CHARS]),
-            tenant_name=_tenant_name(app, slug),
+            tenant_name=tenant_name(app, slug),
             include_packages=include_packages,
         )
         store.finish(job_id, result.path, result.file_count)
@@ -106,7 +91,7 @@ def _run_export(app: Any, job_id: str, slug: str, include_packages: bool) -> Non
 
 def _start(app: Any, tasks: BackgroundTasks, slug: str, body: ExportRequest | None) -> ExportJob:
     options = body or ExportRequest()
-    job = _job_store(app).create(slug)
+    job = _job_store(app).create(slug, include_packages=options.include_packages)
     tasks.add_task(_run_export, app, job.id, slug, options.include_packages)
     return job
 
@@ -128,7 +113,7 @@ def _tenant_url(job_id: str) -> str:
 def start_platform_export(
     slug: str, request: Request, tasks: BackgroundTasks, body: ExportRequest | None = None
 ) -> dict[str, Any]:
-    normalized = _require_known_tenant(request.app, slug)
+    normalized = require_known_tenant(request.app, slug)
     job = _start(request.app, tasks, normalized, body)
     return _payload(job, _platform_url(normalized, job.id))
 
@@ -166,3 +151,4 @@ def download_tenant_export(job_id: str, request: Request) -> FileResponse:
 
 router.include_router(platform_router)
 router.include_router(tenant_router)
+router.include_router(import_router)

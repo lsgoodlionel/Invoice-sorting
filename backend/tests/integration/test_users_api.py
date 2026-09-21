@@ -14,7 +14,7 @@ from tests.auth_helpers import (
 
 USER_KEYS = {
     "id", "username", "display_name", "role", "is_active", "has_password", "created_at",
-    "last_login_at",
+    "last_login_at", "source",
 }  # fmt: skip
 
 

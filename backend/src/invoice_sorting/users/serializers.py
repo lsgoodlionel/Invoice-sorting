@@ -20,4 +20,5 @@ def serialize_member(member: Member) -> dict[str, Any]:
         "has_password": account.password_hash is not None,
         "created_at": iso_datetime(account.created_at),
         "last_login_at": iso_datetime(account.last_login_at),
+        "source": account.source or "",  # "import"：合并导入账本时创建的停用占位账号
     }

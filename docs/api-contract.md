@@ -71,7 +71,8 @@ type TenantOption = TenantBrief & { is_current: boolean }
 ```ts
 type User = {
   id: number; username: string; display_name: string; role: UserRole; is_active: boolean;
-  has_password: boolean; created_at: string; last_login_at: string | null
+  has_password: boolean; created_at: string; last_login_at: string | null;
+  source: "" | "import";   // "import"：合并导入账本时创建的停用占位账号（保留姓名，不能登录）
 }
 ```
 
@@ -371,6 +372,145 @@ type Stats = {
 
 条件全部满足才触发：`is_nonlocal` 为外地发票；`detail_platform` 为销售方属于已带明细平台；`invoice_exempt` 为免发票记录；`content_keywords` 为发票内容（税收分类、商品名称、销售方）或记录商家、摘要包含任一关键词（每个 1–20 字，最多 20 个），`exclude_keywords` 为包含任一关键词则不触发。默认规则（版本 5）：差旅交通的“订单明细”仅在含“住宿/酒店/宾馆/旅馆/民宿/客栈”时必需（酒店订单），“行程单”对这些住宿发票不触发。版本 6：同条件下“往来交通凭证”（`transport`）必需，提示“往返酒店所在地与本地的火车/飞机/汽车/轮船票或行程单”；该项在记录有 `transport` 类型附件，或有 details.vehicle 非空的发票（交通票发票）时视为已有。旧库启动时追加一次（幂等）。默认新增通用规则：`{ is_nonlocal: true, detail_platform: false }` → 订单明细（必需），提示“外地发票需附网购订单截图（京东、当当、圆迈等已带明细平台可免）；非网购外地购品需随差旅报销并说明”。
 
+### 账本搬迁（migration 模块）
+
+设计见 [账本一键导入导出 · 设计](账本搬迁_设计.md)。全部**仅管理员**（非管理员 403）；目标账套一律取自
+当前请求（子域名或登录会话），**不接受客户端指定账套**——请求体出现多余字段（如 `slug`）直接 422。
+平台管理员跨账套导入走 `/api/platform/tenants/{slug}/imports*`（见平台运营后台一节），实现与本节完全相同。
+
+**导出**（只读降级、账套停用期间仍可用）：
+
+| 方法 | 路径 | 请求 | 返回 data |
+| --- | --- | --- | --- |
+| POST | `/api/backup/export-tenant` | `{ include_packages?: boolean }`（默认 true；false 为不含资料包，体积更小）→ 后台打包 | `ExportJob` |
+| GET | `/api/backup/export-tenant/{job}/status` | — | `ExportJob` |
+| GET | `/api/backup/export-tenant/{job}` | — | ZIP 文件流；未完成 409、失败 400（附原因）、文件已清理 410 |
+
+`ExportJob` 见平台运营后台一节，另有 `include_packages: boolean`。任务记录在进程内存，重启后作废（重新导出即可）；
+备份区只保留最近 5 个搬迁包。
+
+**导入**（写操作：授权只读或账套停用/到期时 403，文案同其他写接口）：
+
+| 方法 | 路径 | 请求 | 返回 data |
+| --- | --- | --- | --- |
+| POST | `/api/backup/imports` | `{ filename, size, sha256, part_size? }` 登记上传 | `ImportSession` |
+| PUT | `/api/backup/imports/{upload_id}/parts/{index}` | 请求体为该片原始字节（`application/octet-stream`），index 从 0 开始 | `ImportSession` |
+| POST | `/api/backup/imports/{upload_id}/complete` | 可省略；`{ mode?: "merge"\|"replace" }`（默认 merge，仅影响预览） | `ImportSession & ImportReport`（预览字段平铺在顶层） |
+| POST | `/api/backup/imports/{upload_id}/confirm` | `{ mode: "merge"\|"replace", confirm_name? }` → 后台导入 | `ImportSession`（`status: "running"`） |
+| GET | `/api/backup/imports/{upload_id}/status` | — | `ImportSession` |
+| DELETE | `/api/backup/imports/{upload_id}` | — 取消并删除分片与包 | `null` |
+
+```ts
+type ImportSession = {
+  upload_id: string;               // 32 位十六进制
+  slug: string;
+  target_name: string;             // 当前账套名称；覆盖模式要求原样输入它
+  status: "uploading" | "ready" | "running" | "done" | "failed";
+  mode: "" | "merge" | "replace";  // ready 时为预览所用模式，running/done/failed 时为执行模式
+  message: string;                 // 可直接展示的状态说明（失败时即 error）
+  error: string;
+  progress: null;                  // 暂不提供百分比，轮询 status 即可
+  filename: string; size: number; part_size: number; part_count: number;
+  received_parts: number[];        // 仅 uploading 阶段有意义，之后为空数组
+  missing_parts: number[];
+  backup_file: string;             // 覆盖模式执行前的自动备份文件名（位于账套 备份/ 目录）
+  report: ImportReport | null;     // ready 为预览，done 为导入结果
+  created_at: string; expires_at: string;  // 创建后 24 小时过期
+}
+type ImportReport = {              // 由导入引擎给出；预览与结果同一结构
+  mode: "merge" | "replace"; is_dry_run: boolean;
+  source: { tenant?: string; exported_by?: string; app_version?: string; deployment?: string; exported_at?: string };
+  items: {
+    key: string; label: string;    // records/attachments/batches/categories/projects/rules/memories/users…
+    added: number; skipped: number; conflicts: number; failed: number;
+    details: { action: "added"|"skipped"|"conflict"|"failed"; label: string; reason: string }[];
+    truncated: number;             // 超出明细上限、只计数未列出的条数
+  }[];
+  warnings: string[];
+  backup_file?: string;            // 仅覆盖模式的执行结果
+}
+```
+
+分片协议：
+
+- 片大小默认 **8 MB**，登记时可在 64 KB–64 MB 之间指定，以返回的 `part_size` 为准；除最后一片外每片必须恰好等于片大小，
+  最后一片为余数。大小不符 400，片号越界 400。
+- **同一片可重传**，后到的完整上传覆盖先前内容；片的上传**顺序不限**，也**允许并发**上传不同的片
+  （每片先写临时文件再原子改名，互不干扰）。上传中断的片不会被计入 `received_parts`。
+- `complete`：缺片 400（列出缺的片号，会话保持 uploading，可补传）；按序合并并核对整包 SHA-256 与 zip 结构
+  （清单、版本、成员路径安全），任一不符 400 且会话变为 `failed`（只能取消重来）。通过后删除分片、生成预览。
+  会话已是 `ready` 时再次调用只重新生成预览（例如切换到覆盖模式查看）。
+- `confirm`：须先 `ready`，否则 409；`mode=replace` 必须带 `confirm_name` 且与 `target_name` 一致，否则 400；
+  覆盖执行前自动把现有数据整包备份到账套的 `备份/覆盖前备份_*.zip`，解包全部校验通过后才替换正式目录。
+  导入结束后删除包文件，会话元数据保留到过期以便查看结果。
+- 单包上限 **2 GB**，超过在登记时 400，提示改用服务器命令行 `invoice-sorting import-tenant`。
+- 分片与包放在账套数据目录下的 `.导入暂存/<upload_id>/`，按账套隔离：别的账套的会话号一律 404。
+  **创建后超过 24 小时**的会话在服务启动时与每次登记新会话时自动清理（正在导入的除外）；
+  服务重启时仍处于 `running` 的会话标记为 `failed`。
+- 错误码汇总：400 参数或校验不通过 / 403 非管理员或只读 / 404 会话不存在或不属于当前账套 /
+  409 状态不允许（已完成上传再传片、未完成就确认、导入中取消或重复确认）/ 422 请求体字段不合法（含多余字段）。
+
+#### 搬迁包格式、合并导入语义与命令行
+
+**包格式**：`manifest.json`（逐文件 SHA-256）+ `data/`（数据库快照、文件库、可选资料包）+ `ledger.json`（新增）：
+
+```json
+{ "kind": "ledger",
+  "source": { "deployment": "single|saas", "tenant": "账套名", "exported_by": "导出人", "app_version": "0.2.1" },
+  "scope": { "records": 1234, "attachments": 3456, "batches": 12, "from": "2024-01-01", "to": "2026-09-21" } }
+```
+
+`records` 不含已删除记录，`from/to` 为记录支出日期范围。`ledger.json` 只是说明性元数据（限 64 KB、逐字段校验类型），
+没有它的**旧包**照常导入，报告 `source.is_legacy = true`，来源名称退回清单里的账套名。
+包的 schema 版本（关键词/规则/分类记忆）高于本程序时预览与导入都拒绝，提示先升级。
+
+**合并导入**（`mode=merge`，默认）只做新增，**不改本地已有行的任何字段**，也不读包内任何设置（地区、买方抬头、认证、授权、日志）：
+
+| 对象 | 判重 | 命中后 |
+| --- | --- | --- |
+| 附件 | 文件内容哈希（`attachment.sha256`；设计里写的 file_key 在本程序是“文件名键”，不用于判重） | 跳过文件与行 |
+| 发票 | 发票号码 | 视为同一张发票，跳过 |
+| 记录 | 某张发票号码已在本地记录上；或 金额 + 支出日期 + 商家（去空白）相同且附件有交集；两边都无附件时再比摘要 | 跳过（报告写明对应的本地记录 #id） |
+| 记录（冲突） | 附件已属于本地某条记录，但金额/日期/商家对不上 | 整条不导入，记为冲突，人工核对 |
+| 分类 / 经费项目 | 名称（去空白） | 复用本地；包内多出的关键词记为冲突“未采纳” |
+| 凭证规则 | 分类 + 附件类型 + 条件 | 相同跳过；要求或提示不同记为冲突、保留本地 |
+| 商家/商品记忆 | 键 | 同分类跳过；不同分类记为冲突、保留本地 |
+| 批次 | 创建时间相同且名称相同或为“名称（来自 …）” | 沿用本地（重复导入幂等）；否则新增，重名时改为“名称（来自 来源账套）” |
+| 资料包生成记录 | 所属批次 + 资料包 sha256 | 只导入记录，ZIP 不导入；记录的文件路径指向不存在的 `资料包/已导入_未含文件/…`，下载为 404“资料包文件不存在”，可重新生成 |
+
+- 来源账本中已删除的记录不导入。所有主键重新分配，外键按映射改写，绝不沿用包内 id。
+- 附件按本地文件库规则落盘（记录文件夹 `YYYY/MM/日期_商家_分类_金额_E####/`，文件 `类型_发票号或序号.ext`，待归属进 `待归属/`），不照搬包内路径。
+- **人**：只处理新增行引用到的上传人/操作人。按用户名匹配本账套的用户；匹配不到时建**停用、无密码**的占位账号
+  （控制库账号 `source="import"` + 本账套停用成员 + 业务库同 id 镜像，保留姓名）。原用户名已被任何账号占用时改用
+  `原名.imp`、`原名.imp2`…，不会把别的账套的账号拉进来。用户管理接口的 `User.source` 为 `"import"` 即此类账号。
+- **整体成功或整体回滚**：业务库写入在同一事务内（每 200 条记录 flush 一次并释放对象缓存），本次新落盘的文件与文件夹逐一登记，
+  失败时回滚事务、删除这些文件、撤销占位账号；本地原有文件从不移动或覆盖。
+  包内附件按需从 zip 解出并逐字节核对清单，校验和不符按“包已损坏”处理并回滚。
+- 合并只能并入**已存在**的账套（单租户部署的 default 除外）；要把包导入为新账套用覆盖模式。
+- 预览与导入返回同一结构 `ImportReport`（见上）；`items[].key` 依次为
+  `records, attachments, batches, exports, categories, projects, rules, memories, users`，
+  另有 `slug`、`total_added`，`source` 另含 `is_legacy, file_count, total_bytes, scope`。明细每部分最多 500 条，其余计入 `truncated`。
+  覆盖模式的预览返回包内范围（`items[].added` 为包内数量）与 `target_exists`。
+
+**引擎函数**（供网页导入调用，`invoice_sorting.migration.merge`）：
+`preview_import(runtime, control_factory, archive_path, slug, mode) -> dict` 只读；
+`run_import(runtime, control_factory, archive_path, slug, mode) -> dict` 执行（覆盖模式不再追问，调用方负责二次确认）。
+校验失败抛 `ImportRejectedError`（400/404，未写入任何数据）；执行失败抛 `ImportFailedError`（500，已回滚，文案不含内部细节）。
+
+**命令行**：
+
+```
+invoice-sorting export-tenant [--slug x] [--out x.zip] [--no-packages]
+invoice-sorting import-tenant --in x.zip [--slug y] [--mode merge|replace] [--dry-run] [--overwrite]
+```
+
+- `--slug` 省略时为 `default`；`--mode` 省略时为 `merge`，只给 `--overwrite` 视为 `--mode replace`（兼容旧写法）；
+  `--mode merge --overwrite` 视为参数冲突。
+- `--mode replace` 即原整套替换：目标账套已存在时必须加 `--overwrite`，执行前自动整包备份到该账套 `备份/覆盖前备份_*.zip`，
+  解包全部校验通过后才切换正式目录。
+- `--dry-run` 只打印预览（各部分新增/跳过/冲突/失败数量，并列出冲突与失败明细），不写入。
+- 退出码：`0` 成功；`1` 导入失败（已回滚）；`2` 校验失败（包不合法、版本过新、目标账套不存在或已存在、参数冲突），未写入任何数据。
+
 ### 私有化授权（licensing 模块）
 
 | 方法 | 路径 | 请求 | 返回 data |
@@ -384,7 +524,8 @@ type Stats = {
 - `active` 正常；`grace` 已过期但在宽限期内（顶部提示条，仍可写）；`readonly` 只读；
   `unlicensed_ok` 未配置授权密钥（本机自用，不限制）；`not_applicable` 多租户模式不适用。
 - `readonly` 期间所有写接口（POST/PUT/PATCH/DELETE 的 `/api/*`）返回 **403** 并附中文原因；
-  GET、`/api/auth/*`（登录）、`/api/backup`（备份）与批次导出仍可用。
+  GET、`/api/auth/*`（登录）、`/api/backup`（备份）、`/api/backup/export-tenant`（账套搬迁导出）与批次导出仍可用；
+  网页导入（`/api/backup/imports*`）属于写操作，一并拒绝。
 - `message` 可直接作为提示条文案；`server_reachable=false` 表示当前联系不上授权服务（不降级）。
 
 ### 套餐与额度（quota 模块）
@@ -422,7 +563,7 @@ type Quota = {
 - 额度**只在多账套部署生效**。账套未绑定套餐时按内置「免费版」（3 人 / 1024 MB / 每月 200 条）计算；
   控制库中同时有一行 `plan.code = "free"` 供运营后台选用。任一上限为 0 表示该项不限制。
 - 账套 `status != active` 或 `expires_on` 已过（到期日当天仍可写）→ **只读**：GET、`/api/auth/*`、
-  `/api/backup` 与批次导出照常，其余 `/api/*` 写请求返回 **403** 并附 `readonly_message`。
+  `/api/backup`、`/api/backup/export-tenant` 与批次导出照常，其余 `/api/*` 写请求（含网页导入）返回 **403** 并附 `readonly_message`。
   停用/关闭/到期三种文案分别说明原因与处理办法。
 - 额度只拦“会让用量变大”的动作，修改与删除始终放行（否则超限后无法清理自救）：
   - `POST /api/expenses`、`POST /api/attachments/create-expenses` → 当月新增记录
@@ -460,6 +601,7 @@ type Quota = {
 | POST | `/api/platform/tenants/{slug}/export` | `{ include_packages? }` → 异步任务 | `ExportJob` |
 | GET | `/api/platform/tenants/{slug}/export/{job}/status` | — | `ExportJob` |
 | GET | `/api/platform/tenants/{slug}/export/{job}` | — | ZIP 文件流 |
+| POST/PUT/GET/DELETE | `/api/platform/tenants/{slug}/imports*` | 与账套侧 `/api/backup/imports*` 完全相同（见账本搬迁一节），目标账套由路径指定 | `ImportSession` |
 | GET/POST | `/api/platform/plans` | POST `{ code, name?, max_users?, max_storage_mb?, max_expenses_per_month?, features? }` | `Plan[]` / `Plan` |
 | PATCH/DELETE | `/api/platform/plans/{id}` | PATCH 同上（不含 code）；被账套引用时 DELETE 409 | `Plan` / `null` |
 | GET/POST | `/api/platform/licenses` | POST `{ customer_name, max_users?, valid_until?, note?, features? }` | `LicenseRecord[]` / `LicenseRecord` |
@@ -483,7 +625,7 @@ type LicenseRecord = {
   status: "active"|"revoked"; bound_instance_id: string; note: string;
   issued_at: string | null; checked_at: string | null; created_at: string;
 }
-type ExportJob = { job, slug, status: "running"|"done"|"failed", file, size, file_count, error, download_url }
+type ExportJob = { job, slug, status: "running"|"done"|"failed", file, size, file_count, include_packages, error, download_url }
 ```
 
 - **授权密钥只在签发响应里返回一次原文**（`is_key_visible=true`），之后只能看到脱敏值，服务端日志也不记录密钥。

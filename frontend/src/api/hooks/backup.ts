@@ -1,0 +1,182 @@
+// 账本搬迁（设置 → 账本搬迁）的全部接口。后端合并引擎与分片上传接口并行开发中，
+// 字段形状以 docs/账本搬迁_设计.md 与本文件为准，对齐时只需改这里。
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
+import { api, request } from '../client';
+
+export type BackupJobStatus = 'running' | 'done' | 'failed';
+/** 导入会话状态：uploading → ready（已出预览）→ running → done/failed */
+export type ImportSessionStatus = 'uploading' | 'ready' | BackupJobStatus;
+
+/** 导出任务：POST 登记、GET 轮询；done 时 download_url 可下载。 */
+export interface LedgerExportJob {
+  job: string;
+  status: BackupJobStatus;
+  download_url: string;
+  file?: string;
+  size?: number;
+  error?: string;
+}
+
+export interface ImportUploadInput {
+  filename: string;
+  size: number;
+  part_size: number;
+  sha256: string;
+}
+
+/** 登记上传：后端可调整片大小，前端以返回的 part_size 为准。 */
+export interface ImportUpload {
+  upload_id: string;
+  part_size: number;
+}
+
+export type ImportMode = 'merge' | 'replace';
+
+/**
+ * 报告按对象类别汇总。后端现有类别：records 记录、attachments 附件、users 用户、categories 分类、
+ * projects 经费项目、rules 凭证规则、memories 分类记忆、batches 批次、exports 资料包生成记录。
+ */
+export type ImportReportKey = string;
+
+export type ImportDetailAction = 'added' | 'skipped' | 'conflict' | 'failed';
+
+export interface ImportReportDetail {
+  action: ImportDetailAction;
+  /** 对象的可读名称，如“发票 04403”“分类 图书” */
+  label: string;
+  reason?: string;
+}
+
+export interface ImportReportItem {
+  key: ImportReportKey;
+  /** 后端给出的中文类别名；缺省时前端按 key 兜底 */
+  label?: string;
+  added: number;
+  skipped: number;
+  conflicts: number;
+  failed?: number;
+  /** 明细（后端有条数上限） */
+  details?: ImportReportDetail[];
+  /** 超出上限未列出的明细条数 */
+  truncated?: number;
+}
+
+/** 包的来源（ledger.json 的 source；旧包没有）。 */
+export interface ImportSource {
+  tenant?: string;
+  exported_by?: string;
+  app_version?: string;
+  deployment?: string;
+}
+
+/** 后端可能直接给 source，也可能给整个 ledger.json（{kind, source, scope}），界面两种都认。 */
+export type ImportSourcePayload = ImportSource | { kind?: string; source?: ImportSource | null };
+
+/** complete 后的预览（dry-run）报告。 */
+export interface ImportPreview {
+  upload_id: string;
+  /** 覆盖模式需要输入的当前账套名称 */
+  target_name?: string;
+  source?: ImportSourcePayload | null;
+  items: ImportReportItem[];
+  warnings?: string[];
+}
+
+/** confirm 后的导入任务；done/failed 时带结果报告。 */
+export interface ImportJob {
+  upload_id: string;
+  status: ImportSessionStatus;
+  mode: ImportMode;
+  /** 0–100；后端给不出时为 null */
+  progress?: number | null;
+  message?: string;
+  error?: string;
+  /** 覆盖模式执行前的自动备份文件 */
+  backup_file?: string;
+  report?: { items: ImportReportItem[]; warnings?: string[] } | null;
+}
+
+export interface ImportConfirmInput {
+  mode: ImportMode;
+  confirm_name?: string;
+}
+
+const importPath = (uploadId: string) => `/backup/imports/${encodeURIComponent(uploadId)}`;
+
+export const backupApi = {
+  startExport: (includePackages: boolean) =>
+    api.post<LedgerExportJob>('/backup/export-tenant', includePackages ? {} : { include_packages: false }),
+  exportStatus: (job: string) => api.get<LedgerExportJob>(`/backup/export-tenant/${encodeURIComponent(job)}/status`),
+  createImport: (input: ImportUploadInput) => api.post<ImportUpload>('/backup/imports', input),
+  /** index 从 0 开始 */
+  uploadPart: (uploadId: string, index: number, blob: Blob, signal?: AbortSignal) =>
+    request<unknown>(`${importPath(uploadId)}/parts/${index}`, { method: 'PUT', blob, signal }),
+  completeImport: (uploadId: string, signal?: AbortSignal) =>
+    request<ImportPreview>(`${importPath(uploadId)}/complete`, { method: 'POST', signal }),
+  confirmImport: (uploadId: string, input: ImportConfirmInput) =>
+    api.post<ImportJob>(`${importPath(uploadId)}/confirm`, input),
+  importStatus: (uploadId: string) => api.get<ImportJob>(`${importPath(uploadId)}/status`),
+  cancelImport: (uploadId: string) => api.del<unknown>(importPath(uploadId)),
+};
+
+export const BACKUP_POLL_MS = 1500;
+
+const isRunning = (status: BackupJobStatus | undefined) => status === 'running';
+
+export interface LedgerExport {
+  start: (includePackages: boolean) => void;
+  isRunning: boolean;
+  job: LedgerExportJob | null;
+  error: unknown;
+}
+
+/** 导出账本：登记任务后轮询，任务结束自动停止；错误由界面就地显示，不弹全局提示。 */
+export function useLedgerExport(): LedgerExport {
+  const [jobId, setJobId] = useState<string | null>(null);
+  const start = useMutation({
+    mutationFn: backupApi.startExport,
+    onSuccess: (created) => setJobId(created.job),
+    meta: { silent: true },
+  });
+  const status = useQuery({
+    queryKey: ['backup', 'export', jobId],
+    queryFn: () => backupApi.exportStatus(jobId ?? ''),
+    enabled: Boolean(jobId),
+    refetchInterval: (query) => (isRunning(query.state.data?.status) ? BACKUP_POLL_MS : false),
+    retry: false,
+    meta: { silent: true },
+  });
+  const job = status.data ?? start.data ?? null;
+  return {
+    start: (includePackages) => {
+      setJobId(null);
+      start.mutate(includePackages);
+    },
+    isRunning: start.isPending || isRunning(job?.status),
+    job,
+    error: start.error ?? status.error,
+  };
+}
+
+/** 确认导入：错误就地显示。 */
+export const useConfirmImport = () =>
+  useMutation({
+    mutationFn: ({ uploadId, input }: { uploadId: string; input: ImportConfirmInput }) =>
+      backupApi.confirmImport(uploadId, input),
+    meta: { silent: true },
+  });
+
+const isImportFinished = (status: ImportSessionStatus | undefined) => status === 'done' || status === 'failed';
+
+/** 导入任务状态：直到 done/failed 前持续轮询；查询出错即停止，由界面显示原因。 */
+export const useImportJob = (uploadId: string | null, enabled: boolean) =>
+  useQuery({
+    queryKey: ['backup', 'import', uploadId],
+    queryFn: () => backupApi.importStatus(uploadId ?? ''),
+    enabled: enabled && Boolean(uploadId),
+    refetchInterval: (query) =>
+      query.state.status !== 'error' && !isImportFinished(query.state.data?.status) ? BACKUP_POLL_MS : false,
+    retry: false,
+    meta: { silent: true },
+  });

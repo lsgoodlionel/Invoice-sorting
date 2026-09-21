@@ -26,6 +26,7 @@ __all__ = [
     "assign_attachment",
     "attachment_file_name",
     "guess_kind",
+    "new_file_destination",
     "sha256_of",
     "store_file",
     "sync_expense_folder",
@@ -174,6 +175,13 @@ def _target_dir(session: Session, settings: Settings, expense: Expense | None) -
     return settings.library_dir / expense.folder_path
 
 
+def new_file_destination(session: Session, settings: Settings, attachment: Attachment) -> Path:
+    """按归属与命名规则为一个已 flush 的新附件选定空闲的落盘路径（目录已建好，文件未写）。"""
+    directory = _target_dir(session, settings, attachment.expense)
+    directory.mkdir(parents=True, exist_ok=True)
+    return _free_path(directory, attachment_file_name(attachment), None)
+
+
 def store_file(
     session: Session,
     settings: Settings,
@@ -199,9 +207,7 @@ def store_file(
     )
     session.add(attachment)
     session.flush()
-    directory = _target_dir(session, settings, expense)
-    directory.mkdir(parents=True, exist_ok=True)
-    destination = _free_path(directory, attachment_file_name(attachment), None)
+    destination = new_file_destination(session, settings, attachment)
     shutil.copyfile(src, destination)
     attachment.file_path = _relative_to_data(settings, destination)
     session.flush()

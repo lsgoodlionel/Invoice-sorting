@@ -5,6 +5,7 @@ import { useCurrentUser } from '../components/auth/CurrentUserContext';
 import { CategoryManager } from '../components/settings/CategoryManager';
 import { DiagnosticsSection } from '../components/settings/DiagnosticsSection';
 import { GeneralSettings } from '../components/settings/GeneralSettings';
+import { LedgerTransferSection } from '../components/settings/ledger/LedgerTransferSection';
 import { ProjectManager } from '../components/settings/ProjectManager';
 import { ReclassifySection } from '../components/settings/ReclassifySection';
 import { RuleManager } from '../components/settings/RuleManager';
@@ -26,7 +27,7 @@ function Section({ label, isReadOnly = false, children }: { label: string; isRea
   );
 }
 
-/** 系统设置（基本、分类、凭证清单规则、备份）仅管理员可改；经费项目与登录安全所有人可用。 */
+/** 系统设置（基本、分类、凭证清单规则、备份、账本搬迁）仅管理员可改；经费项目与登录安全所有人可用。 */
 export function SettingsPage() {
   const { isAdmin } = useCurrentUser();
   const isReadOnly = !isAdmin;
@@ -39,6 +40,7 @@ export function SettingsPage() {
       <Section label="凭证清单规则" isReadOnly={isReadOnly}><RuleManager readOnly={isReadOnly} /></Section>
       {isAdmin && <Section label="分类整理"><ReclassifySection /></Section>}
       {isAdmin && <Section label="用户管理"><UserManager /></Section>}
+      {isAdmin && <Section label="账本搬迁"><LedgerTransferSection /></Section>}
       {isAdmin && <Section label="运行日志与诊断"><DiagnosticsSection /></Section>}
       <Section label="登录与安全"><SecuritySettings /></Section>
     </Stack>

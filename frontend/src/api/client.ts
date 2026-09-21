@@ -98,15 +98,20 @@ export interface RequestOptions {
   params?: QueryParams;
   json?: unknown;
   form?: FormData;
+  /** 原样发送的二进制内容（如分片上传），Content-Type 为 application/octet-stream */
+  blob?: Blob;
   signal?: AbortSignal;
 }
 
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const { method = 'GET', params, json, form, signal } = options;
+  const { method = 'GET', params, json, form, blob, signal } = options;
   const headers: Record<string, string> = { Accept: 'application/json' };
   let body: BodyInit | undefined;
   if (form) {
     body = form;
+  } else if (blob) {
+    headers['Content-Type'] = 'application/octet-stream';
+    body = blob;
   } else if (json !== undefined) {
     headers['Content-Type'] = 'application/json';
     body = JSON.stringify(json);
