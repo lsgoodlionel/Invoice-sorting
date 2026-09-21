@@ -52,6 +52,7 @@ CHANNEL_RELEASE="release"
 CHANNEL_MAIN="main"
 CHANNEL="${CHANNEL:-$CHANNEL_RELEASE}"
 VERSION="${VERSION:-}"
+OS_RELEASE_FILE="${OS_RELEASE_FILE:-/etc/os-release}"  # 可在测试中指向假文件
 ALLOW_MAIN_FALLBACK="${ALLOW_MAIN_FALLBACK:-true}"
 # owner/repo，用于拼接 Release 下载地址
 REPO_SLUG="$(printf '%s' "${REPO_URL%.git}" | sed -E 's#^.*github\.com[:/]##')"
@@ -204,12 +205,24 @@ check_source_settings() {
   [ -n "$REPO_SLUG" ] || die "无法从 REPO_URL 解析出 owner/repo（当前：${REPO_URL}）"
 }
 
+# 在子 shell 中读取 /etc/os-release 的某个字段。
+# 不能直接 source：它带有 NAME/VERSION/ID 等变量，其中 VERSION 会覆盖脚本自己的
+# 版本参数（Ubuntu 上是 "24.04.5 LTS (Noble Numbat)"），导致后续版本校验必然失败。
+os_release_field() {
+  (
+    # shellcheck disable=SC1091
+    . "$OS_RELEASE_FILE" >/dev/null 2>&1 || exit 0
+    printf '%s' "${!1:-}"
+  )
+}
+
 check_environment() {
   [ "$(id -u)" -eq 0 ] || die "请使用 root 运行（在命令前加 sudo）"
-  [ -r /etc/os-release ] || die "无法识别操作系统"
-  # shellcheck disable=SC1091
-  . /etc/os-release
-  [ "${ID:-}" = "ubuntu" ] || warn "本脚本针对 Ubuntu 22.04/24.04 编写，当前系统：${PRETTY_NAME:-未知}"
+  [ -r "$OS_RELEASE_FILE" ] || die "无法识别操作系统"
+  local os_id os_pretty
+  os_id="$(os_release_field ID)"
+  os_pretty="$(os_release_field PRETTY_NAME)"
+  [ "$os_id" = "ubuntu" ] || warn "本脚本针对 Ubuntu 22.04/24.04 编写，当前系统：${os_pretty:-未知}"
   if [ "$ENABLE_HTTPS" = "true" ] && { [ "$DOMAIN" = "_" ] || [ -z "$EMAIL" ]; }; then
     die "启用 HTTPS 需要同时设置 DOMAIN 与 EMAIL"
   fi
@@ -880,4 +893,7 @@ main() {
   print_summary
 }
 
-main "$@"
+# 供测试使用：置 1 时只定义函数，不执行安装流程
+if [ "${INSTALL_SH_SOURCE_ONLY:-0}" != "1" ]; then
+  main "$@"
+fi
