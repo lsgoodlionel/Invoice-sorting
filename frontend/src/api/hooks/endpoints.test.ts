@@ -20,7 +20,7 @@ function allRoutes() {
     'GET /api/batches', 'POST /api/batches', 'GET /api/batches/4', 'PATCH /api/batches/4', 'DELETE /api/batches/4',
     'POST /api/batches/4/items', 'POST /api/batches/4/export', 'POST /api/batches/4/sent', 'POST /api/batches/4/received', 'POST /api/batches/4/reopen', 'DELETE /api/exports/8',
     'GET /api/stats', 'GET /api/dashboard',
-    'GET /api/settings', 'PUT /api/settings', 'POST /api/backup',
+    'GET /api/settings', 'PUT /api/settings',
     'GET /api/categories', 'POST /api/categories', 'PATCH /api/categories/5', 'DELETE /api/categories/5',
     'GET /api/projects', 'POST /api/projects', 'PATCH /api/projects/6', 'DELETE /api/projects/6',
     'GET /api/checklist-rules', 'POST /api/checklist-rules', 'PATCH /api/checklist-rules/7', 'DELETE /api/checklist-rules/7',

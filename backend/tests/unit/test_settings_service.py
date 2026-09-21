@@ -1,16 +1,11 @@
-"""应用设置与数据库备份（T20）。"""
-
-import sqlite3
-from datetime import date
+"""应用设置（T20）。"""
 
 import pytest
 
 from invoice_sorting.common.errors import AppError
 from invoice_sorting.db.models import AppSetting
-from invoice_sorting.expenses.service import create_expense
 from invoice_sorting.settings import service as settings_service
 from invoice_sorting.settings.service import (
-    backup_database,
     get_app_settings,
     update_app_settings,
 )
@@ -44,23 +39,6 @@ def test_update_persists_values(session):
 def test_update_rejects_invalid(session, values):
     with pytest.raises(AppError):
         update_app_settings(session, **values)
-
-
-def test_backup_copies_database_and_keeps_latest_ten(app, session, settings, monkeypatch):
-    create_expense(session, settings, spent_on=date(2026, 9, 1), amount_cents=960, merchant="京东")
-    session.commit()
-    stamps = iter(f"20260917_1200{i:02d}" for i in range(12))
-    monkeypatch.setattr(settings_service, "_timestamp", lambda: next(stamps))
-
-    paths = [backup_database(settings, app.state.engine) for _ in range(12)]
-
-    remaining = sorted(settings.backup_dir.glob("invoice_*.db"))
-    assert len(remaining) == 10
-    assert paths[-1] in remaining and paths[0] not in remaining
-    with sqlite3.connect(paths[-1]) as conn:
-        assert conn.execute("select merchant, amount_cents from expense").fetchall() == [
-            ("京东", 960)
-        ]
 
 
 def test_region_settings_normalized(session):

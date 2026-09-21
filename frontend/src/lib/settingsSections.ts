@@ -48,7 +48,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   { key: 'security', label: '登录与安全', group: '成员与账号', isVisible: EVERYONE,
     description: '修改自己的登录密码。' },
   { key: 'backup', label: '备份与搬迁', group: '数据与维护', isVisible: ADMIN_ONLY,
-    description: '完整备份下载到本机、服务器上的数据库快照，以及从导出包导入。' },
+    description: '一键备份并下载完整包（服务器保留最近 10 份），以及从备份包导入。' },
   { key: 'diagnostics', label: '运行日志与诊断', group: '数据与维护', isVisible: ADMIN_ONLY,
     description: '服务出问题时生成脱敏诊断包交给开发。' },
 ];

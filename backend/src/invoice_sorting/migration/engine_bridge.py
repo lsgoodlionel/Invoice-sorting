@@ -2,8 +2,8 @@
 
 合并导入引擎在 `migration.merge`（另行实现），约定签名：
 
-    preview_import(runtime, control_factory, archive_path, slug, mode) -> ImportReport
-    run_import(runtime, control_factory, archive_path, slug, mode) -> ImportReport
+    preview_import(runtime, control_factory, archive_path, slug, mode, include_settings=…)
+    run_import(runtime, control_factory, archive_path, slug, mode, include_settings=…)
 
 ImportReport 须能转成字典（`to_dict()`、dataclass 或 dict 均可）。
 
@@ -65,12 +65,15 @@ def preview(
     archive_path: Path,
     slug: str,
     mode: str,
+    include_settings: bool = True,
 ) -> dict[str, Any]:
     """只读预览：将新增、跳过与冲突各多少。不写入任何数据。"""
     engine = load_engine()
     if engine is None:
         return _manifest_summary(read_manifest(archive_path), mode)
-    report = engine.preview_import(runtime, control_factory, archive_path, slug, mode)
+    report = engine.preview_import(
+        runtime, control_factory, archive_path, slug, mode, include_settings=include_settings
+    )
     return _normalized(report, mode, is_dry_run=True)
 
 
@@ -80,6 +83,7 @@ def execute(
     archive_path: Path,
     slug: str,
     mode: str,
+    include_settings: bool = True,
 ) -> dict[str, Any]:
     """真正导入。覆盖模式走整套替换（含覆盖前备份），合并模式交给引擎。"""
     if mode == MODE_REPLACE:
@@ -87,7 +91,9 @@ def execute(
     engine = load_engine()
     if engine is None:
         raise AppError(MSG_MERGE_UNAVAILABLE)
-    report = engine.run_import(runtime, control_factory, archive_path, slug, mode)
+    report = engine.run_import(
+        runtime, control_factory, archive_path, slug, mode, include_settings=include_settings
+    )
     return _normalized(report, mode, is_dry_run=False)
 
 
@@ -149,6 +155,7 @@ def _section(key: str, label: str, added: int) -> dict[str, Any]:
         "key": key,
         "label": label,
         "added": added,
+        "updated": 0,
         "skipped": 0,
         "conflicts": 0,
         "failed": 0,

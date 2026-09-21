@@ -41,7 +41,7 @@ export interface LedgerImport {
   /** 上传或导入进行中（离开页面需提示） */
   isBusy: boolean;
   begin: (file: File) => void;
-  confirm: (mode: ImportMode, confirmName: string) => void;
+  confirm: (mode: ImportMode, confirmName: string, includeSettings: boolean) => void;
   /** 取消上传或放弃导入：中止请求并让服务端清理暂存 */
   cancel: () => void;
   /** 导入结束后回到初始状态 */
@@ -102,9 +102,12 @@ export function useLedgerImport(): LedgerImport {
       });
   };
 
-  const confirm = (mode: ImportMode, confirmName: string) => {
+  const confirm = (mode: ImportMode, confirmName: string, includeSettings: boolean) => {
     if (!state.uploadId) return;
-    const input = mode === 'replace' ? { mode, confirm_name: confirmName } : { mode };
+    const input =
+      mode === 'replace'
+        ? { mode, confirm_name: confirmName, include_settings: true }
+        : { mode, include_settings: includeSettings };
     confirmMutation.mutate(
       { uploadId: state.uploadId, input },
       {

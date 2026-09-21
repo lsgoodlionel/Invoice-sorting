@@ -18,10 +18,12 @@ from invoice_sorting.migration.merge_index import LocalIndex, load_local_index
 from invoice_sorting.migration.merge_plan_batches import BatchPlan, plan_batches
 from invoice_sorting.migration.merge_plan_catalog import CatalogPlan, plan_catalog
 from invoice_sorting.migration.merge_plan_records import RecordPlan, plan_records
+from invoice_sorting.migration.merge_settings import SettingsPlan, plan_settings
 from invoice_sorting.migration.package import PackageInfo
 from invoice_sorting.migration.report import (
     ACTION_ADDED,
     ACTION_SKIPPED,
+    SECTION_SETTINGS,
     SECTION_USERS,
     SectionBuilder,
     SectionReport,
@@ -52,27 +54,39 @@ class MergePlan:
     batches: BatchPlan
     records: RecordPlan
     users: UserPlan
+    settings: SettingsPlan
     sections: Mapping[str, SectionReport]
 
     @property
     def is_empty(self) -> bool:
         """没有任何需要写入的内容（例如重复导入同一个包）。"""
-        return sum(section.added for section in self.sections.values()) == 0
+        return sum(item.added + item.updated for item in self.sections.values()) == 0
 
 
-def build_plan(pkg: Session, db: Session, info: PackageInfo) -> MergePlan:
+def build_plan(
+    pkg: Session, db: Session, info: PackageInfo, include_settings: bool = True
+) -> MergePlan:
+    """include_settings=True 时系统设置、分类外观、凭证规则、分类记忆以导入包为准。"""
     index = load_local_index(db)
-    catalog, sections = plan_catalog(pkg, index)
+    catalog, sections = plan_catalog(pkg, index, override=include_settings)
+    settings, settings_report = plan_settings(pkg, db, include_settings)
     batches, batch_sections = plan_batches(pkg, index, info.source_label)
     records, record_sections = plan_records(pkg, index, info.entries_by_path())
     actors = records.actor_ids | batches.actor_ids | _event_actors(pkg, records.expenses)
     users, user_report = plan_users(pkg, index, actors)
-    all_sections = {**sections, **batch_sections, **record_sections, SECTION_USERS: user_report}
+    all_sections = {
+        **sections,
+        **batch_sections,
+        **record_sections,
+        SECTION_USERS: user_report,
+        SECTION_SETTINGS: settings_report,
+    }
     return MergePlan(
         catalog=catalog,
         batches=batches,
         records=records,
         users=users,
+        settings=settings,
         sections=freeze_sections(all_sections),
     )
 

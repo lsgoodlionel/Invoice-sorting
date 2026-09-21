@@ -3,9 +3,13 @@
 from collections.abc import Callable, Mapping
 from typing import Any
 
-from invoice_sorting.migration.report import ACTION_CONFLICT, ACTION_FAILED
+from invoice_sorting.migration.report import ACTION_CONFLICT, ACTION_FAILED, ACTION_UPDATED
 
-ACTION_TAGS: Mapping[str, str] = {ACTION_CONFLICT: "冲突", ACTION_FAILED: "失败"}
+ACTION_TAGS: Mapping[str, str] = {
+    ACTION_UPDATED: "以包为准",
+    ACTION_CONFLICT: "冲突",
+    ACTION_FAILED: "失败",
+}
 HEADER_MERGE = "合并{what}：账套 {slug} ← 来源「{source}」"
 HEADER_REPLACE = "覆盖{what}：账套 {slug} ← 来源「{source}」"
 
@@ -18,7 +22,7 @@ def _counts(item: Mapping[str, Any], is_replace: bool) -> str:
     if is_replace:
         return f"包内 {item['added']}"
     return (
-        f"新增 {item['added']}、跳过 {item['skipped']}、"
+        f"新增 {item['added']}、更新 {item.get('updated', 0)}、跳过 {item['skipped']}、"
         f"冲突 {item['conflicts']}、失败 {item['failed']}"
     )
 

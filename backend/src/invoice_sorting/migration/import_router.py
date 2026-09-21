@@ -10,7 +10,7 @@
 from typing import Any, Literal
 
 from fastapi import APIRouter, BackgroundTasks, Request
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictBool
 from starlette.concurrency import run_in_threadpool
 
 from invoice_sorting.auth.deps import ADMIN_ONLY
@@ -56,9 +56,12 @@ class CreateImportRequest(BaseModel):
 
 
 class CompleteImportRequest(BaseModel):
+    """include_settings：合并时同时导入系统设置（以包为准）；覆盖模式本就整体替换，忽略此项。"""
+
     model_config = ConfigDict(extra="forbid")
 
     mode: ImportMode = "merge"
+    include_settings: StrictBool = True
 
 
 class ConfirmImportRequest(BaseModel):
@@ -66,6 +69,7 @@ class ConfirmImportRequest(BaseModel):
 
     mode: ImportMode = "merge"
     confirm_name: str = Field(default="", max_length=CONFIRM_NAME_MAX)
+    include_settings: StrictBool = True
 
 
 def session_payload(app: Any, session: UploadSession) -> dict[str, Any]:
@@ -79,6 +83,7 @@ def session_payload(app: Any, session: UploadSession) -> dict[str, Any]:
         "target_name": tenant_name(app, session.slug),
         "status": session.status,
         "mode": session.mode,
+        "include_settings": session.include_settings,
         "message": session.error or STATUS_MESSAGES.get(session.status, ""),
         "error": session.error,
         "progress": None,
@@ -121,8 +126,10 @@ async def _put_part(request: Request, slug: str, upload_id: str, index: int) -> 
 def _complete(
     request: Request, slug: str, upload_id: str, body: CompleteImportRequest | None
 ) -> dict[str, Any]:
-    mode = (body or CompleteImportRequest()).mode
-    session = service.complete_upload(request.app, slug, upload_id, mode)
+    options = body or CompleteImportRequest()
+    session = service.complete_upload(
+        request.app, slug, upload_id, options.mode, options.include_settings
+    )
     return ok(_preview_payload(request.app, session))
 
 
@@ -134,7 +141,9 @@ def _confirm(
     body: ConfirmImportRequest,
 ) -> dict[str, Any]:
     app = request.app
-    session = service.confirm_import(app, slug, upload_id, body.mode, body.confirm_name)
+    session = service.confirm_import(
+        app, slug, upload_id, body.mode, body.confirm_name, body.include_settings
+    )
     tasks.add_task(service.run_confirmed, app, slug, upload_id)
     return ok(session_payload(app, session))
 

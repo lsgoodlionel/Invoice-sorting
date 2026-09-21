@@ -4,7 +4,8 @@ import zipfile
 
 import pytest
 
-from invoice_sorting.migration.jobs import KEEP_EXPORTS, exports_dir
+from invoice_sorting.migration.jobs import exports_dir
+from invoice_sorting.migration.ledger_backups import KEEP_LEDGER_BACKUPS, ledger_backups_dir
 from tests.auth_helpers import create_user, logged_in_client
 from tests.migration_helpers import seed_tenant_data
 from tests.tenancy_helpers import host_headers, open_tenants
@@ -42,7 +43,8 @@ def test_tenant_export_returns_finished_job(seeded_client, settings):
 
     assert job["slug"] == "default"
     assert job["file_count"] > 0 and job["size"] > 0
-    assert (exports_dir(settings) / job["file"]).is_file()
+    assert (ledger_backups_dir(settings) / job["file"]).is_file()
+    assert not (exports_dir(settings) / job["file"]).exists()
 
 
 def test_tenant_export_status_and_download(seeded_client):
@@ -72,17 +74,19 @@ def test_downloaded_package_is_importable(seeded_client, tmp_path):
 def test_export_without_packages(seeded_client, settings):
     job = _finished(seeded_client, _start(seeded_client, json={"include_packages": False}))
 
-    with zipfile.ZipFile(exports_dir(settings) / job["file"]) as package:
+    with zipfile.ZipFile(ledger_backups_dir(settings) / job["file"]) as package:
         names = package.namelist()
 
     assert not any(name.startswith("data/资料包/") for name in names)
 
 
 def test_old_packages_are_pruned(seeded_client, settings):
-    for _ in range(KEEP_EXPORTS + 2):
+    for _ in range(KEEP_LEDGER_BACKUPS + 2):
         _start(seeded_client)
 
-    assert len(list(exports_dir(settings).glob("*.zip"))) == KEEP_EXPORTS
+    directory = ledger_backups_dir(settings)
+    assert len(list(directory.glob("*.zip"))) == KEEP_LEDGER_BACKUPS
+    assert len(list(directory.glob("*.zip.json"))) == KEEP_LEDGER_BACKUPS
 
 
 def test_unknown_job_is_not_found(seeded_client):

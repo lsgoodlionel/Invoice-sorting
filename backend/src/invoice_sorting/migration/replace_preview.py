@@ -21,6 +21,7 @@ from invoice_sorting.tenancy.runtime import TenantRuntime
 MODE_REPLACE = "replace"
 WARN_REPLACE = "覆盖模式会用包内数据整体替换账套 {slug} 的现有数据，执行前自动整包备份到“备份/”"
 WARN_NEW_TENANT = "账套 {slug} 尚不存在，将按包内数据新建"
+NOTE_SETTINGS = "覆盖模式整体替换数据库：系统设置、分类、凭证规则与分类记忆一并以导入包为准"
 
 
 def _sections(info: PackageInfo) -> dict[str, dict[str, object]]:
@@ -68,8 +69,9 @@ def preview_replace(
         "is_dry_run": True,
         "source": info.summary(),
         "target_exists": exists,
+        "include_settings": True,
         "items": list(_sections(info).values()),
-        "warnings": [warning.format(slug=normalized)],
+        "warnings": [warning.format(slug=normalized), NOTE_SETTINGS],
     }
 
 
@@ -84,8 +86,9 @@ def replace_report(archive_path: Path, slug: str, result: ImportResult) -> dict[
         "source": info.summary(),
         "target_exists": backup != "",
         "backup_file": backup,
+        "include_settings": True,
         "items": list(_sections(info).values()),
-        "warnings": [],
+        "warnings": [NOTE_SETTINGS],
     }
 
 

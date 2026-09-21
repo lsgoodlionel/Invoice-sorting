@@ -61,6 +61,7 @@ class UploadSession:
     created_at: datetime
     status: str = STATUS_UPLOADING
     mode: str = ""
+    include_settings: bool = True  # 合并时是否同时导入系统设置（旧会话文件没有此键，按默认）
     error: str = ""
     report: dict[str, Any] | None = None
 

@@ -1,6 +1,7 @@
 """合并导入报告：预览（dry-run）与真正导入返回同一结构。
 
-每一部分（记录、附件、分类……）给出新增/跳过/冲突/失败的精确数量，
+每一部分（记录、附件、分类……）给出新增/更新/跳过/冲突/失败的精确数量，
+“更新”只在勾选“同时导入系统设置”时出现：以导入包为准改写本地已有的设置、分类、规则或记忆；
 明细最多列 MAX_ITEMS 条（超出部分只计数），报告不含任何令牌、密码或本机绝对路径。
 """
 
@@ -12,7 +13,8 @@ ACTION_ADDED = "added"
 ACTION_SKIPPED = "skipped"
 ACTION_CONFLICT = "conflict"
 ACTION_FAILED = "failed"
-ACTIONS = (ACTION_ADDED, ACTION_SKIPPED, ACTION_CONFLICT, ACTION_FAILED)
+ACTION_UPDATED = "updated"
+ACTIONS = (ACTION_ADDED, ACTION_UPDATED, ACTION_SKIPPED, ACTION_CONFLICT, ACTION_FAILED)
 
 MAX_ITEMS = 500
 
@@ -25,6 +27,7 @@ SECTION_BATCHES = "batches"
 SECTION_EXPORTS = "exports"
 SECTION_RECORDS = "records"
 SECTION_ATTACHMENTS = "attachments"
+SECTION_SETTINGS = "settings"
 
 # 报告中各部分的顺序与中文名
 SECTION_LABELS: Mapping[str, str] = MappingProxyType(
@@ -38,6 +41,7 @@ SECTION_LABELS: Mapping[str, str] = MappingProxyType(
         SECTION_RULES: "凭证规则",
         SECTION_MEMORIES: "分类记忆",
         SECTION_USERS: "用户",
+        SECTION_SETTINGS: "系统设置",
     }
 )
 
@@ -57,6 +61,7 @@ class ReportItem:
 @dataclass(frozen=True)
 class SectionReport:
     added: int = 0
+    updated: int = 0
     skipped: int = 0
     conflicts: int = 0
     failed: int = 0
@@ -68,6 +73,7 @@ class SectionReport:
             "key": key,
             "label": SECTION_LABELS.get(key, key),
             "added": self.added,
+            "updated": self.updated,
             "skipped": self.skipped,
             "conflicts": self.conflicts,
             "failed": self.failed,
@@ -93,6 +99,7 @@ class SectionBuilder:
         total = sum(self._counts.values())
         return SectionReport(
             added=self._counts[ACTION_ADDED],
+            updated=self._counts[ACTION_UPDATED],
             skipped=self._counts[ACTION_SKIPPED],
             conflicts=self._counts[ACTION_CONFLICT],
             failed=self._counts[ACTION_FAILED],
@@ -111,6 +118,7 @@ class MergeReport:
     sections: Mapping[str, SectionReport]
     warnings: tuple[str, ...] = field(default=())
     mode: str = "merge"
+    include_settings: bool = True
 
     def section(self, key: str) -> SectionReport:
         return self.sections.get(key, SectionReport())
@@ -119,13 +127,19 @@ class MergeReport:
     def total_added(self) -> int:
         return sum(section.added for section in self.sections.values())
 
+    @property
+    def total_updated(self) -> int:
+        return sum(section.updated for section in self.sections.values())
+
     def to_dict(self) -> dict[str, object]:
         return {
             "mode": self.mode,
             "slug": self.slug,
             "is_dry_run": self.is_dry_run,
             "source": dict(self.package),
+            "include_settings": self.include_settings,
             "total_added": self.total_added,
+            "total_updated": self.total_updated,
             "items": [self.section(key).to_dict(key) for key in SECTION_LABELS],
             "warnings": list(self.warnings),
         }

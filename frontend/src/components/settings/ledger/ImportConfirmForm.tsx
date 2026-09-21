@@ -1,4 +1,4 @@
-import { Alert, Button, Group, Radio, Stack, Text, TextInput } from '@mantine/core';
+import { Alert, Button, Checkbox, Group, Radio, Stack, Text, TextInput } from '@mantine/core';
 import { IconAlertTriangle } from '@tabler/icons-react';
 import { useState } from 'react';
 import type { ImportMode } from '../../../api/hooks/backup';
@@ -8,7 +8,7 @@ interface ImportConfirmFormProps {
   targetName: string;
   isSubmitting: boolean;
   error: string;
-  onConfirm: (mode: ImportMode, confirmName: string) => void;
+  onConfirm: (mode: ImportMode, confirmName: string, includeSettings: boolean) => void;
   onCancel: () => void;
 }
 
@@ -28,10 +28,27 @@ function ReplaceWarning({ targetName, value, onChange }: { targetName: string; v
   );
 }
 
-/** 选择导入模式并确认；覆盖模式必须输入正确账套名才能提交。 */
+const SETTINGS_HINT = '报销抬头、地区、分类关键词、凭证规则、分类记忆以导入包为准';
+const REPLACE_SETTINGS_NOTE = '覆盖会整体替换，自然包含系统设置。';
+
+/** 合并时可选是否同时导入系统设置；覆盖时只作说明。 */
+function SettingsChoice({ isReplace, checked, onChange }: { isReplace: boolean; checked: boolean; onChange: (checked: boolean) => void }) {
+  if (isReplace) return <Text size="xs" c="dimmed">{REPLACE_SETTINGS_NOTE}</Text>;
+  return (
+    <Checkbox
+      label="同时导入系统设置"
+      description={`${SETTINGS_HINT}；不勾选则保留本账本现有设置`}
+      checked={checked}
+      onChange={(event) => onChange(event.currentTarget.checked)}
+    />
+  );
+}
+
+/** 选择导入模式并确认；覆盖模式必须输入正确账套名才能提交。主按钮留给「备份并下载」，这里用描边按钮。 */
 export function ImportConfirmForm({ targetName, isSubmitting, error, onConfirm, onCancel }: ImportConfirmFormProps) {
   const [mode, setMode] = useState<ImportMode>('merge');
   const [confirmName, setConfirmName] = useState('');
+  const [shouldIncludeSettings, setShouldIncludeSettings] = useState(true);
   const isReplace = mode === 'replace';
   const canSubmit = !isReplace || confirmName.trim() === targetName;
 
@@ -43,15 +60,16 @@ export function ImportConfirmForm({ targetName, isSubmitting, error, onConfirm, 
           <Radio value="replace" color="red" label="清空后整套覆盖" description="以搬迁包为准，替换当前账本的全部内容" />
         </Stack>
       </Radio.Group>
+      <SettingsChoice isReplace={isReplace} checked={shouldIncludeSettings} onChange={setShouldIncludeSettings} />
       {isReplace && <ReplaceWarning targetName={targetName} value={confirmName} onChange={setConfirmName} />}
       {error && <Alert color="red" variant="light">{error}</Alert>}
       <Group gap="sm">
         <Button
-          variant="filled"
+          variant="outline"
           color={isReplace ? 'red' : undefined}
           disabled={!canSubmit}
           loading={isSubmitting}
-          onClick={() => onConfirm(mode, confirmName.trim())}
+          onClick={() => onConfirm(mode, confirmName.trim(), isReplace || shouldIncludeSettings)}
         >
           {isReplace ? '清空并覆盖' : '确认导入'}
         </Button>

@@ -26,8 +26,9 @@ WRITE_EXEMPT_PREFIXES = (
     PLATFORM_LICENSE_PREFIX + "/",
     "/api/diagnostics/",
 )
-# 账套搬迁导出（POST 登记任务）与备份同属"把数据带走"，只读时必须仍可用；导入不在此列
-WRITE_EXEMPT_PATHS = frozenset({"/api/backup", "/api/backup/export-tenant"})
+# 备份即导出（POST 登记任务）属于"把数据带走"，只读时必须仍可用；导入不在此列。
+# 备份包列表与下载是 GET，本来就不受写守卫约束。
+WRITE_EXEMPT_PATHS = frozenset({"/api/backup/export-tenant"})
 WRITE_EXEMPT_SUFFIXES = ("/export",)
 WRITE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 API_PREFIX = "/api"

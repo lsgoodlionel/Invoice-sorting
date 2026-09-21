@@ -45,7 +45,7 @@ def test_merge_is_the_default_mode(env, settings, capsys):
 
     printed = capsys.readouterr().out
     assert f"合并导入完成：账套 {TARGET}" in printed
-    assert f"记录：新增 {EXPECTED_RECORDS}、跳过 1、冲突 0、失败 0" in printed
+    assert f"记录：新增 {EXPECTED_RECORDS}、更新 0、跳过 1、冲突 0、失败 0" in printed
     assert _records(settings) == EXPECTED_RECORDS
 
 

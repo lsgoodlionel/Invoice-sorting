@@ -16,6 +16,7 @@ const REPORT_LABELS: Readonly<Record<string, string>> = {
   memories: '分类记忆',
   batches: '批次',
   exports: '资料包生成记录',
+  settings: '系统设置',
 };
 
 export const reportLabel = (item: Pick<ImportReportItem, 'key' | 'label'>): string =>

@@ -108,3 +108,25 @@ describe('邮件页签', () => {
     expect(screen.queryByTestId('mail-not-configured')).not.toBeInTheDocument();
   });
 });
+
+describe('平台备份页签', () => {
+  test('平台管理员能看到「平台备份」页签，打开后列出平台数据库备份', async () => {
+    const user = userEvent.setup();
+    setup({
+      'GET /api/platform/backups': { items: [{ name: 'control_20260921_101500.db', size: 1024 * 1024, created_at: '2026-09-21T10:15:00+08:00' }] },
+    });
+
+    await user.click(await screen.findByRole('tab', { name: '平台备份' }));
+
+    expect(await screen.findByLabelText('下载 control_20260921_101500.db'))
+      .toHaveAttribute('href', '/api/platform/backups/control_20260921_101500.db');
+  });
+
+  test('租户管理员看不到「平台备份」，也不会请求平台备份列表', async () => {
+    const { calls } = setup({ 'GET /api/platform/overview': () => ({ status: 403, error: '需要平台管理员权限' }) });
+
+    await waitFor(() => expect(screen.queryByRole('heading', { name: '平台运营' })).not.toBeInTheDocument());
+    expect(screen.queryByRole('tab', { name: '平台备份' })).not.toBeInTheDocument();
+    expect(calls.some((call) => call.url.startsWith('/api/platform/backups'))).toBe(false);
+  });
+});

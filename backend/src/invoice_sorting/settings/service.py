@@ -1,13 +1,9 @@
-"""应用设置（键值表）与数据库在线备份。"""
+"""应用设置（键值表）。"""
 
 import json
-import logging
-import sqlite3
-from datetime import datetime
-from pathlib import Path
 from typing import Any
 
-from sqlalchemy import Engine, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from invoice_sorting.checklist.regions import (
@@ -16,15 +12,10 @@ from invoice_sorting.checklist.regions import (
     RegionPolicy,
 )
 from invoice_sorting.common.errors import AppError
-from invoice_sorting.config import Settings
-from invoice_sorting.db.models import TZ, AppSetting
-
-logger = logging.getLogger(__name__)
+from invoice_sorting.db.models import AppSetting
 
 DEFAULT_OVERDUE_DAYS = 30
 MAX_OVERDUE_DAYS = 3650
-BACKUP_KEEP = 10
-BACKUP_PREFIX = "invoice_"
 REGION_MAX = 20
 PLATFORM_MAX = 50
 MAX_PLATFORMS = 50
@@ -117,36 +108,3 @@ def region_policy(session: Session) -> RegionPolicy:
 def buyer_identity(session: Session) -> tuple[str, str]:
     values = get_app_settings(session)
     return values["buyer_name"], values["buyer_tax_id"]
-
-
-def _timestamp() -> str:
-    return datetime.now(TZ).strftime("%Y%m%d_%H%M%S")
-
-
-def _prune_backups(backup_dir: Path) -> None:
-    backups = sorted(backup_dir.glob(f"{BACKUP_PREFIX}*.db"), key=lambda path: path.name)
-    for old in backups[:-BACKUP_KEEP]:
-        old.unlink()
-        logger.info("已清理旧备份 %s", old.name)
-
-
-def backup_database(settings: Settings, engine: Engine) -> Path:
-    """用 SQLite 在线备份 API 复制数据库到备份目录，保留最近 10 份。"""
-    settings.backup_dir.mkdir(parents=True, exist_ok=True)
-    stamp = _timestamp()
-    target = settings.backup_dir / f"{BACKUP_PREFIX}{stamp}.db"
-    index = 2
-    while target.exists():
-        target = settings.backup_dir / f"{BACKUP_PREFIX}{stamp}_{index}.db"
-        index += 1
-    raw = engine.raw_connection()
-    try:
-        destination = sqlite3.connect(target)
-        try:
-            raw.driver_connection.backup(destination)
-        finally:
-            destination.close()
-    finally:
-        raw.close()
-    _prune_backups(settings.backup_dir)
-    return target

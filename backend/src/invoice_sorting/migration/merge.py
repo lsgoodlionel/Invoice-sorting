@@ -6,7 +6,9 @@
   失败时回滚事务、删除本次新建的文件、撤销控制库里的占位账号。
 - `preview_import` / `run_import`：与网页导入的接缝约定（engine_bridge）一致，按 mode 分派，
   返回可直接序列化的字典；覆盖模式沿用 restore 的整套替换（备份 + 暂存切换）。
-- 不执行包内任何设置覆盖：地区、买方抬头、认证、授权与日志配置一概不动（本来就不读 app_setting）。
+- 系统设置（include_settings，默认 True）：为 True 时白名单内的用户设置（报销抬头、税号、地区、
+  已带明细平台、超期天数）以及分类外观、凭证规则、分类记忆以导入包为准（merge_settings、
+  merge_plan_overrides）；为 False 时冲突一律保留本地。内部版本标记、认证、授权与日志配置永不导入。
 """
 
 import logging
@@ -19,6 +21,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from invoice_sorting.common.errors import AppError
 from invoice_sorting.config import DEFAULT_TENANT_NAME, DEFAULT_TENANT_SLUG
 from invoice_sorting.control.repository import ensure_tenant, find_tenant, require_slug
+from invoice_sorting.expenses.recompute import refresh_open_expenses
 from invoice_sorting.migration.merge_apply import (
     IdMaps,
     apply_batches,
@@ -29,6 +32,7 @@ from invoice_sorting.migration.merge_apply import (
 from invoice_sorting.migration.merge_apply_records import ApplyContext, apply_records
 from invoice_sorting.migration.merge_files import FileTracker, file_source, staging_dir
 from invoice_sorting.migration.merge_plan import MergePlan, build_plan
+from invoice_sorting.migration.merge_settings import apply_settings
 from invoice_sorting.migration.package import (
     ImportRejectedError,
     PackageInfo,
@@ -52,6 +56,10 @@ WARN_LEGACY = "旧版搬迁包（没有 ledger.json），按整账套包处理�
 WARN_NOTHING = "包里的内容在本地都已存在，没有需要导入的数据"
 WARN_CONFLICTS = "有 {count} 项与本地冲突，已保留本地内容，请查看明细"
 WARN_FAILED = "有 {count} 项无法导入（包内数据缺失或不一致），请查看明细"
+WARN_UPDATED = "有 {count} 项本地设置将以导入包为准被改写，请查看明细"
+WARN_RECOMPUTE_FAILED = (
+    "地区设置已导入，但重算未完成记录的凭证清单时出错；可稍后在设置页重新保存地区"
+)
 MODE_MERGE = "merge"
 MODES = (MODE_MERGE, MODE_REPLACE)
 MSG_MODE_INVALID = "导入模式只能是 merge（合并）或 replace（覆盖），收到：{mode}"
@@ -71,20 +79,28 @@ class _Target:
 
 
 def preview_merge(
-    runtime: TenantRuntime, control_factory: sessionmaker[Session], archive_path: Path, slug: str
+    runtime: TenantRuntime,
+    control_factory: sessionmaker[Session],
+    archive_path: Path,
+    slug: str,
+    include_settings: bool = True,
 ) -> MergeReport:
-    """预览：将新增/跳过/冲突的数量与明细。不写入业务库、控制库与文件库。"""
+    """预览：将新增/更新/跳过/冲突的数量与明细。不写入业务库、控制库与文件库。"""
     info = inspect_package(archive_path)
     target = _resolve_target(runtime, control_factory, slug)
     with staging_dir(target.context.settings) as staging:
         with open_package_db(info, staging) as package_factory:
             with package_factory() as pkg, target.context.session_factory() as db:
-                plan = build_plan(pkg, db, info)
-    return _report(target.context.slug, info, plan, is_dry_run=True)
+                plan = build_plan(pkg, db, info, include_settings)
+    return _report(target.context.slug, info, plan, is_dry_run=True, include=include_settings)
 
 
 def merge_import(
-    runtime: TenantRuntime, control_factory: sessionmaker[Session], archive_path: Path, slug: str
+    runtime: TenantRuntime,
+    control_factory: sessionmaker[Session],
+    archive_path: Path,
+    slug: str,
+    include_settings: bool = True,
 ) -> MergeReport:
     """执行合并导入，返回与预览同结构的结果报告。"""
     info = inspect_package(archive_path)
@@ -93,12 +109,32 @@ def merge_import(
     settings = target.context.settings
     with staging_dir(settings) as staging, open_package_db(info, staging) as package_factory:
         with package_factory() as pkg, target.context.session_factory() as db:
-            plan = build_plan(pkg, db, info)
+            plan = build_plan(pkg, db, info, include_settings)
             if not plan.is_empty:
                 _execute(db, pkg, control_factory, tenant_id, target.context, info, plan, staging)
-    report = _report(target.context.slug, info, plan, is_dry_run=False)
+    extra = _recompute_if_needed(target.context, plan)
+    report = _report(
+        target.context.slug, info, plan, is_dry_run=False, include=include_settings, extra=extra
+    )
     logger.info("账套 %s 合并导入完成：新增 %s 项", target.context.slug, report.total_added)
     return report
+
+
+def _recompute_if_needed(context: TenantContext, plan: MergePlan) -> tuple[str, ...]:
+    """地区设置变了：导入提交后另起事务重算未完成记录的清单（与设置页保存地区的效果一致）。
+
+    合并本身已经成功提交，重算失败不回滚导入，只提示用户。
+    """
+    if not plan.settings.changes_region:
+        return ()
+    try:
+        with context.session_factory() as db:
+            refresh_open_expenses(db, context.settings)
+            db.commit()
+    except Exception:  # noqa: BLE001 - 重算是附带动作，失败只记日志并提示
+        logger.exception("账套 %s 导入地区设置后重算清单失败", context.slug)
+        return (WARN_RECOMPUTE_FAILED,)
+    return ()
 
 
 def _resolve_target(
@@ -169,6 +205,7 @@ def _apply(  # noqa: PLR0913
     ctx = ApplyContext(db, pkg, context.settings, files, tracker, maps)
     apply_records(ctx, plan.records)
     apply_exports(db, pkg, plan.batches, maps)
+    apply_settings(db, plan.settings)
     return created
 
 
@@ -195,15 +232,25 @@ def _raise_failure(error: BaseException) -> NoReturn:
     raise ImportFailedError(MSG_FAILED.format(reason=reason)) from error
 
 
-def _report(slug: str, info: PackageInfo, plan: MergePlan, is_dry_run: bool) -> MergeReport:
+def _report(  # noqa: PLR0913 - 报告需要的全部上下文
+    slug: str,
+    info: PackageInfo,
+    plan: MergePlan,
+    is_dry_run: bool,
+    include: bool,
+    extra: tuple[str, ...] = (),
+) -> MergeReport:
     sections = plan.sections.values()
     conflicts = sum(section.conflicts for section in sections)
     failed = sum(section.failed for section in sections)
+    updated = sum(section.updated for section in sections)
     warnings = [
         *([WARN_LEGACY] if info.is_legacy else []),
         *([WARN_NOTHING] if plan.is_empty else []),
+        *([WARN_UPDATED.format(count=updated)] if updated and is_dry_run else []),
         *([WARN_CONFLICTS.format(count=conflicts)] if conflicts else []),
         *([WARN_FAILED.format(count=failed)] if failed else []),
+        *extra,
     ]
     return MergeReport(
         slug=slug,
@@ -211,6 +258,7 @@ def _report(slug: str, info: PackageInfo, plan: MergePlan, is_dry_run: bool) -> 
         package=info.summary(),
         sections=plan.sections,
         warnings=tuple(warnings),
+        include_settings=include,
     )
 
 
@@ -226,11 +274,16 @@ def preview_import(
     archive_path: Path,
     slug: str,
     mode: str = MODE_MERGE,
+    include_settings: bool = True,
 ) -> dict[str, object]:
-    """预览（dry-run），不写入任何数据。返回 MergeReport.to_dict() 同形状的字典。"""
+    """预览（dry-run），不写入任何数据。返回 MergeReport.to_dict() 同形状的字典。
+
+    覆盖模式整体替换数据库，系统设置天然以包为准，include_settings 对它不起作用。
+    """
     if _require_mode(mode) == MODE_REPLACE:
         return preview_replace(runtime, control_factory, archive_path, slug)
-    return preview_merge(runtime, control_factory, archive_path, slug).to_dict()
+    report = preview_merge(runtime, control_factory, archive_path, slug, include_settings)
+    return report.to_dict()
 
 
 def run_import(
@@ -239,8 +292,10 @@ def run_import(
     archive_path: Path,
     slug: str,
     mode: str = MODE_MERGE,
+    include_settings: bool = True,
 ) -> dict[str, object]:
     """执行导入。覆盖模式不再追问：调用方须已完成二次确认（网页输账套名、命令行 --overwrite）"""
     if _require_mode(mode) == MODE_REPLACE:
         return run_replace(runtime, control_factory, archive_path, slug)
-    return merge_import(runtime, control_factory, archive_path, slug).to_dict()
+    report = merge_import(runtime, control_factory, archive_path, slug, include_settings)
+    return report.to_dict()

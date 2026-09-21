@@ -56,12 +56,12 @@ def _expense_count(app) -> int:
 def _fake_engine(calls: list) -> SimpleNamespace:
     report = {"source": {"tenant": "虚构来源"}, "items": [{"key": "expenses", "added": 3}]}
 
-    def preview_import(runtime, control_factory, archive_path, slug, mode):
-        calls.append(("preview", slug, mode, archive_path.is_file()))
+    def preview_import(runtime, control_factory, archive_path, slug, mode, include_settings=True):
+        calls.append(("preview", slug, mode, archive_path.is_file(), include_settings))
         return report
 
-    def run_import(runtime, control_factory, archive_path, slug, mode):
-        calls.append(("run", slug, mode, archive_path.is_file()))
+    def run_import(runtime, control_factory, archive_path, slug, mode, include_settings=True):
+        calls.append(("run", slug, mode, archive_path.is_file(), include_settings))
         return {**report, "warnings": ["虚构提示"]}
 
     return SimpleNamespace(preview_import=preview_import, run_import=run_import)
@@ -126,11 +126,38 @@ def test_merge_uses_engine_preview_and_run(client, package, monkeypatch):
     confirmed = _confirm(client, upload_id, mode="merge")
     final = _status(client, upload_id)
 
-    assert calls == [("preview", "default", "merge", True), ("run", "default", "merge", True)]
+    assert calls == [
+        ("preview", "default", "merge", True, True),
+        ("run", "default", "merge", True, True),
+    ]
     assert confirmed.status_code == 200
     assert final["status"] == "done" and final["mode"] == "merge"
     assert final["report"]["items"] == [{"key": "expenses", "added": 3}]
     assert final["report"]["warnings"] == ["虚构提示"]
+
+
+def test_include_settings_flag_reaches_engine(client, package, monkeypatch):
+    calls: list = []
+    monkeypatch.setattr(engine, "load_engine", lambda: _fake_engine(calls))
+    upload_id = create_upload(client, package)["upload_id"]
+    upload_all(client, upload_id, package)
+
+    previewed = complete(client, upload_id, mode="merge", include_settings=False)
+    _confirm(client, upload_id, mode="merge", include_settings=False)
+    final = _status(client, upload_id)
+
+    assert previewed.json()["data"]["include_settings"] is False
+    assert [call[-1] for call in calls] == [False, False]
+    assert final["include_settings"] is False
+
+
+def test_include_settings_must_be_boolean(client, package):
+    upload_id = create_upload(client, package)["upload_id"]
+    upload_all(client, upload_id, package)
+
+    response = complete(client, upload_id, include_settings="yes")
+
+    assert response.status_code == 422
 
 
 def test_complete_can_repreview_in_another_mode(client, package, monkeypatch):
@@ -145,10 +172,10 @@ def test_complete_can_repreview_in_another_mode(client, package, monkeypatch):
 
 
 def test_engine_failure_marks_job_failed(client, package, monkeypatch):
-    def broken(*_args):
+    def broken(*_args, **_kwargs):
         raise RuntimeError("虚构故障")
 
-    fake = SimpleNamespace(preview_import=lambda *a: {"items": []}, run_import=broken)
+    fake = SimpleNamespace(preview_import=lambda *a, **k: {"items": []}, run_import=broken)
     monkeypatch.setattr(engine, "load_engine", lambda: fake)
     upload_id = uploaded(client, package)
 

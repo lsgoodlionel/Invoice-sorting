@@ -109,7 +109,8 @@ def test_readonly_keeps_backup_and_login_available(licensed_client, monkeypatch)
     install_verifier(monkeypatch, VerifyOutcome(is_rejected=True, error="授权密钥无效或已停用"))
     licensed_client.post("/api/license/recheck")
 
-    assert licensed_client.post("/api/backup").status_code == 200
+    assert licensed_client.post("/api/backup/export-tenant").status_code == 200
+    assert licensed_client.get("/api/backup/packages").status_code == 200
     assert licensed_client.post("/api/auth/login", json={"password": "x"}).status_code != 403
     assert licensed_client.get("/api/license/status").status_code == 200
 

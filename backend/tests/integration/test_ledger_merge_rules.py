@@ -53,8 +53,10 @@ def archive(source, tmp_path) -> Path:
     return export_source(source, tmp_path / "包.zip")
 
 
-def merge(app, path: Path, slug: str = TARGET):
-    return merge_import(app.state.tenants, app.state.control_session_factory, path, slug)
+def merge(app, path: Path, slug: str = TARGET, include_settings: bool = True):
+    return merge_import(
+        app.state.tenants, app.state.control_session_factory, path, slug, include_settings
+    )
 
 
 def accounts(app) -> list[tuple[str, bool, str]]:
@@ -164,7 +166,7 @@ def test_attachment_owned_by_different_local_record_is_a_conflict(source, archiv
     assert [row.amount_cents for row in rows] == [99999]
 
 
-def test_catalog_conflicts_keep_local_settings(source, archive):
+def test_catalog_conflicts_keep_local_when_settings_not_included(source, archive):
     target = open_target(source, TARGET)
     with target.session_factory() as db:
         category = Category(name=f" {CUSTOM_CATEGORY} ", keywords=["本地关键词"])
@@ -176,7 +178,7 @@ def test_catalog_conflicts_keep_local_settings(source, archive):
         db.commit()
         local_ids = (category.id, other.id)
 
-    report = merge(source, archive)
+    report = merge(source, archive, include_settings=False)
 
     with target.session_factory() as db:
         category = db.get(Category, local_ids[0])
@@ -293,10 +295,13 @@ def test_engine_adapter_returns_serializable_reports(source, archive):
 
     json.dumps([planned, replaced, done], ensure_ascii=False)
     assert planned["is_dry_run"] is True and done["is_dry_run"] is False
-    assert {item["key"] for item in planned["items"]} >= {"records", "attachments", "users"}
+    keys = {item["key"] for item in planned["items"]}
+    assert keys >= {"records", "attachments", "users", "settings"}
     assert set(planned["items"][0]) == {
-        "key", "label", "added", "skipped", "conflicts", "failed", "details", "truncated",
+        "key", "label", "added", "updated", "skipped", "conflicts", "failed",
+        "details", "truncated",
     }  # fmt: skip
+    assert planned["include_settings"] is True
     assert replaced["mode"] == "replace" and replaced["target_exists"] is True
     with pytest.raises(ImportRejectedError):
         engine.run_import(*args, "upsert")

@@ -7,6 +7,7 @@ from fastapi import APIRouter
 from invoice_sorting.common.errors import ok
 from invoice_sorting.control.deps import ControlSessionDep
 from invoice_sorting.control.platform_deps import PLATFORM_ADMIN_ONLY
+from invoice_sorting.platform_admin.backup_router import router as backup_router
 from invoice_sorting.platform_admin.license_router import router as license_router
 from invoice_sorting.platform_admin.member_router import router as member_router
 from invoice_sorting.platform_admin.plan_router import router as plan_router
@@ -23,5 +24,12 @@ def read_overview(control: ControlSessionDep) -> dict[str, Any]:
 
 
 router = APIRouter()
-for included in (overview_router, tenant_router, member_router, plan_router, license_router):
+for included in (
+    overview_router,
+    tenant_router,
+    member_router,
+    plan_router,
+    license_router,
+    backup_router,
+):
     router.include_router(included)

@@ -337,6 +337,11 @@ def _add_migration_commands(commands) -> None:  # noqa: ANN001 - argparse 的子
         action="store_true",
         help="replace 模式下覆盖已存在的账套（覆盖前自动备份）；单独使用等同 --mode replace",
     )
+    restore.add_argument(
+        "--no-settings",
+        action="store_true",
+        help="合并时不导入系统设置：报销抬头、地区、分类关键词、凭证规则、分类记忆冲突时保留本地",
+    )
 
 
 def run(argv: Sequence[str] | None = None) -> None:
@@ -355,7 +360,13 @@ def run(argv: Sequence[str] | None = None) -> None:
         return
     if args.command == "import-tenant":
         migration_cli.run_import(
-            Settings(), args.archive, args.slug, args.mode, args.dry_run, args.overwrite
+            Settings(),
+            args.archive,
+            args.slug,
+            args.mode,
+            args.dry_run,
+            args.overwrite,
+            include_settings=not args.no_settings,
         )
         return
     settings = Settings()

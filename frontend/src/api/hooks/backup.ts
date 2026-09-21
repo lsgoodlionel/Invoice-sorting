@@ -1,8 +1,9 @@
-// 账本搬迁（设置 → 账本搬迁）的全部接口。后端合并引擎与分片上传接口并行开发中，
+// 备份与搬迁（设置 → 备份与搬迁）的备份任务与导入接口；服务器保留的备份列表见 backupPackages.ts。
 // 字段形状以 docs/账本搬迁_设计.md 与本文件为准，对齐时只需改这里。
-import { useMutation, useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
 import { api, request } from '../client';
+import { queryKeys } from './keys';
 
 export type BackupJobStatus = 'running' | 'done' | 'failed';
 /** 导入会话状态：uploading → ready（已出预览）→ running → done/failed */
@@ -35,7 +36,8 @@ export type ImportMode = 'merge' | 'replace';
 
 /**
  * 报告按对象类别汇总。后端现有类别：records 记录、attachments 附件、users 用户、categories 分类、
- * projects 经费项目、rules 凭证规则、memories 分类记忆、batches 批次、exports 资料包生成记录。
+ * projects 经费项目、rules 凭证规则、memories 分类记忆、batches 批次、exports 资料包生成记录、
+ * settings 系统设置（明细 label 为设置项中文名，reason 形如「原值 → 新值」）。
  */
 export type ImportReportKey = string;
 
@@ -100,7 +102,12 @@ export interface ImportJob {
 export interface ImportConfirmInput {
   mode: ImportMode;
   confirm_name?: string;
+  /** 合并时是否以导入包的系统设置为准；覆盖模式整体替换，恒为 true */
+  include_settings: boolean;
 }
+
+/** 预览时总是把系统设置算进去，是否真正导入由确认时的 include_settings 决定。 */
+const COMPLETE_BODY = { include_settings: true };
 
 const importPath = (uploadId: string) => `/backup/imports/${encodeURIComponent(uploadId)}`;
 
@@ -113,7 +120,7 @@ export const backupApi = {
   uploadPart: (uploadId: string, index: number, blob: Blob, signal?: AbortSignal) =>
     request<unknown>(`${importPath(uploadId)}/parts/${index}`, { method: 'PUT', blob, signal }),
   completeImport: (uploadId: string, signal?: AbortSignal) =>
-    request<ImportPreview>(`${importPath(uploadId)}/complete`, { method: 'POST', signal }),
+    request<ImportPreview>(`${importPath(uploadId)}/complete`, { method: 'POST', json: COMPLETE_BODY, signal }),
   confirmImport: (uploadId: string, input: ImportConfirmInput) =>
     api.post<ImportJob>(`${importPath(uploadId)}/confirm`, input),
   importStatus: (uploadId: string) => api.get<ImportJob>(`${importPath(uploadId)}/status`),
@@ -131,7 +138,16 @@ export interface LedgerExport {
   error: unknown;
 }
 
-/** 导出账本：登记任务后轮询，任务结束自动停止；错误由界面就地显示，不弹全局提示。 */
+/** 备份完成后刷新「服务器上保留的备份」列表（同一任务只刷新一次）。 */
+function useRefreshPackagesWhenDone(job: LedgerExportJob | undefined): void {
+  const client = useQueryClient();
+  const doneJob = job?.status === 'done' ? job.job : null;
+  useEffect(() => {
+    if (doneJob) void client.invalidateQueries({ queryKey: queryKeys.backupPackages });
+  }, [client, doneJob]);
+}
+
+/** 一键备份：登记任务后轮询，任务结束自动停止并刷新服务器备份列表；错误由界面就地显示，不弹全局提示。 */
 export function useLedgerExport(): LedgerExport {
   const [jobId, setJobId] = useState<string | null>(null);
   const start = useMutation({
@@ -147,6 +163,7 @@ export function useLedgerExport(): LedgerExport {
     retry: false,
     meta: { silent: true },
   });
+  useRefreshPackagesWhenDone(status.data);
   const job = status.data ?? start.data ?? null;
   return {
     start: (includePackages) => {

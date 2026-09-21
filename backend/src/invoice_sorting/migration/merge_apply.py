@@ -92,7 +92,8 @@ def apply_users(
 def apply_catalog(
     db: Session, pkg: Session, plan: CatalogPlan
 ) -> tuple[Mapping[int, int], Mapping[int, int]]:
-    """新增分类与项目并返回完整映射；再按映射写入规则与分类记忆。"""
+    """新增分类与项目并返回完整映射；再按映射写入规则与分类记忆（以包为准时先改写本地）。"""
+    _apply_category_looks(db, plan)
     categories = dict(plan.categories)
     for package_id in plan.new_categories:
         row = pkg.get(Category, package_id)
@@ -113,9 +114,21 @@ def apply_catalog(
     return MappingProxyType(categories), MappingProxyType(projects)
 
 
+def _apply_category_looks(db: Session, plan: CatalogPlan) -> None:
+    for local_id, look in plan.category_updates.items():
+        row = db.get(Category, local_id)
+        row.color = look.color
+        row.keywords = list(look.keywords)
+        row.route_hint = look.route_hint
+    db.flush()
+
+
 def _apply_rules(
     db: Session, pkg: Session, plan: CatalogPlan, categories: Mapping[int, int]
 ) -> None:
+    for local_id in plan.replaced_rules:
+        db.delete(db.get(ChecklistRule, local_id))
+    db.flush()
     for package_id in plan.new_rules:
         row = pkg.get(ChecklistRule, package_id)
         values = copy_columns(row, frozenset({"id", "category_id", "condition"}))
@@ -140,6 +153,16 @@ def _apply_memories(
                 item_name=key, category_id=categories[row.category_id], updated_at=row.updated_at
             )
         )
+    _apply_memory_updates(db, pkg, plan, categories)
+
+
+def _apply_memory_updates(
+    db: Session, pkg: Session, plan: CatalogPlan, categories: Mapping[int, int]
+) -> None:
+    """以包为准：本地已有的同名记忆改指包内分类（对应到本地后的 id）。"""
+    for model, keys in ((MerchantMemory, plan.merchant_updates), (ItemMemory, plan.item_updates)):
+        for key in keys:
+            db.get(model, key).category_id = categories[pkg.get(model, key).category_id]
 
 
 def apply_batches(

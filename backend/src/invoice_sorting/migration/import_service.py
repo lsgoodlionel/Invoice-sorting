@@ -90,8 +90,10 @@ async def receive_part(
     return session
 
 
-def complete_upload(app: Any, slug: str, upload_id: str, mode: str) -> UploadSession:
-    """合并分片并校验整包，然后生成预览；已合并过的会话只重新预览（切换模式时用）。"""
+def complete_upload(
+    app: Any, slug: str, upload_id: str, mode: str, include_settings: bool = True
+) -> UploadSession:
+    """合并分片并校验整包，然后生成预览；已合并过的会话只重新预览（切换模式或设置选项时用）。"""
     store = store_of(app)
     session = store.require(slug, upload_id)
     if session.status not in (STATUS_UPLOADING, STATUS_READY):
@@ -99,8 +101,10 @@ def complete_upload(app: Any, slug: str, upload_id: str, mode: str) -> UploadSes
     with store.exclusive(session):
         if session.status == STATUS_UPLOADING:
             session = _assemble_and_verify(store, session)
-        report = engine_bridge.preview(*_engine_args(app, store, session), mode)
-        return store.update(session, mode=mode, report=report, error="")
+        report = engine_bridge.preview(*_engine_args(app, store, session), mode, include_settings)
+        return store.update(
+            session, mode=mode, include_settings=include_settings, report=report, error=""
+        )
 
 
 def _assemble_and_verify(store: UploadStore, session: UploadSession) -> UploadSession:
@@ -128,8 +132,13 @@ def missing_parts(store: UploadStore, session: UploadSession) -> tuple[int, ...]
     return tuple(index for index in range(session.part_count) if index not in received)
 
 
-def confirm_import(
-    app: Any, slug: str, upload_id: str, mode: str, confirm_name: str
+def confirm_import(  # noqa: PLR0913 - 与确认请求的字段一一对应
+    app: Any,
+    slug: str,
+    upload_id: str,
+    mode: str,
+    confirm_name: str,
+    include_settings: bool = True,
 ) -> UploadSession:
     """确认导入：校验状态与覆盖确认名后标记为 running，真正的导入由后台任务执行。"""
     store = store_of(app)
@@ -144,7 +153,9 @@ def confirm_import(
         session = store.require(slug, upload_id)  # 取锁后再读一次，防止重复确认
         if session.status != STATUS_READY:
             raise ConflictError(MSG_NOT_READY)
-        return store.update(session, status=STATUS_RUNNING, mode=mode, error="")
+        return store.update(
+            session, status=STATUS_RUNNING, mode=mode, include_settings=include_settings, error=""
+        )
 
 
 def _check_confirm_name(app: Any, slug: str, confirm_name: str) -> None:
@@ -158,7 +169,8 @@ def run_confirmed(app: Any, slug: str, upload_id: str) -> None:
     store = store_of(app)
     session = store.require(slug, upload_id)
     try:
-        report = engine_bridge.execute(*_engine_args(app, store, session), session.mode)
+        args = _engine_args(app, store, session)
+        report = engine_bridge.execute(*args, session.mode, session.include_settings)
     except Exception as error:  # noqa: BLE001 - 后台任务兜底，原因写进会话供界面展示
         logger.exception("账套 %s 网页导入 %s 失败", slug, upload_id)
         store.update(session, status=STATUS_FAILED, error=_failure_reason(error))

@@ -125,8 +125,10 @@ def import_command(  # noqa: PLR0913 - 与命令行参数一一对应
     mode: str | None = None,
     dry_run: bool = False,
     overwrite: bool = False,
+    include_settings: bool = True,
 ) -> None:
-    """导入搬迁包：默认合并到已有账套；--mode replace 整套替换；--dry-run 只预览。"""
+    """导入搬迁包：默认合并到已有账套（系统设置以包为准，--no-settings 则保留本地）；
+    --mode replace 整套替换；--dry-run 只预览。"""
     resolved = _resolve_mode(mode, overwrite)
     target = slug or DEFAULT_TENANT_SLUG
     path = Path(archive).expanduser()
@@ -134,11 +136,11 @@ def import_command(  # noqa: PLR0913 - 与命令行参数一一对应
     with _workspace(settings) as space:
         args = (space.runtime, space.control, path, target)
         if dry_run:
-            report = engine.preview_import(*args, resolved)
+            report = engine.preview_import(*args, resolved, include_settings=include_settings)
         elif resolved == MODE_REPLACE:
             report = _replace(space, path, target, overwrite)
         else:
-            report = engine.run_import(*args, resolved)
+            report = engine.run_import(*args, resolved, include_settings=include_settings)
     print_report(report)
 
 
@@ -157,11 +159,12 @@ def run_import(  # noqa: PLR0913 - 与命令行参数一一对应
     mode: str | None = None,
     dry_run: bool = False,
     overwrite: bool = False,
+    include_settings: bool = True,
 ) -> None:
     """退出码：0 成功；2 校验失败（包不合法、版本过新、目标不可用），未写入任何数据；
     1 导入失败（已回滚到导入前的状态）。"""
     try:
-        import_command(settings, archive, slug, mode, dry_run, overwrite)
+        import_command(settings, archive, slug, mode, dry_run, overwrite, include_settings)
     except ImportRejectedError as error:
         _fail(error.message, EXIT_INVALID)
     except AppError as error:

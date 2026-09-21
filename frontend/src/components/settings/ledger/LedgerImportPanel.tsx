@@ -10,7 +10,7 @@ import { ImportResultView } from './ImportResultView';
 import { PackageDropzone } from './PackageDropzone';
 import { useLedgerImport, type LedgerImport } from './useLedgerImport';
 
-const INTRO = '把其他账户、账套或服务器导出的搬迁包导入到当前账本。先上传并生成预览，确认后才会真正写入。';
+const INTRO = '把其他账户、账套或服务器备份得到的包导入到当前账本。先上传并生成预览，确认后才会真正写入。';
 const REJECT_MESSAGE = '只能导入 .zip 搬迁包';
 const DEFAULT_TARGET_NAME = '本账本';
 
@@ -69,7 +69,7 @@ export function LedgerImportPanel({ blockReason }: { blockReason: string | null 
       <Text size="sm" c="dimmed">{INTRO}</Text>
       {blockReason && (
         <Alert color="yellow" variant="light" icon={<IconLock size={16} />} title="暂不能导入">
-          {`${blockReason}（导出仍可使用）`}
+          {`${blockReason}（备份仍可使用）`}
         </Alert>
       )}
       {state.phase === 'idle' ? (

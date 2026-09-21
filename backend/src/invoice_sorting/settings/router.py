@@ -1,24 +1,24 @@
-"""设置 API：应用设置、备份，并挂载分类/项目/清单规则子路由。"""
+"""设置 API：应用设置，并挂载分类/项目/清单规则子路由。
+
+备份与导出是同一件事，统一走 `/api/backup/export-tenant`（见 migration.router）。
+"""
 
 from typing import Any
 
 from fastapi import APIRouter
-from fastapi.responses import FileResponse
 
 from invoice_sorting.auth.deps import ADMIN_ONLY
 from invoice_sorting.common.errors import ok
 from invoice_sorting.config import Settings
 from invoice_sorting.expenses.recompute import refresh_open_expenses
 from invoice_sorting.settings import catalog, rules
-from invoice_sorting.settings.deps import ConfigDep, EngineDep, SessionDep
+from invoice_sorting.settings.deps import ConfigDep, SessionDep
 from invoice_sorting.settings.schemas import AppSettingsUpdate, present_values
 from invoice_sorting.settings.service import (
     REGION_KEYS,
-    backup_database,
     get_app_settings,
     update_app_settings,
 )
-from invoice_sorting.settings.snapshots import list_snapshots, resolve_snapshot
 
 router = APIRouter(prefix="/api", tags=["设置"])
 router.include_router(catalog.router)
@@ -44,21 +44,3 @@ def write_settings(
         refresh_open_expenses(session, config)
     session.commit()
     return ok(_with_paths(values, config))
-
-
-@router.post("/backup", dependencies=ADMIN_ONLY)
-def backup(config: ConfigDep, engine: EngineDep) -> dict[str, Any]:
-    path = backup_database(config, engine)
-    return ok({"file": str(path), "name": path.name})
-
-
-@router.get("/backup/snapshots", dependencies=ADMIN_ONLY)
-def get_snapshots(config: ConfigDep) -> dict[str, Any]:
-    """数据库快照列表（手动快照与升级前自动备份），最新的在前。"""
-    return ok([snapshot.as_dict() for snapshot in list_snapshots(config)])
-
-
-@router.get("/backup/snapshots/{name}", dependencies=ADMIN_ONLY)
-def download_snapshot(name: str, config: ConfigDep) -> FileResponse:
-    path = resolve_snapshot(config, name)
-    return FileResponse(path, media_type="application/octet-stream", filename=path.name)

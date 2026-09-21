@@ -65,7 +65,12 @@ def test_readonly_tenant_can_still_export_and_backup(saas_app, saas_client):
     headers = host_headers("alpha")
 
     assert saas_client.get(STATS_EXPORT, headers=headers).status_code == 200
-    assert saas_client.post("/api/backup", headers=headers).status_code == 200
+    exported = saas_client.post("/api/backup/export-tenant", headers=headers)
+    assert exported.status_code == 200
+    packages = saas_client.get("/api/backup/packages", headers=headers).json()["data"]
+    assert len(packages) == 1
+    download = saas_client.get(f"/api/backup/packages/{packages[0]['name']}", headers=headers)
+    assert download.status_code == 200
 
 
 def test_quota_endpoint_explains_why_it_is_readonly(saas_app, saas_client):

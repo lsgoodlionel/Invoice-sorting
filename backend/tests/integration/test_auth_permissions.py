@@ -6,7 +6,8 @@ from tests.auth_helpers import create_user, logged_in_client
 
 ADMIN_ENDPOINTS = [
     ("put", "/api/settings", {"overdue_days": 30}),
-    ("post", "/api/backup", None),
+    ("post", "/api/backup/export-tenant", None),
+    ("get", "/api/backup/packages", None),
     ("post", "/api/categories", {"name": "新分类"}),
     ("patch", "/api/categories/1", {"name": "改名"}),
     ("delete", "/api/categories/1", None),
@@ -61,7 +62,8 @@ def test_member_can_use_business_endpoints(member):
 def test_admin_allowed_on_admin_endpoints(admin_client):
     assert admin_client.put("/api/settings", json={"overdue_days": 30}).status_code == 200
     assert admin_client.post("/api/categories", json={"name": "新分类"}).status_code == 200
-    assert admin_client.post("/api/backup").status_code == 200
+    assert admin_client.post("/api/backup/export-tenant").status_code == 200
+    assert admin_client.get("/api/backup/packages").status_code == 200
 
 
 def test_auth_disabled_allows_admin_endpoints_and_null_users(client):

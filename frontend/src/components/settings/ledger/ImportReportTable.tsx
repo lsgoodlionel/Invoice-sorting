@@ -50,7 +50,7 @@ export function ImportReportTable({ items, variant }: ImportReportTableProps) {
     });
 
   return (
-    <Table className="ledger-table">
+    <Table className="ledger-table" aria-label="导入明细">
       <Table.Thead>
         <Table.Tr>
           <Table.Th>类别</Table.Th>

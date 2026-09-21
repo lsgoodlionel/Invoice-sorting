@@ -2,6 +2,7 @@ import { Alert, Badge, Loader, Stack, Tabs, Title } from '@mantine/core';
 import { useState } from 'react';
 import { Navigate } from 'react-router';
 import { usePendingApplicationCount } from '../api/hooks/platformSignup';
+import { PlatformBackupManager } from '../components/platform/backup/PlatformBackupManager';
 import { LicenseManager } from '../components/platform/LicenseManager';
 import { MailSettingsManager } from '../components/platform/mail/MailSettingsManager';
 import { PlanManager } from '../components/platform/PlanManager';
@@ -11,7 +12,7 @@ import { PlatformOverviewStrip } from '../components/platform/PlatformOverviewSt
 import { TenantManager } from '../components/platform/TenantManager';
 import { usePlatformAccess } from '../components/platform/usePlatformAccess';
 
-const INTRO = '开通与维护账套、套餐与私有化授权，审批注册申请，配置通知邮件。这里的操作会影响所有客户，请谨慎。';
+const INTRO = '开通与维护账套、套餐与私有化授权，审批注册申请，配置通知邮件，备份平台数据库。这里的操作会影响所有客户，请谨慎。';
 const DEFAULT_TAB = 'tenants';
 const MAIL_TAB = 'mail';
 
@@ -44,6 +45,7 @@ export function PlatformPage() {
           <ApplicationsTab />
           <Tabs.Tab value="referrals">推荐</Tabs.Tab>
           <Tabs.Tab value={MAIL_TAB}>邮件</Tabs.Tab>
+          <Tabs.Tab value="backups">平台备份</Tabs.Tab>
         </Tabs.List>
         <Tabs.Panel value="tenants" pt="md"><TenantManager /></Tabs.Panel>
         <Tabs.Panel value="plans" pt="md"><PlanManager /></Tabs.Panel>
@@ -51,6 +53,7 @@ export function PlatformPage() {
         <Tabs.Panel value="applications" pt="md"><ApplicationManager onOpenMail={() => setTab(MAIL_TAB)} /></Tabs.Panel>
         <Tabs.Panel value="referrals" pt="md"><ReferralManager /></Tabs.Panel>
         <Tabs.Panel value={MAIL_TAB} pt="md"><MailSettingsManager /></Tabs.Panel>
+        <Tabs.Panel value="backups" pt="md"><PlatformBackupManager /></Tabs.Panel>
       </Tabs>
     </Stack>
   );

@@ -32,6 +32,8 @@ from invoice_sorting.db.models import (
 
 ExpenseKey = tuple[int, date, str]
 RuleKey = tuple[int | None, str, str]
+RulePosition = tuple[int | None, str]  # (分类 id，通用规则为 None；附件类型)
+RuleContent = tuple[str, str, str]  # (条件的规范化文本, 要求级别, 提示)
 Owner = tuple[int, int | None]  # (附件 id, 所属记录 id；待归属为 None)
 
 
@@ -48,6 +50,20 @@ def rule_key(category_id: int | None, kind: str, condition: object) -> RuleKey:
     """规则内容键：分类 + 附件类型 + 条件（条件按键排序序列化，保证比较稳定）。"""
     canonical = json.dumps(condition or {}, ensure_ascii=False, sort_keys=True)
     return (category_id, kind, canonical)
+
+
+def rule_content(condition: object, level: str, hint: str) -> RuleContent:
+    canonical = json.dumps(condition or {}, ensure_ascii=False, sort_keys=True)
+    return (canonical, level or "", hint or "")
+
+
+@dataclass(frozen=True)
+class CategoryLook:
+    """分类的外观与办理说明（“同时导入系统设置”时按包内覆盖的三项）。"""
+
+    color: str
+    keywords: tuple[str, ...]
+    route_hint: str
 
 
 def naive(moment: datetime | None) -> datetime | None:
@@ -75,6 +91,8 @@ class LocalIndex:
     category_keywords: Mapping[int, frozenset[str]]
     projects_by_name: Mapping[str, int]
     rules: Mapping[RuleKey, tuple[str, str]]  # → (level, hint)
+    category_looks: Mapping[int, CategoryLook]
+    rule_positions: Mapping[RulePosition, tuple[tuple[int, RuleContent], ...]]  # → ((id, 内容), …)
     merchant_memories: Mapping[str, int]
     item_memories: Mapping[str, int]
     batches: tuple[LocalBatch, ...]
@@ -84,7 +102,13 @@ class LocalIndex:
 def load_local_index(db: Session) -> LocalIndex:
     by_sha, by_invoice = _attachment_owners(db)
     keys, bare = _expense_keys(db, {owner for _, owner in by_sha.values() if owner})
-    categories = list(db.execute(select(Category.id, Category.name, Category.keywords)))
+    categories = list(
+        db.execute(
+            select(
+                Category.id, Category.name, Category.keywords, Category.color, Category.route_hint
+            )
+        )
+    )
     return LocalIndex(
         attachment_by_sha=by_sha,
         attachment_by_invoice=by_invoice,
@@ -93,10 +117,15 @@ def load_local_index(db: Session) -> LocalIndex:
         users_by_name={
             name.lower(): uid for uid, name in db.execute(select(User.id, User.username))
         },
-        categories_by_name=_first_by_name((cid, name) for cid, name, _ in categories),
-        category_keywords={cid: frozenset(_keywords(words)) for cid, _, words in categories},
+        categories_by_name=_first_by_name((row[0], row[1]) for row in categories),
+        category_keywords={row[0]: frozenset(_keywords(row[2])) for row in categories},
         projects_by_name=_first_by_name(db.execute(select(Project.id, Project.name))),
         rules=_rules(db),
+        category_looks={
+            cid: CategoryLook(color or "", tuple(_keywords(words)), hint or "")
+            for cid, _, words, color, hint in categories
+        },
+        rule_positions=_rule_positions(db),
         merchant_memories=_pairs(db, MerchantMemory.seller_name, MerchantMemory.category_id),
         item_memories=_pairs(db, ItemMemory.item_name, ItemMemory.category_id),
         batches=tuple(
@@ -174,3 +203,22 @@ def _rules(db: Session) -> dict[RuleKey, tuple[str, str]]:
         )
     )
     return {rule_key(cid, kind, cond): (level, hint) for cid, kind, cond, level, hint in rows}
+
+
+def _rule_positions(db: Session) -> dict[RulePosition, tuple[tuple[int, RuleContent], ...]]:
+    """按（分类，附件类型）分组的本地规则，组内按 id 排序。"""
+    rows = db.execute(
+        select(
+            ChecklistRule.id,
+            ChecklistRule.category_id,
+            ChecklistRule.attachment_kind,
+            ChecklistRule.condition,
+            ChecklistRule.level,
+            ChecklistRule.hint,
+        ).order_by(ChecklistRule.id)
+    )
+    grouped: dict[RulePosition, tuple[tuple[int, RuleContent], ...]] = {}
+    for rule_id, cid, kind, cond, level, hint in rows:
+        position = (cid, kind)
+        grouped[position] = (*grouped.get(position, ()), (rule_id, rule_content(cond, level, hint)))
+    return grouped

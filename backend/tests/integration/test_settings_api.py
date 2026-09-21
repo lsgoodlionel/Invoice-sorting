@@ -1,6 +1,4 @@
-"""设置、分类、经费项目、清单规则、备份 API。"""
-
-from pathlib import Path
+"""设置、分类、经费项目、清单规则 API。"""
 
 import pytest
 
@@ -154,8 +152,8 @@ def test_checklist_rule_unknown_category(client):
     assert response.status_code == 404
 
 
-def test_backup_endpoint_creates_file(client, settings):
-    result = data(client.post("/api/backup"))
-    path = Path(result["file"])
-    assert path.is_file()
-    assert path.parent == settings.backup_dir
+def test_database_snapshot_endpoints_are_removed(client):
+    """数据库快照已并入账本备份（备份即导出），旧接口不再存在。"""
+    assert client.post("/api/backup").status_code in (404, 405)
+    assert client.get("/api/backup/snapshots").status_code == 404
+    assert client.get("/api/backup/snapshots/invoice_20260101_000000.db").status_code == 404
