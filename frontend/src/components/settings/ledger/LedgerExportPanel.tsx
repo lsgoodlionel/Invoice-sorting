@@ -30,7 +30,6 @@ export function LedgerExportPanel() {
 
   return (
     <Stack gap="xs">
-      <Text size="sm" fw={600}>导出</Text>
       <Text size="sm" c="dimmed">{INTRO}</Text>
       <Group gap="md">
         <Button

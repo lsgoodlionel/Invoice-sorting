@@ -41,6 +41,7 @@ describe('SettingsPage 分区导航', () => {
     expect(await sectionTitle('基本')).toBeInTheDocument();
     expect(await screen.findByRole('button', { name: '保存设置' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '新增分类' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '立即备份' })).not.toBeInTheDocument();
   });
 
   test('点击导航切换分区', async () => {
@@ -68,7 +69,7 @@ describe('SettingsPage 分区导航', () => {
     renderWithProviders(<SettingsPage />, { route: '/settings' });
 
     await sectionTitle('基本');
-    for (const name of ['基本', '分类', '经费项目', '凭证清单规则', '分类整理', '用户管理', '登录与安全', '账本搬迁', '运行日志与诊断']) {
+    for (const name of ['基本', '分类', '经费项目', '凭证清单规则', '分类整理', '用户管理', '登录与安全', '备份与搬迁', '运行日志与诊断']) {
       expect(navButton(name)).toBeInTheDocument();
     }
   });
@@ -82,7 +83,7 @@ describe('SettingsPage permissions', () => {
     expect(await screen.findByDisplayValue('某大学')).toBeDisabled();
     expect(screen.getByText('仅管理员可修改')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '保存设置' })).not.toBeInTheDocument();
-    for (const name of ['用户管理', '分类整理', '账本搬迁', '运行日志与诊断']) {
+    for (const name of ['用户管理', '分类整理', '备份与搬迁', '运行日志与诊断']) {
       expect(navButton(name)).not.toBeInTheDocument();
     }
     expect(calls.some((c) => c.url === '/api/users')).toBe(false);

@@ -65,7 +65,7 @@ export function LedgerImportPanel({ blockReason }: { blockReason: string | null 
 
   return (
     <Stack gap="xs">
-      <Text size="sm" fw={600}>导入</Text>
+      <Text fw={600}>导入</Text>
       <Text size="sm" c="dimmed">{INTRO}</Text>
       {blockReason && (
         <Alert color="yellow" variant="light" icon={<IconLock size={16} />} title="暂不能导入">

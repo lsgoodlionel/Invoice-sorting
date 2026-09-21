@@ -17,6 +17,11 @@ describe('settingsSections', () => {
     expect(resolveSection('projects', sections).key).toBe('projects');
   });
 
+  test('旧地址 ?section=ledger 指向改名后的「备份与搬迁」', () => {
+    const sections = visibleSections({ isAdmin: true, canRefer: false });
+    expect(resolveSection('ledger', sections).key).toBe('backup');
+  });
+
   test('按组归并且保持顺序', () => {
     const groups = groupSections(visibleSections({ isAdmin: true, canRefer: true }));
     expect(groups.map((g) => g.name)).toEqual(['账本', '成员与账号', '数据与维护']);

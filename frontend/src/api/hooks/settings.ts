@@ -15,7 +15,6 @@ import { queryKeys } from './keys';
 export const settingsApi = {
   get: () => api.get<Settings>('/settings'),
   update: (patch: SettingsPatch) => api.put<Settings>('/settings', patch),
-  backup: () => api.post<{ file: string }>('/backup'),
   categories: () => api.get<Category[]>('/categories'),
   createCategory: (input: CategoryInput) => api.post<Category>('/categories', input),
   updateCategory: (id: number, patch: Partial<CategoryInput>) => api.patch<Category>(`/categories/${id}`, patch),
@@ -48,7 +47,6 @@ function useConfigMutation<TVars, TResult>(key: QueryKey, fn: (vars: TVars) => P
 }
 
 export const useUpdateSettings = () => useConfigMutation(queryKeys.settings, settingsApi.update);
-export const useBackup = () => useMutation({ mutationFn: settingsApi.backup });
 
 export const useSaveCategory = () =>
   useConfigMutation(queryKeys.categories, ({ id, input }: { id: number | null; input: CategoryInput }) =>

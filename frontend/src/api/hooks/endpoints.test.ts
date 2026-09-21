@@ -114,7 +114,6 @@ describe('endpoint functions follow the contract', () => {
     await dashboardApi.get();
     await settingsApi.get();
     await settingsApi.update({ overdue_days: 20 });
-    await settingsApi.backup();
     await settingsApi.categories();
     await settingsApi.createCategory({ name: 'c' });
     await settingsApi.updateCategory(5, { name: 'c2' });
@@ -129,7 +128,7 @@ describe('endpoint functions follow the contract', () => {
     await settingsApi.removeRule(7);
     expect(calls[0].url).toBe('/api/stats?start=2026-01-01&end=2026-12-31&date_basis=spent&group_by=month');
     expect(statsApi.exportUrl(query)).toBe('/api/stats/export?start=2026-01-01&end=2026-12-31&date_basis=spent&group_by=month');
-    expect(calls).toHaveLength(17);
+    expect(calls).toHaveLength(16);
     expect(calls.every((call) => call.url.startsWith('/api/'))).toBe(true);
   });
 });

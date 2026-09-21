@@ -45,6 +45,7 @@ function routes(extra: Routes = {}) {
   return mockFetch({
     'GET /api/auth/status': SAAS_AUTHENTICATED,
     'GET /api/license/status': LICENSE_OK,
+    'GET /api/backup/snapshots': [],
     'GET /api/quota': QUOTA_OK,
     'POST /api/backup/imports': { upload_id: 'up-1', part_size: 10 },
     'PUT /api/backup/imports/up-1/parts/0': null,

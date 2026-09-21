@@ -1,7 +1,7 @@
 import { Button, Group, NumberInput, SimpleGrid, Stack, Text, TextInput } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { useEffect, useState } from 'react';
-import { useBackup, useSettings, useUpdateSettings } from '../../api/hooks/settings';
+import { useSettings, useUpdateSettings } from '../../api/hooks/settings';
 import type { Settings, SettingsPatch } from '../../api/types';
 import { DEFAULT_LOCAL_REGION } from '../../lib/region';
 import { RegionSettingsFields } from './RegionSettingsFields';
@@ -43,19 +43,6 @@ function toPayload(form: SettingsForm): SettingsPatch {
   };
 }
 
-function BackupButton() {
-  const backup = useBackup();
-  return (
-    <Button
-      variant="outline"
-      loading={backup.isPending}
-      onClick={() => backup.mutate(undefined, { onSuccess: (r) => notifications.show({ color: 'ink', title: '备份完成', message: r.file }) })}
-    >
-      立即备份
-    </Button>
-  );
-}
-
 /** readOnly：非管理员只读（输入框禁用，隐藏保存与备份）。 */
 export function GeneralSettings({ readOnly = false }: { readOnly?: boolean }) {
   const { data } = useSettings();
@@ -93,10 +80,7 @@ export function GeneralSettings({ readOnly = false }: { readOnly?: boolean }) {
             <Text size="xs" c="dimmed">收件箱：<span className="path-text">{data?.inbox_dir ?? '—'}</span>（可把发票直接放进该文件夹，程序会自动导入）</Text>
           </Stack>
           {!readOnly && (
-            <Group gap="xs">
-              <BackupButton />
-              <Button variant="filled" onClick={save} loading={update.isPending}>保存设置</Button>
-            </Group>
+            <Button variant="filled" onClick={save} loading={update.isPending}>保存设置</Button>
           )}
         </Group>
       </Stack>

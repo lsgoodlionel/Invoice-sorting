@@ -15,6 +15,7 @@ export const queryKeys = {
   stats: (query: StatsQuery) => ['stats', query] as const,
   dashboard: ['dashboard'] as const,
   settings: ['settings'] as const,
+  backupSnapshots: ['backup', 'snapshots'] as const,
   categories: ['categories'] as const,
   projects: ['projects'] as const,
   checklistRules: ['checklist-rules'] as const,

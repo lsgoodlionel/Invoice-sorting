@@ -17,7 +17,7 @@ import {
 import { useConfirmImport } from './imports';
 import { queryKeys } from './keys';
 import {
-  useArchiveCategory, useBackup, useCategories, useChecklistRules, useDeactivateProject, useProjects,
+  useArchiveCategory, useCategories, useChecklistRules, useDeactivateProject, useProjects,
   useRemoveRule, useSaveCategory, useSaveProject, useSaveRule, useSettings, useUpdateSettings,
 } from './settings';
 import { useStats } from './stats';
@@ -122,7 +122,7 @@ describe('mutation hooks', () => {
     const { calls } = mockFetch({
       'POST /api/batches': { id: 3 }, 'PATCH /api/batches/3': {}, 'DELETE /api/batches/3': null,
       'POST /api/batches/3/items': {}, 'POST /api/batches/3/export': {}, 'POST /api/batches/3/sent': {},
-      'POST /api/batches/3/received': {}, 'PUT /api/settings': {}, 'POST /api/backup': { file: 'b.zip' },
+      'POST /api/batches/3/received': {}, 'PUT /api/settings': {},
       'POST /api/categories': {}, 'PATCH /api/categories/1': {}, 'DELETE /api/categories/1': null,
       'POST /api/projects': {}, 'PATCH /api/projects/1': {}, 'DELETE /api/projects/1': null,
       'POST /api/checklist-rules': {}, 'PATCH /api/checklist-rules/1': {}, 'DELETE /api/checklist-rules/1': null,
@@ -132,7 +132,7 @@ describe('mutation hooks', () => {
       () => ({
         create: useCreateBatch(), update: useUpdateBatch(3), remove: useDeleteBatch(), items: useBatchItems(),
         exportZip: useExportBatch(3), sent: useMarkBatchSent(3), received: useMarkBatchReceived(3),
-        settings: useUpdateSettings(), backup: useBackup(), saveCategory: useSaveCategory(), archive: useArchiveCategory(),
+        settings: useUpdateSettings(), saveCategory: useSaveCategory(), archive: useArchiveCategory(),
         saveProject: useSaveProject(), deactivate: useDeactivateProject(), saveRule: useSaveRule(), removeRule: useRemoveRule(),
       }),
       { wrapper },
@@ -148,7 +148,6 @@ describe('mutation hooks', () => {
       await r.received.mutateAsync({ received_on: '2026-09-02' });
       await r.remove.mutateAsync(3);
       await r.settings.mutateAsync({ overdue_days: 10 });
-      expect(await r.backup.mutateAsync()).toEqual({ file: 'b.zip' });
       await r.saveCategory.mutateAsync({ id: null, input: { name: 'c' } });
       await r.saveCategory.mutateAsync({ id: 1, input: { name: 'c' } });
       await r.archive.mutateAsync(1);
@@ -159,6 +158,6 @@ describe('mutation hooks', () => {
       await r.saveRule.mutateAsync({ id: 1, input: rule });
       await r.removeRule.mutateAsync(1);
     });
-    expect(calls).toHaveLength(18);
+    expect(calls).toHaveLength(17);
   });
 });

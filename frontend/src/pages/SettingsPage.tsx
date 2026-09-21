@@ -34,7 +34,7 @@ function renderSection(key: SettingsSectionKey, isReadOnly: boolean): ReactNode 
     case 'users': return <UserManager />;
     case 'referral': return <ReferralSection />;
     case 'security': return <SecuritySettings />;
-    case 'ledger': return <LedgerTransferSection />;
+    case 'backup': return <LedgerTransferSection />;
     case 'diagnostics': return <DiagnosticsSection />;
   }
 }

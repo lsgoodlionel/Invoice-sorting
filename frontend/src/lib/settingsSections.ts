@@ -9,7 +9,7 @@ export type SettingsSectionKey =
   | 'users'
   | 'referral'
   | 'security'
-  | 'ledger'
+  | 'backup'
   | 'diagnostics';
 
 export interface SettingsAccess {
@@ -32,7 +32,7 @@ const ADMIN_ONLY = (access: SettingsAccess) => access.isAdmin;
 
 export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
   { key: 'general', label: '基本', group: '账本', isAdminEditable: true, isVisible: EVERYONE,
-    description: '报销抬头、本地地区、提醒天数与数据目录。' },
+    description: '报销抬头、本地地区、提醒天数与数据目录。备份在「数据与维护 → 备份与搬迁」。' },
   { key: 'categories', label: '分类', group: '账本', isAdminEditable: true, isVisible: EVERYONE,
     description: '支出分类与自动归类的关键词。' },
   { key: 'projects', label: '经费项目', group: '账本', isVisible: EVERYONE,
@@ -47,8 +47,8 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
     description: '分享你的推荐链接，好友注册后获得独立账本。' },
   { key: 'security', label: '登录与安全', group: '成员与账号', isVisible: EVERYONE,
     description: '修改自己的登录密码。' },
-  { key: 'ledger', label: '账本搬迁', group: '数据与维护', isVisible: ADMIN_ONLY,
-    description: '整本导出，或从导出包合并、覆盖导入。' },
+  { key: 'backup', label: '备份与搬迁', group: '数据与维护', isVisible: ADMIN_ONLY,
+    description: '完整备份下载到本机、服务器上的数据库快照，以及从导出包导入。' },
   { key: 'diagnostics', label: '运行日志与诊断', group: '数据与维护', isVisible: ADMIN_ONLY,
     description: '服务出问题时生成脱敏诊断包交给开发。' },
 ];
@@ -57,9 +57,13 @@ export function visibleSections(access: SettingsAccess): SettingsSectionDef[] {
   return SETTINGS_SECTIONS.filter((section) => section.isVisible(access));
 }
 
+/** 改名前的旧分区地址，继续指向新分区（书签与已分享的链接不失效）。 */
+const SECTION_ALIASES: Readonly<Record<string, SettingsSectionKey>> = { ledger: 'backup' };
+
 /** 地址栏里的分区不存在或无权查看时，回到第一个可见分区。 */
 export function resolveSection(requested: string | null, sections: readonly SettingsSectionDef[]): SettingsSectionDef {
-  return sections.find((section) => section.key === requested) ?? sections[0];
+  const key = requested ? (SECTION_ALIASES[requested] ?? requested) : null;
+  return sections.find((section) => section.key === key) ?? sections[0];
 }
 
 export interface SettingsGroup {
