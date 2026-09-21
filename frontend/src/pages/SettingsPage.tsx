@@ -1,12 +1,14 @@
 import { Divider, Group, Stack, Text, Title } from '@mantine/core';
 import { IconLock } from '@tabler/icons-react';
 import type { ReactNode } from 'react';
+import { useAuthStatus } from '../api/hooks/auth';
 import { useCurrentUser } from '../components/auth/CurrentUserContext';
 import { CategoryManager } from '../components/settings/CategoryManager';
 import { DiagnosticsSection } from '../components/settings/DiagnosticsSection';
 import { GeneralSettings } from '../components/settings/GeneralSettings';
 import { LedgerTransferSection } from '../components/settings/ledger/LedgerTransferSection';
 import { ProjectManager } from '../components/settings/ProjectManager';
+import { ReferralSection } from '../components/settings/referral/ReferralSection';
 import { ReclassifySection } from '../components/settings/ReclassifySection';
 import { RuleManager } from '../components/settings/RuleManager';
 import { SecuritySettings } from '../components/settings/SecuritySettings';
@@ -27,10 +29,15 @@ function Section({ label, isReadOnly = false, children }: { label: string; isRea
   );
 }
 
-/** 系统设置（基本、分类、凭证清单规则、备份、账本搬迁）仅管理员可改；经费项目与登录安全所有人可用。 */
+/**
+ * 系统设置（基本、分类、凭证清单规则、备份、账本搬迁）仅管理员可改；经费项目与登录安全所有人可用。
+ * 推荐好友只在多账套（SaaS）部署、且已登录时出现。
+ */
 export function SettingsPage() {
-  const { isAdmin } = useCurrentUser();
+  const { isAdmin, user } = useCurrentUser();
+  const { data: status } = useAuthStatus();
   const isReadOnly = !isAdmin;
+  const canRefer = Boolean(status?.multi_tenant && status.auth_enabled && user);
   return (
     <Stack gap="xl" className="page">
       <Title order={1} className="page-title">设置</Title>
@@ -42,6 +49,7 @@ export function SettingsPage() {
       {isAdmin && <Section label="用户管理"><UserManager /></Section>}
       {isAdmin && <Section label="账本搬迁"><LedgerTransferSection /></Section>}
       {isAdmin && <Section label="运行日志与诊断"><DiagnosticsSection /></Section>}
+      {canRefer && <Section label="推荐好友"><ReferralSection /></Section>}
       <Section label="登录与安全"><SecuritySettings /></Section>
     </Stack>
   );

@@ -4,6 +4,7 @@ import { AUTHENTICATED, SAAS_AUTHENTICATED } from '../test/authStatus';
 import { mockFetch } from '../test/fetchMock';
 import { OVERVIEW, makeTenantPage } from '../test/platformFixtures';
 import { ADMIN_CONTEXT, renderWithProviders } from '../test/render';
+import { makeApplication, makeApplicationPage } from '../test/signupFixtures';
 import { PlatformPage } from './PlatformPage';
 
 type Routes = Record<string, unknown>;
@@ -16,6 +17,7 @@ function setup(routes: Routes, currentUser = ADMIN_CONTEXT) {
     'GET /api/platform/overview': OVERVIEW,
     'GET /api/platform/tenants': makeTenantPage([]),
     'GET /api/platform/plans': [],
+    'GET /api/platform/applications': makeApplicationPage([]),
     ...routes,
   });
   renderWithProviders(<PlatformPage />, { currentUser });
@@ -50,6 +52,8 @@ describe('平台页面的可见性', () => {
     const { calls } = setup({}, MEMBER_CONTEXT);
 
     await waitFor(() => expect(screen.queryByRole('heading', { name: '平台运营' })).not.toBeInTheDocument());
+    expect(screen.queryByRole('tab', { name: /申请/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: '推荐' })).not.toBeInTheDocument();
     expect(calls.some((call) => call.url.startsWith('/api/platform'))).toBe(false);
   });
 
@@ -58,5 +62,24 @@ describe('平台页面的可见性', () => {
 
     await waitFor(() => expect(screen.queryByRole('heading', { name: '平台运营' })).not.toBeInTheDocument());
     expect(calls.some((call) => call.url.startsWith('/api/platform'))).toBe(false);
+  });
+});
+
+describe('申请与推荐页签', () => {
+  test('有待审批申请时「申请」页签显示数量角标', async () => {
+    const pending = [makeApplication(), makeApplication({ id: 2 }), makeApplication({ id: 3 })];
+    const { calls } = setup({ 'GET /api/platform/applications': makeApplicationPage(pending) });
+
+    expect(await screen.findByTestId('pending-badge')).toHaveTextContent('3');
+    expect(screen.getByRole('tab', { name: /申请/ })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: '推荐' })).toBeInTheDocument();
+    const probe = calls.find((call) => call.url.startsWith('/api/platform/applications'));
+    expect(probe?.url).toContain('status=pending');
+  });
+
+  test('没有待审批时不显示角标', async () => {
+    setup({});
+    expect(await screen.findByRole('tab', { name: /申请/ })).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByTestId('pending-badge')).not.toBeInTheDocument());
   });
 });

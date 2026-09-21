@@ -1,6 +1,6 @@
 import { screen, waitFor } from '@testing-library/react';
 import { describe, expect, test } from 'vitest';
-import { AUTHENTICATED, AUTHENTICATED_MEMBER, MEMBER_USER } from '../test/authStatus';
+import { AUTHENTICATED, AUTHENTICATED_MEMBER, MEMBER_USER, SAAS_AUTHENTICATED } from '../test/authStatus';
 import { mockFetch } from '../test/fetchMock';
 import { makeProject, makeUser } from '../test/fixtures';
 import { renderWithProviders } from '../test/render';
@@ -14,8 +14,9 @@ const settings = {
 const category = { id: 1, name: '差旅', color: '#1F5F4A', keywords: [], route_hint: '', sort: 1, archived: false };
 const rule = { id: 1, category_id: null, attachment_kind: 'invoice', level: 'required', condition: {}, hint: '' };
 
-function routes(status: unknown) {
+function routes(status: unknown, extra: Record<string, unknown> = {}) {
   return mockFetch({
+    ...extra,
     'GET /api/auth/status': status,
     'GET /api/settings': settings,
     'GET /api/categories': [category],
@@ -51,5 +52,25 @@ describe('SettingsPage permissions', () => {
     expect(await screen.findByRole('button', { name: '修改密码' })).toBeInTheDocument();
     await waitFor(() => expect(calls.some((c) => c.url === '/api/checklist-rules')).toBe(true));
     expect(calls.some((c) => c.url === '/api/users')).toBe(false);
+  });
+});
+
+describe('SettingsPage 推荐好友', () => {
+  const MEMBER_CONTEXT = { user: MEMBER_USER, isAdmin: false, authEnabled: true };
+  const mine = { code: 'REF1', link: null, is_disabled: false, require_approval: true, monthly_quota: 5, used_this_month: 0, total: 0, referrals: [] };
+
+  test('多账套部署的登录用户能看到推荐好友', async () => {
+    routes({ ...SAAS_AUTHENTICATED, user: MEMBER_USER }, { 'GET /api/referrals/me': mine });
+    renderWithProviders(<SettingsPage />, { currentUser: MEMBER_CONTEXT });
+    expect(await screen.findByText('推荐好友')).toBeInTheDocument();
+    expect(await screen.findByLabelText('我的推荐链接')).toBeInTheDocument();
+  });
+
+  test('单账套部署没有推荐好友，也不请求推荐接口', async () => {
+    const { calls } = routes(AUTHENTICATED_MEMBER);
+    renderWithProviders(<SettingsPage />, { currentUser: MEMBER_CONTEXT });
+    expect(await screen.findByRole('button', { name: '修改密码' })).toBeInTheDocument();
+    expect(screen.queryByText('推荐好友')).not.toBeInTheDocument();
+    expect(calls.some((c) => c.url.startsWith('/api/referrals'))).toBe(false);
   });
 });

@@ -14,10 +14,14 @@ LICENSE_RECHECK_PATH = f"{LICENSE_PREFIX}/recheck"
 PLATFORM_LICENSE_PREFIX = "/api/platform/license"
 LICENSE_VERIFY_PATH = f"{PLATFORM_LICENSE_PREFIX}/verify"
 
-# 只读降级时仍然放行的写请求：登录、授权自身、备份与导出、诊断包
+# 注册申请的公开入口：访客没有账套，不受任何账套的只读与额度约束
+SIGNUP_PREFIX = "/api/signup/"
+
+# 只读降级时仍然放行的写请求：登录、授权自身、备份与导出、诊断包、公开注册入口
 # 诊断包尤其要放行——服务出问题的时候恰恰最需要它
 WRITE_EXEMPT_PREFIXES = (
     "/api/auth/",
+    SIGNUP_PREFIX,
     LICENSE_PREFIX + "/",
     PLATFORM_LICENSE_PREFIX + "/",
     "/api/diagnostics/",

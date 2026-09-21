@@ -8,6 +8,7 @@ from functools import cached_property
 from pathlib import Path
 from typing import Literal
 
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 INBOX_DIRNAME = "收件箱"
@@ -34,6 +35,11 @@ DEFAULT_TENANT_NAME = "默认账套"
 DEFAULT_LOG_APP = "invoice-sorting"
 DEFAULT_LOG_BRANCH = "main"
 DEFAULT_LOG_LEVEL = "INFO"
+# 注册申请通知邮件（《注册申请与推荐_设计》4）：SMTP 未配置时不发信
+DEFAULT_SMTP_PORT = 465
+SMTP_TLS_SSL = "ssl"
+SMTP_TLS_STARTTLS = "starttls"
+SmtpTls = Literal["ssl", "starttls"]
 
 
 class Settings(BaseSettings):
@@ -60,6 +66,20 @@ class Settings(BaseSettings):
     log_app: str = DEFAULT_LOG_APP  # 仓库内的应用命名空间（该仓库由多个应用共用）
     log_instance: str = ""  # 实例名，留空时用主机短名
     log_branch: str = DEFAULT_LOG_BRANCH
+    # 注册申请通知邮件：smtp_host 与 smtp_from 都配置了才发信；凭证只从环境变量读，
+    # 不落库、不进日志、不进诊断包（密码用 SecretStr，打印配置时也只显示星号）
+    smtp_host: str = ""
+    smtp_port: int = DEFAULT_SMTP_PORT
+    smtp_user: str = ""
+    smtp_password: SecretStr = SecretStr("")
+    smtp_from: str = ""
+    smtp_tls: SmtpTls = SMTP_TLS_SSL
+    public_base_url: str = ""  # 生成注册链接与推荐链接用的站点地址，如 https://fp.example.com
+
+    @property
+    def is_smtp_configured(self) -> bool:
+        """服务器与发件人都配置了才发信；缺任意一项都由管理员自行转告。"""
+        return bool(self.smtp_host.strip() and self.smtp_from.strip())
 
     @property
     def is_log_upload_configured(self) -> bool:

@@ -4,6 +4,7 @@ from sqlalchemy import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from invoice_sorting.config import Settings
+from invoice_sorting.control import signup_models  # noqa: F401 - 登记注册申请相关表
 from invoice_sorting.control.models import ControlBase
 from invoice_sorting.db.session import create_db_engine, init_db, make_session_factory
 

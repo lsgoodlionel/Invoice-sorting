@@ -25,7 +25,7 @@ from invoice_sorting.auth.sessions import validate_session
 from invoice_sorting.auth.tenants import session_tenant_slug
 from invoice_sorting.common.errors import AppError
 from invoice_sorting.control.deps import require_tenant_row
-from invoice_sorting.licensing.constants import LICENSE_VERIFY_PATH
+from invoice_sorting.licensing.constants import LICENSE_VERIFY_PATH, SIGNUP_PREFIX
 from invoice_sorting.tenancy.deps import tenant_for_connection
 from invoice_sorting.tenancy.resolve import STATE_TENANT_KEY
 
@@ -41,6 +41,9 @@ PUBLIC_PATHS = frozenset(
         LICENSE_VERIFY_PATH,
     }
 )
+# 按前缀公开的路径：注册申请、推荐码与注册码校验、凭码注册（仅多账套部署开放，
+# 单账套部署由路由自身一律 404）；其路径里带推荐码等参数，无法逐一列入白名单
+PUBLIC_PREFIXES = (SIGNUP_PREFIX,)
 
 
 @dataclass(frozen=True)
@@ -53,7 +56,7 @@ class AccessDecision:
 
 def is_protected_path(path: str) -> bool:
     is_api = path == API_PREFIX or path.startswith(f"{API_PREFIX}/")
-    return is_api and path not in PUBLIC_PATHS
+    return is_api and path not in PUBLIC_PATHS and not path.startswith(PUBLIC_PREFIXES)
 
 
 def decide_access(app: Any, slug: str, token: str | None) -> AccessDecision:

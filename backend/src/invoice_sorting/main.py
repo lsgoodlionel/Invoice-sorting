@@ -61,6 +61,8 @@ from invoice_sorting.quota.plans import ensure_default_plan
 from invoice_sorting.quota.router import router as quota_router
 from invoice_sorting.quota.service import QuotaService
 from invoice_sorting.settings.router import router as settings_router
+from invoice_sorting.signup.app import ROUTERS as SIGNUP_ROUTERS
+from invoice_sorting.signup.app import install_signup, start_purge_task
 from invoice_sorting.stats.router import router as stats_router
 from invoice_sorting.tenancy.runtime import TenantRuntime
 from invoice_sorting.users.router import router as users_router
@@ -85,7 +87,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def lifespan(app: FastAPI):
         watcher = _start_watcher(app, settings)
         scheduler = _start_license_scheduler(app, settings)
+        purge_task = start_purge_task(app, settings)
         yield
+        if purge_task is not None:
+            purge_task.stop()
         if scheduler is not None:
             scheduler.stop()
         if watcher is not None:
@@ -107,6 +112,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     _prepare_license(app, settings)
     _prepare_quota(app, settings)
     _prepare_diagnostics(app, settings)
+    install_signup(app, settings)  # 注册申请：发信服务与限流器（仅多账套开放入口）
     install_error_handlers(app)
     # 由内到外：故障采集 → 写守卫 → 认证。
     # 认证在最外层，未登录的写请求先得到 401，不会泄漏本机授权状态；
@@ -134,6 +140,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         platform_admin_router,
         quota_router,
         diagnostics_router,
+        *SIGNUP_ROUTERS,
     ):
         app.include_router(router)
 

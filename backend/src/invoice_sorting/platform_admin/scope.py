@@ -18,6 +18,8 @@ from sqlalchemy.orm import Session
 from invoice_sorting.common.errors import AppError
 
 PLATFORM_PREFIX = "/api/platform"
+# 同样只属于账号、与账套无关的路径：推荐链接（推荐码挂在账号上）
+ACCOUNT_SCOPED_PREFIXES = (PLATFORM_PREFIX, "/api/referrals")
 MSG_LOGIN_REQUIRED = "请先登录"
 MSG_NO_TENANT = "当前账号尚未加入任何账套，请联系管理员开通"
 
@@ -26,12 +28,19 @@ def is_platform_path(path: str) -> bool:
     return path == PLATFORM_PREFIX or path.startswith(f"{PLATFORM_PREFIX}/")
 
 
+def is_account_scoped_path(path: str) -> bool:
+    """平台后台与推荐链接：按登录账号定位账套，裸域名访问未登录时得到清楚的 401。"""
+    return any(
+        path == prefix or path.startswith(f"{prefix}/") for prefix in ACCOUNT_SCOPED_PREFIXES
+    )
+
+
 def platform_tenant_slug(app: Any, conn: Any) -> str | None:
     """平台路径专用的账套解析；非平台路径、单账套部署或关闭认证时返回 None。"""
     settings = app.state.settings
     if not settings.is_saas or not settings.auth_enabled:
         return None
-    if not is_platform_path(conn.scope.get("path", "")):
+    if not is_account_scoped_path(conn.scope.get("path", "")):
         return None
     return _slug_from_session(app, conn)
 

@@ -50,7 +50,7 @@ type TenantOption = TenantBrief & { is_current: boolean }
 - 账套定位顺序：子域名（配置了 `tenant_host_suffix` 时）→ 会话记录的当前账套。子域名指定了账套时会校验该账号在其中有启用中的成员关系，否则 403“当前账号不属于该账套，请联系管理员开通”；多账套部署定位不到账套时 400“无法确定当前账套，请重新登录”，**绝不回退到默认账套**。账套不存在 404“账套不存在”。
 - 未认证：401“请先登录”；admin 未设置密码时 401“请先设置初始密码”（此时其他用户也无法访问，status 的 authenticated=false、user=null）。已登录但账户被停用：该用户所有会话立即失效（401“请先登录”）。
 - 权限不足：403“需要管理员权限”（先于请求体校验，普通用户提交非法请求体也返回 403）。
-- 公开端点：`/api/health`、`/api/auth/status`、`/api/auth/setup`、`/api/auth/login`、`/api/auth/join`。
+- 公开端点：`/api/health`、`/api/auth/status`、`/api/auth/setup`、`/api/auth/login`、`/api/auth/join`，以及仅多账套开放的 `/api/signup/*`（注册申请，见「注册申请与推荐」一节）。
 - 登录失败限制：按客户端 IP，15 分钟内失败 5 次锁定 15 分钟（同前）。
 - `INVOICE_SORTING_AUTH_ENABLED=false`：关闭认证，status 返回 auth_enabled=false、authenticated=true、user=null；所有端点放行，管理员限定端点也放行；操作人记为空。
 - 旧版单一密码自动迁移（启动时幂等执行）：若不存在 admin 用户则创建 admin（姓名“管理员”），有旧密码时沿用该密码，并删除旧密码设置；未关联用户的旧会话全部失效（需重新登录）。新库启动即有未设置密码的 admin。多账套部署的账套由控制面开通成员，业务库不预置 admin 镜像。
@@ -637,6 +637,135 @@ type ExportJob = { job, slug, status: "running"|"done"|"failed", file, size, fil
 **首个平台管理员（离线开通）**：`invoice-sorting grant-platform-admin --username x [--password ...] [--display-name ...]`。
 命令只读写本机 `control.db`：建号（或复用同名账号）、标记 `is_platform_admin`，并确保该账号至少属于一个账套
 （多租户部署自动开通 `platform`「平台运营」账套，单账套部署挂到 `default`），否则登录会被「尚未加入任何账套」拒绝。
+
+### 注册申请与推荐（signup 模块）
+
+设计见 `docs/注册申请与推荐_设计.md`。**仅多账套部署（saas）开放**：单账套部署下本节所有路径（含公开入口与平台接口）一律 404「当前部署未开放注册申请」，前端不出现任何入口。与账套管理员的邀请码（0.4）互不影响。
+
+#### 公开入口（无需登录，前缀 `/api/signup/`）
+
+整个 `/api/signup/` 前缀在认证白名单内，也不受只读降级与额度守卫约束（访客没有账套）。
+
+| 方法 | 路径 | 请求 | 返回 data |
+| --- | --- | --- | --- |
+| POST | `/api/signup/applications` | `ApplyBody`；同一邮箱有**待审批**申请时 409「该邮箱已有待审批的申请，请耐心等待审批结果」；`ref` 无效/已重置/推荐资格被停用 404「推荐链接无效或已失效」；按 IP 每小时 5 次（每次提交都计数），超出 429「提交过于频繁，请 N 分钟后再试」；字段不合法 422 | `ApplySubmitted` |
+| GET | `/api/signup/referral/{code}` | 校验推荐码（不区分大小写）；无效 404「推荐链接无效或已失效」 | `{ code: string, referrer_name: string, require_approval: boolean }`——申请表据此预填推荐人且不可修改 |
+| GET | `/api/signup/register?code=` | 校验注册码；无效 404「注册链接无效，请核对邮件中的链接」；已使用 409「该注册链接已使用过，请直接登录」；已过期 410「注册链接已过期，请联系平台重新发送」 | `{ email: string, name: string, ledger_name: string, expires_at: string }`——注册页只读显示邮箱 |
+| POST | `/api/signup/register` | `{ code, email, username, password, display_name? }`；码的错误同上；`email` 与申请邮箱不一致 400「邮箱与申请时填写的不一致」；用户名已存在 409「用户名已被占用」（此时注册码仍可继续使用）；用户名/密码/姓名规则同 0.1 | 同 `/api/auth/login`：`{ authenticated: true, user: CurrentUser, tenant: TenantBrief }`，写入会话 Cookie。已开通**独立账套**，本人为该账套管理员，默认免费套餐 |
+
+```ts
+type ApplyBody = {
+  name: string;          // 姓名 1–32
+  email: string;         // 邮箱，≤254，存储为小写
+  identity: string;      // 单位或身份 1–100
+  needs: string;         // 使用需求简介 1–1000
+  ledger_name?: string;  // 期望账本名称 ≤100，可空
+  ref?: string;          // 推荐码（来自 /apply?ref=XXXX），可空
+  website?: string;      // 隐藏诱饵字段：前端必须渲染为对用户不可见且永远留空的输入框
+}
+type ApplySubmitted = {
+  id: number; number: string;          // 申请编号，如 "SQ000123"
+  status: "pending" | "approved";      // approved = 直接注册模式下已自动发出注册链接
+  referrer_name: string | null;
+  message: string;                     // 可直接展示的提示语
+}
+```
+
+- 诱饵字段 `website` 一旦非空，接口照常返回 200 与同样形状的 `ApplySubmitted`，但**什么都不保存**（不提示机器人）。
+- 推荐码、注册码的校验与凭码注册按 IP 统计失败次数：15 分钟内失败 10 次后 429，防止穷举。
+- 注册码一次性、绑定申请邮箱、默认 7 天有效（平台可调 1–30 天）；服务端只存 SHA-256。
+
+#### 登录用户：我的推荐链接
+
+路径按登录账号定位（与平台后台一样，裸域名可用，未登录 401「请先登录」）。推荐码属于**账号**，与当前所在账套无关。
+
+| 方法 | 路径 | 请求 | 返回 data |
+| --- | --- | --- | --- |
+| GET | `/api/referrals/me` | 首次打开自动生成推荐码 | `MyReferral` |
+| POST | `/api/referrals/me/reset` | 换发新推荐码，旧链接立即失效；推荐资格被平台停用时 403「你的推荐资格已被停用，如有疑问请联系平台」 | `MyReferral` |
+
+```ts
+type MyReferral = {
+  code: string | null;          // 8 位大写字母数字；推荐资格被停用时为 null
+  link: string | null;          // PUBLIC_BASE_URL + "/apply?ref=" + code；未配置站点地址时为站内路径 "/apply?ref=…"
+  is_disabled: boolean;
+  require_approval: boolean;    // 平台是否要求审批
+  monthly_quota: number;        // 直接注册模式下每月名额
+  used_this_month: number;      // 本月已占用的直接注册名额
+  total: number;                // 累计推荐人数
+  referrals: {                  // 新的在前；只有脱敏邮箱与状态，看不到被推荐人的姓名、身份与需求
+    id: number; email_masked: string;   // 如 "z***@example.org"；资料已清除时为 ""
+    status: ApplicationStatus; created_at: string; registered_at: string | null;
+  }[];
+}
+type ApplicationStatus = "pending" | "approved" | "rejected" | "registered"  // 待审批 / 已批准待注册 / 未通过 / 已注册
+```
+
+#### 平台运营后台（仅平台管理员）
+
+前缀 `/api/platform`，权限规则同「平台运营后台」一节：未登录 401，非平台管理员（包括账套管理员）403「需要平台管理员权限」。申请资料与推荐记录只有平台管理员可见。
+
+| 方法 | 路径 | 请求 | 返回 data |
+| --- | --- | --- | --- |
+| GET | `/api/platform/applications` | `?status=&q=&page=1&page_size=20`（status 为空或 `ApplicationStatus`，否则 422；q 匹配姓名、邮箱、单位；page_size ≤100） | `{ items: SignupApplication[], total, page, page_size, counts: Record<ApplicationStatus, number> }`（按提交时间倒序；counts 为各状态总数，不受筛选影响） |
+| GET | `/api/platform/applications/{id}` | 不存在 404「申请不存在」 | `SignupApplication` |
+| POST | `/api/platform/applications/{id}/approve` | `{ slug?, name?, plan_code?, expires_on? }`，都可省略：slug 默认由邮箱前缀 + 随机后缀生成，name 默认期望账本名（没填则「姓名的账本」），plan_code 默认 `free`，expires_on 默认长期有效。slug 已被账套占用 409「账套标识已被占用」、被其他已批准申请预留 409「账套标识已被其他已批准的申请占用」、格式不合法 422；套餐不存在 404；申请不是待审批 409「该申请已处理，不能重复审批」 | `ReviewResponse`；生成注册码并发信 |
+| POST | `/api/platform/applications/{id}/reject` | `{ reason? }`（≤200，可省略）；不是待审批 409 | `ReviewResponse`；发信告知结果与原因 |
+| POST | `/api/platform/applications/{id}/resend` | —；已批准待注册：**换发新注册码**（旧链接失效，有效期重新计算）并重发；已否决：重发否决通知；其他状态 409「只有已批准待注册或已否决的申请可以重新发送」；资料已清除 409 | `ReviewResponse` |
+| GET | `/api/platform/referrals` | `?q=&page=1&page_size=20`（q 匹配被推荐人邮箱、推荐人用户名或姓名） | `{ items: ReferralRecord[], total, page, page_size }`（只含带推荐人的申请，新的在前） |
+| PATCH | `/api/platform/referrers/{account_id}` | `{ is_disabled: boolean }` 停用/恢复某人的推荐资格（停用后其推荐链接立即失效）；账号不存在 404「账号不存在」 | `{ account_id: number, is_disabled: boolean }` |
+| GET | `/api/platform/signup-settings` | — | `SignupSettings` |
+| PATCH | `/api/platform/signup-settings` | `{ require_approval?, monthly_referral_quota?, code_valid_days? }`（名额 0–1000，有效期 1–30 天，否则 422；不传或 null 表示不修改） | `SignupSettings` |
+
+```ts
+type AccountRef = { account_id: number; username: string; display_name: string }
+type SignupApplication = {
+  id: number; number: string;                 // "SQ000123"
+  name: string; email: string; identity: string; needs: string; ledger_name: string;
+  status: ApplicationStatus;
+  referrer: AccountRef | null;                // 「由 某某 推荐」
+  is_auto_approved: boolean;                  // 直接注册模式下系统自动批准（此时 reviewer 为 null）
+  reviewer: AccountRef | null; reviewed_at: string | null;   // 审批操作人与时间
+  reject_reason: string;
+  approved: { slug: string; name: string; plan_code: string | null; expires_on: string | null } | null;  // 批准时确定、注册时开通
+  code_expires_at: string | null;
+  mail_status: "" | "sent" | "failed" | "skipped";   // skipped = 未配置 SMTP
+  mail_error: string;                                // 失败原因（固定中文说明，不含服务器原文与凭证）
+  mail_sent_at: string | null;
+  tenant: { slug: string; name: string } | null;     // 注册完成后开通的账套
+  registered_at: string | null;
+  is_purged: boolean;                                // 否决满 180 天，个人资料已清除（字段为空串）
+  created_at: string;
+}
+type ReviewResponse = {
+  application: SignupApplication;
+  notice: {
+    mail_status: "sent" | "failed" | "skipped";
+    mail_error: string;
+    link: string | null;   // 仅在没发出去（skipped/failed）时给出：批准类通知的注册链接
+    text: string | null;   // 仅在没发出去时给出：可直接复制转告申请人的完整通知文字
+  };
+}
+type ReferralRecord = {
+  application_id: number; number: string;
+  referrer: AccountRef | null; is_referrer_disabled: boolean;
+  referee_email: string;                               // 资料已清除时为 ""
+  tenant: { slug: string; name: string } | null;
+  status: ApplicationStatus; is_auto_approved: boolean;
+  created_at: string; registered_at: string | null;
+}
+type SignupSettings = {
+  require_approval: boolean;          // 默认 true：推荐申请也要审批
+  monthly_referral_quota: number;     // 默认 5：直接注册模式下每个推荐人每月名额，超出自动转审批
+  code_valid_days: number;            // 默认 7
+  is_mail_configured: boolean;        // 是否已配置 SMTP（未配置时审批后需管理员自行转告）
+  updated_at: string | null;
+}
+```
+
+- **直接注册模式**（`require_approval=false`）：带有效推荐码的申请，在推荐人本月名额内、且已配置 SMTP 时自动批准并把注册链接发到申请邮箱（`ApplySubmitted.status="approved"`）；名额用尽、未配置 SMTP 或没有推荐码时一律转为待审批。注册链接只发到邮箱，从不返回给申请人。
+- **邮件**：环境变量 `INVOICE_SORTING_SMTP_HOST`、`_SMTP_PORT`（默认 465）、`_SMTP_USER`、`_SMTP_PASSWORD`、`_SMTP_FROM`、`_SMTP_TLS`（`ssl` 默认 / `starttls`）、`INVOICE_SORTING_PUBLIC_BASE_URL`（生成链接用的站点地址）。HOST 与 FROM 都配置才发信；连接超时 10 秒，失败重试 1 次（认证失败、收件人被拒不重试）。邮件只含结果、注册链接与有效期。发送失败不影响审批结果，可「重新发送」。凭证不落库、不进日志、错误信息与诊断包（诊断包 env.txt 只列出这些变量「已设置/未设置」）。
+- **隐私**：否决满 180 天的申请自动清除姓名、邮箱、身份、需求、账本名、原因与 IP 哈希（`is_purged=true`），保留状态与时间用于统计；启动时及之后每天执行一次。来源 IP 只存带实例盐的哈希。
 
 ### 诊断与故障上报（diagnostics 模块）
 

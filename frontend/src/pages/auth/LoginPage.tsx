@@ -1,20 +1,23 @@
 import { Anchor, Button, PasswordInput, Stack, Text, TextInput } from '@mantine/core';
 import { useState, type ChangeEvent, type FormEvent } from 'react';
+import { Link } from 'react-router';
 import { errorMessage } from '../../api/client';
 import { useAuthStatus, useLogin } from '../../api/hooks/auth';
 import { AuthLayout } from '../../components/auth/AuthLayout';
 import { loadRememberedUsername, saveRememberedUsername } from '../../lib/rememberedUsername';
+import { APPLY_PATH } from '../../lib/signup';
 import { JoinPage } from './JoinPage';
 
 const RESET_HINT = '忘记密码？请联系管理员重置';
 
-/** 页脚：多租户部署额外给出邀请码入口；单租户部署只保留原来的一行提示。 */
+/** 页脚：多租户部署额外给出邀请码与申请入口；单租户部署只保留原来的一行提示。 */
 function LoginFooter({ isMultiTenant, onJoin }: { isMultiTenant: boolean; onJoin: () => void }) {
   if (!isMultiTenant) return RESET_HINT;
   return (
     <Stack gap={4}>
       <Text size="xs" c="dimmed">{RESET_HINT}</Text>
       <Anchor component="button" type="button" size="xs" onClick={onJoin}>有邀请码？加入账套</Anchor>
+      <Anchor component={Link} to={APPLY_PATH} size="xs">还没有账号？申请使用</Anchor>
     </Stack>
   );
 }

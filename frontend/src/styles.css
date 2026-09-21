@@ -672,3 +672,21 @@ body {
 .timeline-note {
   color: var(--ink-text);
 }
+
+/* —— 申请使用 / 注册 —— */
+/* 诱饵字段：移出可视区域（不用 display:none，部分机器人会跳过隐藏字段） */
+.signup-hp {
+  position: absolute;
+  left: -10000px;
+  top: auto;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
+.signup-receipt {
+  padding: 12px 14px;
+  border: 1px dashed var(--paper-line);
+  border-radius: 4px;
+  background: var(--paper-bg);
+}

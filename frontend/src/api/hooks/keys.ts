@@ -31,10 +31,29 @@ export const queryKeys = {
   platformInvites: (slug: string) => ['platform', 'invites', slug] as const,
   platformPlans: ['platform', 'plans'] as const,
   platformLicenses: ['platform', 'licenses'] as const,
+  platformApplications: (query: PlatformApplicationQuery) => ['platform', 'applications', query] as const,
+  platformReferrals: (query: PlatformReferralQuery) => ['platform', 'referrals', query] as const,
+  platformSignupSettings: ['platform', 'signup-settings'] as const,
+  signupReferral: (code: string) => ['signup', 'referral', code] as const,
+  signupRegister: (code: string) => ['signup', 'register', code] as const,
+  myReferrals: ['referrals', 'me'] as const,
 };
 
 /** 平台账套列表的查询条件（搜索词 + 页码）。 */
 export interface PlatformTenantQuery {
+  q: string;
+  page: number;
+}
+
+/** 平台申请列表的查询条件：状态为空串表示全部。 */
+export interface PlatformApplicationQuery {
+  status: '' | 'pending' | 'approved' | 'rejected' | 'registered';
+  q: string;
+  page: number;
+}
+
+/** 平台推荐记录的查询条件。 */
+export interface PlatformReferralQuery {
   q: string;
   page: number;
 }
