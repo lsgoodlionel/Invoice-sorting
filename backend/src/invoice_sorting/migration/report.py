@@ -14,7 +14,15 @@ ACTION_SKIPPED = "skipped"
 ACTION_CONFLICT = "conflict"
 ACTION_FAILED = "failed"
 ACTION_UPDATED = "updated"
-ACTIONS = (ACTION_ADDED, ACTION_UPDATED, ACTION_SKIPPED, ACTION_CONFLICT, ACTION_FAILED)
+ACTION_DELETED = "deleted"  # 只用于覆盖模式恢复账号：本地多出的账号被删除
+ACTIONS = (
+    ACTION_ADDED,
+    ACTION_UPDATED,
+    ACTION_SKIPPED,
+    ACTION_CONFLICT,
+    ACTION_FAILED,
+    ACTION_DELETED,
+)
 
 MAX_ITEMS = 500
 
@@ -65,11 +73,12 @@ class SectionReport:
     skipped: int = 0
     conflicts: int = 0
     failed: int = 0
+    deleted: int = 0
     items: tuple[ReportItem, ...] = ()
     truncated: int = 0  # 超出明细上限、只计数未列出的条数
 
     def to_dict(self, key: str) -> dict[str, object]:
-        return {
+        payload = {
             "key": key,
             "label": SECTION_LABELS.get(key, key),
             "added": self.added,
@@ -80,6 +89,8 @@ class SectionReport:
             "details": [item.to_dict() for item in self.items],
             "truncated": self.truncated,
         }
+        # 只有覆盖恢复账号时才会删除，其余分区保持原有字段不变
+        return {**payload, "deleted": self.deleted} if self.deleted else payload
 
 
 class SectionBuilder:
@@ -103,6 +114,7 @@ class SectionBuilder:
             skipped=self._counts[ACTION_SKIPPED],
             conflicts=self._counts[ACTION_CONFLICT],
             failed=self._counts[ACTION_FAILED],
+            deleted=self._counts[ACTION_DELETED],
             items=tuple(self._items),
             truncated=total - len(self._items),
         )
@@ -119,6 +131,8 @@ class MergeReport:
     warnings: tuple[str, ...] = field(default=())
     mode: str = "merge"
     include_settings: bool = True
+    # 包内带登录账号时的说明（合并模式一律不导入账号），见 accounts_report
+    accounts: Mapping[str, object] | None = None
 
     def section(self, key: str) -> SectionReport:
         return self.sections.get(key, SectionReport())
@@ -132,7 +146,7 @@ class MergeReport:
         return sum(section.updated for section in self.sections.values())
 
     def to_dict(self) -> dict[str, object]:
-        return {
+        payload = {
             "mode": self.mode,
             "slug": self.slug,
             "is_dry_run": self.is_dry_run,
@@ -143,6 +157,7 @@ class MergeReport:
             "items": [self.section(key).to_dict(key) for key in SECTION_LABELS],
             "warnings": list(self.warnings),
         }
+        return {**payload, "accounts": dict(self.accounts)} if self.accounts else payload
 
 
 def freeze_sections(sections: Mapping[str, SectionReport]) -> Mapping[str, SectionReport]:

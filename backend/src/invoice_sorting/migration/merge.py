@@ -9,6 +9,8 @@
 - 系统设置（include_settings，默认 True）：为 True 时白名单内的用户设置（报销抬头、税号、地区、
   已带明细平台、超期天数）以及分类外观、凭证规则、分类记忆以导入包为准（merge_settings、
   merge_plan_overrides）；为 False 时冲突一律保留本地。内部版本标记、认证、授权与日志配置永不导入。
+- 登录账号：合并模式一律不导入 accounts.json（即使包里有），人员仍按 4.3 匹配或建停用占位账号，
+  报告顶层 `accounts` 说明“包内含 N 个账号，合并模式不导入账号”。
 """
 
 import logging
@@ -22,6 +24,7 @@ from invoice_sorting.common.errors import AppError
 from invoice_sorting.config import DEFAULT_TENANT_NAME, DEFAULT_TENANT_SLUG
 from invoice_sorting.control.repository import ensure_tenant, find_tenant, require_slug
 from invoice_sorting.expenses.recompute import refresh_open_expenses
+from invoice_sorting.migration.accounts_report import merge_accounts_info
 from invoice_sorting.migration.merge_apply import (
     IdMaps,
     apply_batches,
@@ -259,6 +262,7 @@ def _report(  # noqa: PLR0913 - 报告需要的全部上下文
         sections=plan.sections,
         warnings=tuple(warnings),
         include_settings=include,
+        accounts=merge_accounts_info(info.account_count),
     )
 
 
@@ -268,34 +272,37 @@ def _require_mode(mode: str) -> str:
     return mode
 
 
-def preview_import(
+def preview_import(  # noqa: PLR0913 - 引擎接缝约定的参数
     runtime: TenantRuntime,
     control_factory: sessionmaker[Session],
     archive_path: Path,
     slug: str,
     mode: str = MODE_MERGE,
     include_settings: bool = True,
+    actor_id: int | None = None,
 ) -> dict[str, object]:
     """预览（dry-run），不写入任何数据。返回 MergeReport.to_dict() 同形状的字典。
 
-    覆盖模式整体替换数据库，系统设置天然以包为准，include_settings 对它不起作用。
+    覆盖模式整体替换数据库，系统设置天然以包为准，include_settings 对它不起作用；
+    actor_id（执行导入的账号）只对单账套覆盖恢复账号有意义：备份里没有他时不删除。
     """
     if _require_mode(mode) == MODE_REPLACE:
-        return preview_replace(runtime, control_factory, archive_path, slug)
+        return preview_replace(runtime, control_factory, archive_path, slug, actor_id)
     report = preview_merge(runtime, control_factory, archive_path, slug, include_settings)
     return report.to_dict()
 
 
-def run_import(
+def run_import(  # noqa: PLR0913 - 引擎接缝约定的参数
     runtime: TenantRuntime,
     control_factory: sessionmaker[Session],
     archive_path: Path,
     slug: str,
     mode: str = MODE_MERGE,
     include_settings: bool = True,
+    actor_id: int | None = None,
 ) -> dict[str, object]:
     """执行导入。覆盖模式不再追问：调用方须已完成二次确认（网页输账套名、命令行 --overwrite）"""
     if _require_mode(mode) == MODE_REPLACE:
-        return run_replace(runtime, control_factory, archive_path, slug)
+        return run_replace(runtime, control_factory, archive_path, slug, actor_id)
     report = merge_import(runtime, control_factory, archive_path, slug, include_settings)
     return report.to_dict()

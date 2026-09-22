@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../client';
-import type { User, UserCreate, UserPatch } from '../types';
+import type { DeletedUser, User, UserCreate, UserPatch } from '../types';
 import { queryKeys } from './keys';
 
 export const usersApi = {
@@ -8,6 +8,7 @@ export const usersApi = {
   create: (input: UserCreate) => api.post<User>('/users', input),
   update: (id: number, patch: UserPatch) => api.patch<User>(`/users/${id}`, patch),
   resetPassword: (id: number, password: string) => api.post<null>(`/users/${id}/password`, { password }),
+  remove: (id: number) => api.del<DeletedUser>(`/users/${id}`),
 };
 
 /** 用户列表（仅管理员调用）。 */
@@ -35,6 +36,12 @@ export function useUpdateUser() {
     onSuccess: refresh,
     meta: { silent: true },
   });
+}
+
+/** 删除用户（多账套下为移出本账套）；错误由调用方提示原文。 */
+export function useDeleteUser() {
+  const refresh = useRefreshUsers();
+  return useMutation({ mutationFn: usersApi.remove, onSuccess: refresh, meta: { silent: true } });
 }
 
 export const useResetUserPassword = () =>

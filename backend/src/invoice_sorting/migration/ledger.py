@@ -1,6 +1,7 @@
 """账本描述 ledger.json（账本搬迁设计 2）：导出范围与来源，供合并导入的报告与批次改名使用。
 
-ledger.json 与 manifest.json 同在 zip 根目录，只是说明性元数据：
+ledger.json 与 manifest.json 同在 zip 根目录，只是说明性元数据（`has_accounts` 标明是否带账号，
+真正的账号清单 accounts.json 列在 manifest 里、参与校验）：
 不参与文件校验，读取时限制大小并逐字段校验类型，任何不符都视为包已损坏。
 没有 ledger.json 的旧包按整账套包处理（`parse_ledger` 返回 None 由调用方决定）。
 """
@@ -46,11 +47,14 @@ class LedgerScope:
 class LedgerInfo:
     source: LedgerSource
     scope: LedgerScope
+    # 包内是否带登录账号（accounts.json）：只有单账套导出才带
+    has_accounts: bool = False
 
     def to_dict(self) -> dict[str, object]:
         source, scope = self.source, self.scope
         return {
             "kind": LEDGER_KIND,
+            "has_accounts": self.has_accounts,
             "source": {
                 "deployment": source.deployment,
                 "tenant": source.tenant,
@@ -95,9 +99,13 @@ def parse_ledger(raw: bytes) -> LedgerInfo:
         raise AppError(MSG_LEDGER_BROKEN) from error
     if not isinstance(payload, dict) or payload.get("kind") != LEDGER_KIND:
         raise AppError(MSG_LEDGER_BROKEN)
+    has_accounts = payload.get("has_accounts", False)
+    if not isinstance(has_accounts, bool):
+        raise AppError(MSG_LEDGER_BROKEN)
     return LedgerInfo(
         source=_parse_source(payload.get("source") or {}),
         scope=_parse_scope(payload.get("scope") or {}),
+        has_accounts=has_accounts,
     )
 
 

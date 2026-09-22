@@ -5,9 +5,11 @@ import { reportLabel } from '../../../lib/ledgerTransfer';
 
 const DETAIL_ACTIONS: Record<ImportDetailAction, { label: string; color: string }> = {
   added: { label: '新增', color: 'ink' },
+  updated: { label: '更新', color: 'yellow' },
   skipped: { label: '跳过', color: 'gray' },
   conflict: { label: '冲突', color: 'orange' },
   failed: { label: '失败', color: 'red' },
+  deleted: { label: '删除', color: 'red' },
 };
 
 interface ImportReportTableProps {

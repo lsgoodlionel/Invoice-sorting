@@ -10,9 +10,10 @@ from invoice_sorting.control.deps import ControlSessionDep, TenantRowDep
 from invoice_sorting.control.members import list_members
 from invoice_sorting.settings.deps import SessionDep
 from invoice_sorting.users.schemas import PasswordReset, UserCreate, UserUpdate
-from invoice_sorting.users.serializers import serialize_member
+from invoice_sorting.users.serializers import serialize_deleted, serialize_member
 from invoice_sorting.users.service import (
     create_member,
+    delete_member,
     get_member_or_404,
     reset_member_password,
     update_member,
@@ -58,3 +59,17 @@ def reset_password(
 ) -> dict[str, Any]:
     reset_member_password(control, get_member_or_404(control, tenant.id, user_id), body.password)
     return ok(None)
+
+
+@router.delete("/{user_id}")
+def remove_user(
+    user_id: int,
+    control: ControlSessionDep,
+    tenant: TenantRowDep,
+    session: SessionDep,
+    actor: AdminDep,
+) -> dict[str, Any]:
+    """删除用户；多账套下若此人还属于别的账套，只把他移出本账套。"""
+    actor_id = actor.id if actor is not None else None
+    deleted = delete_member(control, session, user_id, actor_id=actor_id, tenant_id=tenant.id)
+    return ok(serialize_deleted(deleted))

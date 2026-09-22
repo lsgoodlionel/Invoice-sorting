@@ -40,7 +40,9 @@ def test_export_defaults_to_single_tenant(seeded_env, tmp_path, capsys):
     printed = capsys.readouterr().out
     assert out.is_file()
     assert "已导出账套 default" in printed
-    assert f"文件 {len(SAMPLE_EXPENSES) + 2} 个" in printed  # 数据库 + 附件 + 资料包
+    # 数据库 + 附件 + 资料包 + 登录账号清单（单账套才带）
+    assert f"文件 {len(SAMPLE_EXPENSES) + 3} 个" in printed
+    assert "包内含登录账号与密码哈希" in printed
 
 
 def test_export_without_out_writes_to_backup_dir(seeded_env, capsys):

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../client';
-import type { ExportJob, Invite, InviteCreate, PlatformMemberInput, User, UserPatch } from '../types';
+import type { DeletedUser, ExportJob, Invite, InviteCreate, PlatformMemberInput, User, UserPatch } from '../types';
 import { queryKeys } from './keys';
 
 const base = (slug: string) => `/platform/tenants/${slug}`;
@@ -12,6 +12,7 @@ export const platformMembersApi = {
     api.patch<User>(`${base(slug)}/members/${id}`, patch),
   resetPassword: (slug: string, id: number, password: string) =>
     api.post<null>(`${base(slug)}/members/${id}/password`, { password }),
+  remove: (slug: string, id: number) => api.del<DeletedUser>(`${base(slug)}/members/${id}`),
   invites: (slug: string) => api.get<Invite[]>(`${base(slug)}/invites`),
   createInvite: (slug: string, input: InviteCreate) =>
     api.post<Invite>(`${base(slug)}/invites`, input),
@@ -53,6 +54,15 @@ export function useUpdateTenantMember(slug: string) {
   return useMutation({
     mutationFn: ({ id, patch }: { id: number; patch: UserPatch }) =>
       platformMembersApi.update(slug, id, patch),
+    onSuccess: refresh,
+    meta: { silent: true },
+  });
+}
+
+export function useDeleteTenantMember(slug: string) {
+  const refresh = useRefreshTenant(slug);
+  return useMutation({
+    mutationFn: (id: number) => platformMembersApi.remove(slug, id),
     onSuccess: refresh,
     meta: { silent: true },
   });

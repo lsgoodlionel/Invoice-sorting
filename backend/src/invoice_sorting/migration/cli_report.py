@@ -3,6 +3,7 @@
 from collections.abc import Callable, Mapping
 from typing import Any
 
+from invoice_sorting.migration.accounts_report import SECTION_ACCOUNTS
 from invoice_sorting.migration.report import ACTION_CONFLICT, ACTION_FAILED, ACTION_UPDATED
 
 ACTION_TAGS: Mapping[str, str] = {
@@ -19,6 +20,8 @@ def _what(report: Mapping[str, Any]) -> str:
 
 
 def _counts(item: Mapping[str, Any], is_replace: bool) -> str:
+    if is_replace and item.get("key") == SECTION_ACCOUNTS:
+        return f"新建 {item['added']}、更新 {item.get('updated', 0)}、不变或保留 {item['skipped']}"
     if is_replace:
         return f"包内 {item['added']}"
     return (
@@ -41,6 +44,9 @@ def report_lines(report: Mapping[str, Any]) -> list[str]:
     lines.extend(f"  {item['label']}：{_counts(item, is_replace)}" for item in items)
     if report.get("backup_file"):
         lines.append(f"  覆盖前已备份现有数据：{report['backup_file']}")
+    accounts = report.get("accounts") or {}
+    if accounts.get("note"):
+        lines.append(f"账号：{accounts['note']}")
     lines.extend(f"提示：{warning}" for warning in report.get("warnings") or [])
     lines.extend(_detail_lines(items))
     return lines

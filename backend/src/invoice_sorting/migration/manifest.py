@@ -30,6 +30,10 @@ UNKNOWN_VERSION = "0.0.0"
 SECTION_DATABASE = "database"
 SECTION_LIBRARY = "library"
 SECTION_PACKAGES = "packages"
+SECTION_ACCOUNTS = "accounts"
+
+# 单账套导出时附带的登录账号清单（只含密码哈希，账本搬迁设计 2.1）；与数据库同列在清单里、参与校验
+ACCOUNTS_FILENAME = "accounts.json"
 
 # 清单中的 schema 版本键 → 当前程序支持的最高版本
 SUPPORTED_SCHEMA: dict[str, int] = {
@@ -57,6 +61,8 @@ def app_version() -> str:
 
 def section_of(relative_path: str) -> str:
     """按相对租户数据目录的路径判断所属部分。"""
+    if relative_path == ACCOUNTS_FILENAME:
+        return SECTION_ACCOUNTS
     if relative_path.startswith(f"{LIBRARY_DIRNAME}/"):
         return SECTION_LIBRARY
     if relative_path.startswith(f"{PACKAGES_DIRNAME}/"):
@@ -101,6 +107,11 @@ class Manifest:
     @property
     def has_database(self) -> bool:
         return any(entry.path == DB_FILENAME for entry in self.files)
+
+    @property
+    def accounts_entry(self) -> FileEntry | None:
+        """包内的登录账号清单；SaaS 导出与旧包没有。"""
+        return next((entry for entry in self.files if entry.path == ACCOUNTS_FILENAME), None)
 
     def sections(self) -> dict[str, dict[str, int]]:
         """各部分的文件数与字节数。"""

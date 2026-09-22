@@ -25,6 +25,7 @@ from invoice_sorting.common.errors import AppError, ok
 from invoice_sorting.control.platform_deps import PLATFORM_ADMIN_ONLY
 from invoice_sorting.control.repository import require_slug
 from invoice_sorting.db.models import now
+from invoice_sorting.migration.accounts_export import collect_accounts
 from invoice_sorting.migration.export import export_filename, export_tenant
 from invoice_sorting.migration.import_router import router as import_router
 from invoice_sorting.migration.jobs import (
@@ -122,6 +123,8 @@ def _run_export(
             tenant_name=tenant_name(app, slug),
             include_packages=include_packages,
             exported_by=target.exported_by,
+            # 单账套备份带上登录账号与密码哈希；SaaS 返回 None（账号是平台共用的）
+            accounts=collect_accounts(app.state.control_session_factory, app.state.settings, slug),
         )
         _after_export(target, result.path, result.file_count, include_packages)
         store.finish(job_id, result.path, result.file_count)

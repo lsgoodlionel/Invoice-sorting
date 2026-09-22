@@ -1,6 +1,7 @@
 """搬迁包只读检查与数据库快照打开：合并导入与预览共用。
 
-- `inspect_package` 只读 manifest.json 与 ledger.json，做版本、清单与体积体检，不落盘；
+- `inspect_package` 只读 manifest.json、ledger.json 与（若有）accounts.json，
+  做版本、清单、体积与校验和体检，不落盘；报告里只给账号个数，不带任何哈希；
 - `open_package_db` 把包内数据库快照解到暂存目录（逐字节核对校验和），
   补齐旧版本缺的列后以独立引擎打开，用完即释放。包内库只读，从不写回业务库。
 """
@@ -20,7 +21,9 @@ from sqlalchemy.orm import Session, sessionmaker
 from invoice_sorting.common.errors import AppError
 from invoice_sorting.config import DB_FILENAME
 from invoice_sorting.db.session import create_db_engine, init_db, make_session_factory
+from invoice_sorting.migration.accounts_file import AccountsFile, read_accounts
 from invoice_sorting.migration.archive import extract_entry, open_archive, read_member
+from invoice_sorting.migration.errors import ImportRejectedError
 from invoice_sorting.migration.ledger import LEDGER_MAX_BYTES, LEDGER_NAME, LedgerInfo, parse_ledger
 from invoice_sorting.migration.manifest import FileEntry, Manifest
 from invoice_sorting.migration.restore import read_manifest
@@ -31,13 +34,6 @@ FALLBACK_SOURCE_LABEL = "搬迁包"
 MSG_PACKAGE_DB_BROKEN = "搬迁包里的数据库无法打开：{reason}"
 
 
-class ImportRejectedError(AppError):
-    """校验失败：搬迁包不合法、版本过新或目标账套不可用。未写入任何数据。"""
-
-    def __init__(self, message: str, status_code: int = 400) -> None:
-        super().__init__(message, status_code=status_code)
-
-
 @dataclass(frozen=True)
 class PackageInfo:
     """一个已通过体检的搬迁包：清单与（新包才有的）账本描述。"""
@@ -45,6 +41,12 @@ class PackageInfo:
     path: Path
     manifest: Manifest
     ledger: LedgerInfo | None
+    # 包内的登录账号清单（已核对校验和）；SaaS 导出与旧包为 None
+    accounts: AccountsFile | None = None
+
+    @property
+    def account_count(self) -> int:
+        return self.accounts.count if self.accounts is not None else 0
 
     @property
     def is_legacy(self) -> bool:
@@ -73,6 +75,8 @@ class PackageInfo:
             "is_legacy": self.is_legacy,
             "file_count": len(self.manifest.files),
             "total_bytes": self.manifest.total_bytes,
+            "has_accounts": self.accounts is not None,
+            "account_count": self.account_count,
             "scope": self.ledger.to_dict()["scope"] if self.ledger is not None else None,
         }
 
@@ -83,11 +87,12 @@ def inspect_package(archive_path: Path) -> PackageInfo:
         manifest = read_manifest(archive_path)
         with open_archive(archive_path) as archive:
             ledger = _read_ledger(archive)
+        accounts = read_accounts(archive_path, manifest)
     except ImportRejectedError:
         raise
     except AppError as error:
         raise ImportRejectedError(error.message, status_code=error.status_code) from error
-    return PackageInfo(path=archive_path, manifest=manifest, ledger=ledger)
+    return PackageInfo(path=archive_path, manifest=manifest, ledger=ledger, accounts=accounts)
 
 
 def _read_ledger(archive: zipfile.ZipFile) -> LedgerInfo | None:

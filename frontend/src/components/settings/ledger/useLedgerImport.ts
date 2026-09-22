@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { errorMessage } from '../../../api/client';
 import {
   backupApi,
@@ -20,10 +20,22 @@ interface ImportState {
   uploadId: string | null;
   percent: number;
   preview: ImportPreview | null;
+  /** 当前预览所按的导入方式；切换方式时向服务端重新要预览（覆盖模式才有登录账号分区） */
+  previewMode: ImportMode;
+  isPreviewing: boolean;
   error: string;
 }
 
-const IDLE: ImportState = { phase: 'idle', file: null, uploadId: null, percent: 0, preview: null, error: '' };
+const IDLE: ImportState = {
+  phase: 'idle',
+  file: null,
+  uploadId: null,
+  percent: 0,
+  preview: null,
+  previewMode: 'merge',
+  isPreviewing: false,
+  error: '',
+};
 
 const BUSY_PHASES: readonly ImportPhase[] = ['hashing', 'uploading', 'analyzing', 'importing'];
 
@@ -34,6 +46,8 @@ export interface LedgerImport {
   file: File | null;
   percent: number;
   preview: ImportPreview | null;
+  /** 正在按新选的导入方式重新生成预览 */
+  isPreviewing: boolean;
   job: ImportJob | null;
   error: string;
   confirmError: string;
@@ -41,6 +55,8 @@ export interface LedgerImport {
   /** 上传或导入进行中（离开页面需提示） */
   isBusy: boolean;
   begin: (file: File) => void;
+  /** 切换导入方式：按新方式重新预览（同一方式不重复请求） */
+  changeMode: (mode: ImportMode) => void;
   confirm: (mode: ImportMode, confirmName: string, includeSettings: boolean) => void;
   /** 取消上传或放弃导入：中止请求并让服务端清理暂存 */
   cancel: () => void;
@@ -54,6 +70,24 @@ function deriveJobPhase(state: ImportState, job: ImportJob | undefined, hasJobEr
   if (job?.status === 'done') return 'done';
   if (job?.status === 'failed' || hasJobError) return 'failed';
   return 'importing';
+}
+
+/** 切换导入方式后按新方式重新预览；只采纳与当前所选方式一致的响应，快速来回切换时丢弃过期结果。 */
+function useModeSwitch(state: ImportState, setState: Dispatch<SetStateAction<ImportState>>) {
+  return (mode: ImportMode) => {
+    const uploadId = state.uploadId;
+    if (!uploadId || state.phase !== 'preview' || mode === state.previewMode) return;
+    setState((current) => ({ ...current, previewMode: mode, isPreviewing: true }));
+    const settle = (next: Partial<ImportState>) =>
+      setState((current) => (current.uploadId === uploadId && current.previewMode === mode ? { ...current, ...next, isPreviewing: false } : current));
+    backupApi
+      .completeImport(uploadId, undefined, mode)
+      .then((preview) => settle({ preview }))
+      .catch((error: unknown) => {
+        notifyError(error, '重新生成预览失败');
+        settle({});
+      });
+  };
 }
 
 export function useLedgerImport(): LedgerImport {
@@ -102,6 +136,8 @@ export function useLedgerImport(): LedgerImport {
       });
   };
 
+  const changeMode = useModeSwitch(state, setState);
+
   const confirm = (mode: ImportMode, confirmName: string, includeSettings: boolean) => {
     if (!state.uploadId) return;
     const input =
@@ -133,12 +169,14 @@ export function useLedgerImport(): LedgerImport {
     file: state.file,
     percent: state.percent,
     preview: state.preview,
+    isPreviewing: state.isPreviewing,
     job,
     error: state.phase === 'importing' ? jobError : state.error,
     confirmError: confirmMutation.error ? errorMessage(confirmMutation.error) : '',
     isConfirming: confirmMutation.isPending,
     isBusy: BUSY_PHASES.includes(phase),
     begin,
+    changeMode,
     confirm,
     cancel,
     finish: cancel,

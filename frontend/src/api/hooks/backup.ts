@@ -37,11 +37,12 @@ export type ImportMode = 'merge' | 'replace';
 /**
  * 报告按对象类别汇总。后端现有类别：records 记录、attachments 附件、users 用户、categories 分类、
  * projects 经费项目、rules 凭证规则、memories 分类记忆、batches 批次、exports 资料包生成记录、
- * settings 系统设置（明细 label 为设置项中文名，reason 形如「原值 → 新值」）。
+ * settings 系统设置（明细 label 为设置项中文名，reason 形如「原值 → 新值」）、
+ * accounts 登录账号（仅单账套覆盖模式：每个账号是新建、更新密码还是保留）。
  */
 export type ImportReportKey = string;
 
-export type ImportDetailAction = 'added' | 'skipped' | 'conflict' | 'failed';
+export type ImportDetailAction = 'added' | 'updated' | 'skipped' | 'conflict' | 'failed' | 'deleted';
 
 export interface ImportReportDetail {
   action: ImportDetailAction;
@@ -55,6 +56,10 @@ export interface ImportReportItem {
   /** 后端给出的中文类别名；缺省时前端按 key 兜底 */
   label?: string;
   added: number;
+  /** 以导入包为准改写的数量（设置、账号更新密码等） */
+  updated?: number;
+  /** 仅覆盖恢复账号：本地多出而被删除的账号数 */
+  deleted?: number;
   skipped: number;
   conflicts: number;
   failed?: number;
@@ -75,14 +80,24 @@ export interface ImportSource {
 /** 后端可能直接给 source，也可能给整个 ledger.json（{kind, source, scope}），界面两种都认。 */
 export type ImportSourcePayload = ImportSource | { kind?: string; source?: ImportSource | null };
 
+/** 包内带登录账号时的说明：只有单账套整套覆盖才恢复（will_restore），合并与 SaaS 只说明不导入。 */
+export interface ImportAccountsInfo {
+  count: number;
+  will_restore: boolean;
+  note: string;
+}
+
 /** complete 后的预览（dry-run）报告。 */
 export interface ImportPreview {
   upload_id: string;
   /** 覆盖模式需要输入的当前账套名称 */
   target_name?: string;
+  /** 预览所按的导入方式（切换方式时重新预览） */
+  mode?: ImportMode;
   source?: ImportSourcePayload | null;
   items: ImportReportItem[];
   warnings?: string[];
+  accounts?: ImportAccountsInfo | null;
 }
 
 /** confirm 后的导入任务；done/failed 时带结果报告。 */
@@ -96,7 +111,7 @@ export interface ImportJob {
   error?: string;
   /** 覆盖模式执行前的自动备份文件 */
   backup_file?: string;
-  report?: { items: ImportReportItem[]; warnings?: string[] } | null;
+  report?: { items: ImportReportItem[]; warnings?: string[]; accounts?: ImportAccountsInfo | null } | null;
 }
 
 export interface ImportConfirmInput {
@@ -119,8 +134,13 @@ export const backupApi = {
   /** index 从 0 开始 */
   uploadPart: (uploadId: string, index: number, blob: Blob, signal?: AbortSignal) =>
     request<unknown>(`${importPath(uploadId)}/parts/${index}`, { method: 'PUT', blob, signal }),
-  completeImport: (uploadId: string, signal?: AbortSignal) =>
-    request<ImportPreview>(`${importPath(uploadId)}/complete`, { method: 'POST', json: COMPLETE_BODY, signal }),
+  /** mode 省略时按服务端默认（合并）预览；切换到覆盖时带 mode 重新预览 */
+  completeImport: (uploadId: string, signal?: AbortSignal, mode?: ImportMode) =>
+    request<ImportPreview>(`${importPath(uploadId)}/complete`, {
+      method: 'POST',
+      json: mode ? { ...COMPLETE_BODY, mode } : COMPLETE_BODY,
+      signal,
+    }),
   confirmImport: (uploadId: string, input: ImportConfirmInput) =>
     api.post<ImportJob>(`${importPath(uploadId)}/confirm`, input),
   importStatus: (uploadId: string) => api.get<ImportJob>(`${importPath(uploadId)}/status`),

@@ -8,6 +8,8 @@ interface ImportConfirmFormProps {
   targetName: string;
   isSubmitting: boolean;
   error: string;
+  /** 切换导入方式时通知上层按新方式重新预览 */
+  onModeChange?: (mode: ImportMode) => void;
   onConfirm: (mode: ImportMode, confirmName: string, includeSettings: boolean) => void;
   onCancel: () => void;
 }
@@ -45,7 +47,7 @@ function SettingsChoice({ isReplace, checked, onChange }: { isReplace: boolean; 
 }
 
 /** 选择导入模式并确认；覆盖模式必须输入正确账套名才能提交。主按钮留给「备份并下载」，这里用描边按钮。 */
-export function ImportConfirmForm({ targetName, isSubmitting, error, onConfirm, onCancel }: ImportConfirmFormProps) {
+export function ImportConfirmForm({ targetName, isSubmitting, error, onModeChange, onConfirm, onCancel }: ImportConfirmFormProps) {
   const [mode, setMode] = useState<ImportMode>('merge');
   const [confirmName, setConfirmName] = useState('');
   const [shouldIncludeSettings, setShouldIncludeSettings] = useState(true);
@@ -54,7 +56,14 @@ export function ImportConfirmForm({ targetName, isSubmitting, error, onConfirm, 
 
   return (
     <Stack gap="sm">
-      <Radio.Group label="导入方式" value={mode} onChange={(value) => setMode(value as ImportMode)}>
+      <Radio.Group
+        label="导入方式"
+        value={mode}
+        onChange={(value) => {
+          setMode(value as ImportMode);
+          onModeChange?.(value as ImportMode);
+        }}
+      >
         <Stack gap="xs" mt={6}>
           <Radio value="merge" label="合并到现有账本" description="只新增，不修改已有记录；重复的自动跳过" />
           <Radio value="replace" color="red" label="清空后整套覆盖" description="以搬迁包为准，替换当前账本的全部内容" />

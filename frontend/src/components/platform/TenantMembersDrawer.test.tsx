@@ -48,6 +48,35 @@ describe('账套成员', () => {
     );
   });
 
+  test('删除成员：确认后移出该账套', async () => {
+    const user = userEvent.setup();
+    const { calls } = setup({
+      'DELETE /api/platform/tenants/alpha/members/2': { id: 2, username: 'zhangsan', is_account_removed: true },
+    });
+    const row = await screen.findByTestId('member-row-2');
+    await user.click(within(row).getByRole('button', { name: '删除 张三' }));
+
+    const dialog = await screen.findByRole('dialog', { name: '将「张三」移出账套「阿尔法账套」？' });
+    expect(within(dialog).getByText(/其上传与操作记录仍保留并显示原姓名/)).toBeInTheDocument();
+    expect(findCall(calls, 'DELETE', '/api/platform/tenants/alpha/members/2')).toBeUndefined();
+    await user.click(within(dialog).getByRole('button', { name: '移出' }));
+
+    await waitFor(() => expect(findCall(calls, 'DELETE', '/api/platform/tenants/alpha/members/2')).toBeDefined());
+  });
+
+  test('删除最后一名管理员时显示后端原因', async () => {
+    const user = userEvent.setup();
+    setup({
+      'DELETE /api/platform/tenants/alpha/members/1': () => ({ status: 409, error: '不能删除账套里最后一名可用的管理员' }),
+    });
+    const row = await screen.findByTestId('member-row-1');
+    await user.click(within(row).getByRole('button', { name: '删除 账套管理员' }));
+    const dialog = await screen.findByRole('dialog', { name: '将「账套管理员」移出账套「阿尔法账套」？' });
+    await user.click(within(dialog).getByRole('button', { name: '移出' }));
+
+    expect(await screen.findByText('不能删除账套里最后一名可用的管理员')).toBeInTheDocument();
+  });
+
   test('添加成员：已有账号可以不填密码', async () => {
     const user = userEvent.setup();
     const { calls } = setup({ 'POST /api/platform/tenants/alpha/members': makeUser({ id: 3, username: 'lisi' }) });

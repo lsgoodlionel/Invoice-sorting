@@ -64,6 +64,8 @@ class UploadSession:
     include_settings: bool = True  # 合并时是否同时导入系统设置（旧会话文件没有此键，按默认）
     error: str = ""
     report: dict[str, Any] | None = None
+    # 确认导入的账号（关闭认证时为 None）：单账套覆盖恢复账号时不删除他本人
+    actor_id: int | None = None
 
     @property
     def part_count(self) -> int:

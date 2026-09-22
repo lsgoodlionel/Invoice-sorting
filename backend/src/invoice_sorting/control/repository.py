@@ -2,7 +2,7 @@
 
 import re
 
-from sqlalchemy import select
+from sqlalchemy import Column, Table, select
 from sqlalchemy.orm import Session
 
 from invoice_sorting.common.errors import AppError, ConflictError
@@ -10,6 +10,7 @@ from invoice_sorting.control.models import (
     ROLE_MEMBER,
     TENANT_STATUS_ACTIVE,
     Account,
+    ControlBase,
     Membership,
     Tenant,
 )
@@ -151,3 +152,13 @@ def ensure_membership(
     db.add(membership)
     db.flush()
     return membership
+
+
+def account_references() -> list[tuple[Table, Column]]:
+    """控制库里所有引用 account.id 的外键列（按元数据自动发现，新增表自动纳入）。"""
+    return [
+        (table, fk.parent)
+        for table in ControlBase.metadata.sorted_tables
+        for fk in table.foreign_keys
+        if fk.column.table.name == Account.__tablename__
+    ]

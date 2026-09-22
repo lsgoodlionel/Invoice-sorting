@@ -44,7 +44,10 @@ def migrate_tenant_accounts(
 ) -> MigrationReport:
     """把某租户业务库中的账号与会话迁到控制库。调用方负责提交控制库会话。"""
     with factory() as business:
-        users = list(business.scalars(select(User).order_by(User.id)))
+        # 已删除账号的镜像行只为历史记录保留，不能借迁移把账号“复活”
+        users = list(
+            business.scalars(select(User).where(User.is_deleted.is_(False)).order_by(User.id))
+        )
         sessions = list(business.scalars(select(AuthSession)))
     accounts, memberships = _migrate_users(control, tenant_id, users)
     moved = _migrate_sessions(control, tenant_id, sessions)

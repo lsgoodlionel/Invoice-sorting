@@ -26,11 +26,12 @@ function ImportStage({ state, targetName }: { state: LedgerImport; targetName: s
     case 'preview':
       return state.preview ? (
         <Stack gap="md">
-          <ImportPreviewView preview={state.preview} file={state.file} />
+          <ImportPreviewView preview={state.preview} file={state.file} isRefreshing={state.isPreviewing} />
           <ImportConfirmForm
             targetName={state.preview.target_name || targetName}
             isSubmitting={state.isConfirming}
             error={state.confirmError}
+            onModeChange={state.changeMode}
             onConfirm={state.confirm}
             onCancel={state.cancel}
           />

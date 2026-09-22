@@ -6,6 +6,7 @@ export interface UserRowHandlers {
   onEdit: (user: User) => void;
   onResetPassword: (user: User) => void;
   onToggleActive: (user: User) => void;
+  onDelete: (user: User) => void;
 }
 
 interface UserTableProps extends UserRowHandlers {
@@ -13,7 +14,7 @@ interface UserTableProps extends UserRowHandlers {
   currentUserId: number | null;
 }
 
-const TABLE_MIN_WIDTH = 760;
+const TABLE_MIN_WIDTH = 800;
 const SELF_DEACTIVATE_HINT = '不能停用当前登录的账户';
 
 function StatusBadge({ user }: { user: User }) {
@@ -39,7 +40,7 @@ function ActiveToggle({ user, isSelf, onToggleActive }: { user: User; isSelf: bo
   );
 }
 
-function UserRow({ user, isSelf, onEdit, onResetPassword, onToggleActive }: UserRowHandlers & { user: User; isSelf: boolean }) {
+function UserRow({ user, isSelf, onEdit, onResetPassword, onToggleActive, onDelete }: UserRowHandlers & { user: User; isSelf: boolean }) {
   return (
     <Table.Tr data-testid={`user-row-${user.id}`} style={{ opacity: user.is_active ? 1 : 0.6 }}>
       <Table.Td>
@@ -57,6 +58,9 @@ function UserRow({ user, isSelf, onEdit, onResetPassword, onToggleActive }: User
           <Button size="compact-xs" variant="subtle" aria-label={`编辑 ${user.display_name}`} onClick={() => onEdit(user)}>编辑</Button>
           <Button size="compact-xs" variant="subtle" aria-label={`重置 ${user.display_name} 的密码`} onClick={() => onResetPassword(user)}>重置密码</Button>
           <ActiveToggle user={user} isSelf={isSelf} onToggleActive={onToggleActive} />
+          {!isSelf && (
+            <Button size="compact-xs" variant="subtle" color="red" aria-label={`删除 ${user.display_name}`} onClick={() => onDelete(user)}>删除</Button>
+          )}
         </Group>
       </Table.Td>
     </Table.Tr>

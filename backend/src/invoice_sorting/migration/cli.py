@@ -21,6 +21,7 @@ from invoice_sorting.control.database import (
 from invoice_sorting.control.repository import find_tenant, require_slug
 from invoice_sorting.db.models import now
 from invoice_sorting.migration import merge as engine
+from invoice_sorting.migration.accounts_export import collect_accounts
 from invoice_sorting.migration.cli_report import print_report
 from invoice_sorting.migration.export import export_filename, export_tenant
 from invoice_sorting.migration.jobs import exports_dir
@@ -34,6 +35,7 @@ EXIT_FAILED = 1  # 导出失败 / 导入执行失败（已回滚）
 EXIT_INVALID = 2  # 导入校验失败：包不合法、版本过新、目标账套不可用、参数冲突
 MSG_OVERWRITE_MERGE = "--overwrite 只用于 --mode replace（整套替换），合并导入不会覆盖任何已有数据"
 MSG_TENANT_UNKNOWN = "账套不存在：{slug}"
+MSG_ACCOUNTS_INCLUDED = "包内含登录账号与密码哈希（accounts.json），请当作敏感文件妥善保管"
 MSG_TENANT_EMPTY = "账套 {slug} 还没有数据（找不到 {path}），无需导出"
 
 
@@ -96,9 +98,12 @@ def export_command(
             _resolve_out(settings, normalized, out),
             tenant_name=name,
             include_packages=include_packages,
+            accounts=collect_accounts(space.control, settings, normalized),
         )
     print(f"已导出账套 {normalized}（{name}）→ {result.path}")
     print(f"文件 {result.file_count} 个，合计 {result.total_bytes} 字节")
+    if result.manifest.accounts_entry is not None:
+        print(MSG_ACCOUNTS_INCLUDED)
 
 
 def _resolve_mode(mode: str | None, overwrite: bool) -> str:

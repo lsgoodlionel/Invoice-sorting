@@ -2,7 +2,7 @@ import { Button, Group, Stack, Text } from '@mantine/core';
 import { IconTicket, IconUserPlus } from '@tabler/icons-react';
 import { useState } from 'react';
 import { useAuthStatus } from '../../../api/hooks/auth';
-import { useUsers } from '../../../api/hooks/users';
+import { useDeleteUser, useUsers } from '../../../api/hooks/users';
 import type { User } from '../../../api/types';
 import { useCurrentUser } from '../../auth/CurrentUserContext';
 import { CreateUserModal } from './CreateUserModal';
@@ -10,6 +10,7 @@ import { InviteModal } from './InviteModal';
 import { EditUserModal } from './EditUserModal';
 import { ResetPasswordModal } from './ResetPasswordModal';
 import { UserTable } from './UserTable';
+import { useDeleteUserConfirm } from './useDeleteUserConfirm';
 import { useToggleUserActive } from './useToggleUserActive';
 
 type UserDialog =
@@ -20,8 +21,8 @@ type UserDialog =
   | null;
 
 /**
- * 用户管理（仅管理员）：添加用户、修改姓名与角色、重置密码、启用/停用。
- * 多租户部署额外提供邀请码入口；单租户部署不暴露。
+ * 用户管理（仅管理员）：添加用户、修改姓名与角色、重置密码、启用/停用、删除。
+ * 多租户部署额外提供邀请码入口，删除改为“移出本账套”；单租户部署不暴露邀请码。
  */
 export function UserManager() {
   const { data: users = [], isLoading } = useUsers();
@@ -29,6 +30,7 @@ export function UserManager() {
   const { user: me } = useCurrentUser();
   const [dialog, setDialog] = useState<UserDialog>(null);
   const toggleActive = useToggleUserActive();
+  const confirmDelete = useDeleteUserConfirm(useDeleteUser(), { scope: status?.multi_tenant ? 'tenant' : 'account' });
   const close = () => setDialog(null);
   const currentUserId = me?.id ?? null;
 
@@ -54,6 +56,7 @@ export function UserManager() {
           onEdit={(user) => setDialog({ type: 'edit', user })}
           onResetPassword={(user) => setDialog({ type: 'password', user })}
           onToggleActive={toggleActive}
+          onDelete={confirmDelete}
         />
       )}
       {dialog?.type === 'create' && <CreateUserModal onClose={close} />}

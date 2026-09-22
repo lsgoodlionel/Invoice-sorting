@@ -90,8 +90,13 @@ async def receive_part(
     return session
 
 
-def complete_upload(
-    app: Any, slug: str, upload_id: str, mode: str, include_settings: bool = True
+def complete_upload(  # noqa: PLR0913 - 与完成请求的字段一一对应
+    app: Any,
+    slug: str,
+    upload_id: str,
+    mode: str,
+    include_settings: bool = True,
+    actor_id: int | None = None,
 ) -> UploadSession:
     """合并分片并校验整包，然后生成预览；已合并过的会话只重新预览（切换模式或设置选项时用）。"""
     store = store_of(app)
@@ -101,7 +106,8 @@ def complete_upload(
     with store.exclusive(session):
         if session.status == STATUS_UPLOADING:
             session = _assemble_and_verify(store, session)
-        report = engine_bridge.preview(*_engine_args(app, store, session), mode, include_settings)
+        args = _engine_args(app, store, session)
+        report = engine_bridge.preview(*args, mode, include_settings, actor_id=actor_id)
         return store.update(
             session, mode=mode, include_settings=include_settings, report=report, error=""
         )
@@ -139,6 +145,7 @@ def confirm_import(  # noqa: PLR0913 - 与确认请求的字段一一对应
     mode: str,
     confirm_name: str,
     include_settings: bool = True,
+    actor_id: int | None = None,
 ) -> UploadSession:
     """确认导入：校验状态与覆盖确认名后标记为 running，真正的导入由后台任务执行。"""
     store = store_of(app)
@@ -154,7 +161,12 @@ def confirm_import(  # noqa: PLR0913 - 与确认请求的字段一一对应
         if session.status != STATUS_READY:
             raise ConflictError(MSG_NOT_READY)
         return store.update(
-            session, status=STATUS_RUNNING, mode=mode, include_settings=include_settings, error=""
+            session,
+            status=STATUS_RUNNING,
+            mode=mode,
+            include_settings=include_settings,
+            actor_id=actor_id,
+            error="",
         )
 
 
@@ -170,7 +182,9 @@ def run_confirmed(app: Any, slug: str, upload_id: str) -> None:
     session = store.require(slug, upload_id)
     try:
         args = _engine_args(app, store, session)
-        report = engine_bridge.execute(*args, session.mode, session.include_settings)
+        report = engine_bridge.execute(
+            *args, session.mode, session.include_settings, actor_id=session.actor_id
+        )
     except Exception as error:  # noqa: BLE001 - 后台任务兜底，原因写进会话供界面展示
         logger.exception("账套 %s 网页导入 %s 失败", slug, upload_id)
         store.update(session, status=STATUS_FAILED, error=_failure_reason(error))

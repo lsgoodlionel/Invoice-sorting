@@ -9,14 +9,19 @@ from datetime import date, datetime
 from sqlalchemy import (
     JSON,
     Boolean,
+    Connection,
     Date,
     DateTime,
     ForeignKey,
     Integer,
     String,
     UniqueConstraint,
+    event,
+    func,
+    select,
 )
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy.orm import DeclarativeBase, Mapped, Mapper, mapped_column
 
 from invoice_sorting.db.models import now
 
@@ -28,9 +33,6 @@ ROLE_ADMIN = "admin"
 ROLE_MEMBER = "member"
 
 LICENSE_STATUS_ACTIVE = "active"
-
-# 账号来源：空串为正常开通；import 为合并导入账本时创建的停用占位账号（账本搬迁设计 4.3）
-ACCOUNT_SOURCE_IMPORT = "import"
 
 # 账号来源：空串为正常开通；import 为合并导入账本时创建的停用占位账号（账本搬迁设计 4.3）
 ACCOUNT_SOURCE_IMPORT = "import"
@@ -88,6 +90,51 @@ class Account(ControlBase):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     source: Mapped[str] = mapped_column(String(20), default="")
+
+
+class IdSequence(ControlBase):
+    """已用过的最大 id（只增不减，效果同 SQLite 的 AUTOINCREMENT）。
+
+    账号删除后业务库仍保留同 id 的镜像行（历史记录显示原姓名）；若新账号复用这个 id，
+    它就会“继承”那些历史记录。因此账号 id 一律按本表分配，删除时也把 id 记进来。
+    """
+
+    __tablename__ = "id_sequence"
+
+    name: Mapped[str] = mapped_column(String(30), primary_key=True)
+    value: Mapped[int] = mapped_column(Integer, default=0)
+
+
+ACCOUNT_ID_SEQUENCE = Account.__tablename__
+
+
+def remember_account_id(connection: Connection, account_id: int) -> None:
+    """把 account_id 记为已用过（只增不减）。"""
+    stmt = sqlite_insert(IdSequence).values(name=ACCOUNT_ID_SEQUENCE, value=account_id)
+    connection.execute(
+        stmt.on_conflict_do_update(
+            index_elements=[IdSequence.name],
+            set_={"value": func.max(IdSequence.value, stmt.excluded.value)},
+        )
+    )
+
+
+def next_account_id(connection: Connection) -> int:
+    """比现存账号与曾经用过的 id 都大的新 id，并立即记下（同一次 flush 内连续分配也不重复）。"""
+    used = connection.scalar(select(func.max(Account.id))) or 0
+    recorded = connection.scalar(
+        select(IdSequence.value).where(IdSequence.name == ACCOUNT_ID_SEQUENCE)
+    )
+    new_id = max(used, recorded or 0) + 1
+    remember_account_id(connection, new_id)
+    return new_id
+
+
+@event.listens_for(Account, "before_insert")
+def _assign_account_id(_mapper: Mapper, connection: Connection, target: Account) -> None:
+    """未显式指定 id 的新账号（显式指定用于迁移与恢复时保持原 id）。"""
+    if target.id is None:
+        target.id = next_account_id(connection)
 
 
 class Membership(ControlBase):

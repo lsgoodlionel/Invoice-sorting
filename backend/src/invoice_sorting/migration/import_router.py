@@ -13,7 +13,7 @@ from fastapi import APIRouter, BackgroundTasks, Request
 from pydantic import BaseModel, ConfigDict, Field, StrictBool
 from starlette.concurrency import run_in_threadpool
 
-from invoice_sorting.auth.deps import ADMIN_ONLY
+from invoice_sorting.auth.deps import ADMIN_ONLY, get_current_user
 from invoice_sorting.common.errors import ok
 from invoice_sorting.control.platform_deps import PLATFORM_ADMIN_ONLY
 from invoice_sorting.migration import import_service as service
@@ -123,12 +123,23 @@ async def _put_part(request: Request, slug: str, upload_id: str, index: int) -> 
     return ok(await run_in_threadpool(session_payload, request.app, session))
 
 
+def _actor_id(request: Request) -> int | None:
+    """执行导入的账号：单账套覆盖恢复账号时，备份里没有他也不会被删除。"""
+    user = get_current_user(request)
+    return user.id if user is not None else None
+
+
 def _complete(
     request: Request, slug: str, upload_id: str, body: CompleteImportRequest | None
 ) -> dict[str, Any]:
     options = body or CompleteImportRequest()
     session = service.complete_upload(
-        request.app, slug, upload_id, options.mode, options.include_settings
+        request.app,
+        slug,
+        upload_id,
+        options.mode,
+        options.include_settings,
+        actor_id=_actor_id(request),
     )
     return ok(_preview_payload(request.app, session))
 
@@ -142,7 +153,13 @@ def _confirm(
 ) -> dict[str, Any]:
     app = request.app
     session = service.confirm_import(
-        app, slug, upload_id, body.mode, body.confirm_name, body.include_settings
+        app,
+        slug,
+        upload_id,
+        body.mode,
+        body.confirm_name,
+        body.include_settings,
+        actor_id=_actor_id(request),
     )
     tasks.add_task(service.run_confirmed, app, slug, upload_id)
     return ok(session_payload(app, session))

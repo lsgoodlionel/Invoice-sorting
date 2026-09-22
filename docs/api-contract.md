@@ -65,6 +65,7 @@ type TenantOption = TenantBrief & { is_current: boolean }
 | POST | `/api/users` | `{ username, display_name?, password, role? }`（role 默认 `member`）；用户名已存在 409“用户名已存在”（用户名全局唯一，别的账套占用了也算） | `User`，同时加入本账套 |
 | PATCH | `/api/users/{id}` | `{ display_name?, role?, is_active? }`；不是本账套成员 404“用户不存在” | `User`；`role`/`is_active` 改的是**本账套内**的身份，停用后其会话全部失效 |
 | POST | `/api/users/{id}/password` | `{ password }` 管理员重置；不是本账套成员 404 | `null`；该用户所有会话失效（重置自己的密码时当前会话也失效，需重新登录） |
+| DELETE | `/api/users/{id}` | —；删自己 400“不能删除自己的账号”；不是本账套成员 404“用户不存在”；删完本账套已没有可用管理员 409“不能删除账套里最后一名可用的管理员” | `DeletedUser`；写操作，只读降级时同样 403 |
 
 管理员只能管理**自己账套**的成员：别的账套的账号一律按“用户不存在”处理，平台级用户管理属于运营后台（后续批次）。
 
@@ -78,6 +79,23 @@ type User = {
 
 - 约束（400，中文说明）：不能停用自己（“不能停用自己”）或把自己改为普通用户（“不能把自己改为普通用户”）；**每个账套**必须至少保留一名启用中且已设置密码的管理员（修改会让最后一名这样的管理员失去资格时 400“系统必须至少保留一名启用中且已设置密码的管理员”）；内置 `admin` 不能改用户名（本接口不提供改用户名）。关闭认证时无“自己”，仅检查管理员保留规则。
 - 普通用户（member）可使用：收集、清单、批次、统计、附件、导入、经费项目新建/编辑、修改自己的密码。
+- **删除用户**（与账号恢复共用 `users/deletion.py`）：
+  - 单账套：删除账号——无法再登录、从用户列表消失，**用户名可再次使用**（同名新建得到新的 id）；
+  - 多账套：把此人**移出本账套**（成员关系与本账套会话删除）；他不再属于任何账套（且不是平台管理员）时账号一并删除，否则在其他账套照常登录；
+  - 业务库 `app_user` 镜像行保留（`is_deleted=true`），附件上传人、时间线操作人等历史记录仍显示**原姓名**；
+  - “可用管理员”口径与账号恢复一致：启用中的管理员，有密码，或是尚未设密码的内置 `admin`。
+
+```ts
+type DeletedUser = {
+  id: number; username: string;
+  is_account_removed: boolean;   // false：此人还属于别的账套，只是移出了本账套
+}
+```
+
+- 同名重建的实现：
+  - 账号 id **不复用**：控制库 `id_sequence` 记录用过的最大 id（新建账号按它分配，删除时也记入），否则新账号会“继承”业务库里同 id 的历史记录；
+  - `app_user.username` 仍是唯一约束：有人重新使用某个用户名时，已删除镜像行的用户名在同步时改为 `原名~id` 让位（`~` 不是合法用户名字符；只改用户名，姓名不变）。让位发生在同步时，因此升级前已存在的删除行无需迁移；
+  - 升级时业务库自动补 `is_deleted`、`deleted_at` 两列，控制库自动建 `id_sequence` 表。
 - 仅管理员：用户管理；`PUT /api/settings`；分类的新建/修改/删除；凭证清单规则的新建/修改/删除；备份/导出与导入（`/api/backup/*`）。对应 GET 端点所有登录用户可读。
 
 ### 0.3 操作人记录
@@ -402,7 +420,10 @@ type LedgerBackup = {
 ```
 
 `ExportJob` 见平台运营后台一节，另有 `include_packages: boolean`。任务记录在进程内存，重启后作废（重新导出即可）。
-包是完整的账本：整个业务数据库（含系统设置、分类、规则、记忆）+ 全部附件 + 资料包（可选），**不含** `control.db`（账号密码）。
+包是完整的账本：整个业务数据库（含系统设置、分类、规则、记忆）+ 全部附件 + 资料包（可选）。
+**单账套部署**另含 `data/accounts.json`：本账套全部成员的账号 id、用户名、显示名、角色、启用状态与**原样的密码哈希**
+（列入清单、参与 SHA-256 校验，`ledger.json.has_accounts = true`），因此备份包应当作敏感文件保管；
+不含会话、邀请码、平台管理员标记、授权、邮件设置与 `secret.key`。**SaaS 部署的账套备份不含账号**（`has_accounts = false`）。
 账套自助导出的包放在**该账套自己的** `备份/账本备份/`（单账套即 `数据目录/备份/账本备份/`，SaaS 为
 `tenants/<账套>/备份/账本备份/`），每个账套各自保留最近 **10** 份；旁边的 `<包名>.json` 侧车只记录上面三项元数据。
 列表与下载的账套一律取自当前请求，别的账套的包即使知道文件名也是 404。平台后台替某账套导出的包仍放在平台根目录
@@ -445,13 +466,28 @@ type ImportReport = {              // 由导入引擎给出；预览与结果同
   items: {
     key: string; label: string;    // records/attachments/batches/exports/categories/projects/rules/memories/users/settings
     added: number; updated: number; skipped: number; conflicts: number; failed: number;
-    details: { action: "added"|"updated"|"skipped"|"conflict"|"failed"; label: string; reason: string }[];
+    deleted?: number;              // 仅 accounts 分区：被删除的本地账号数
+    details: { action: "added"|"updated"|"skipped"|"conflict"|"failed"|"deleted"; label: string; reason: string }[];
     truncated: number;             // 超出明细上限、只计数未列出的条数
   }[];
   warnings: string[];
   backup_file?: string;            // 仅覆盖模式的执行结果
+  accounts?: {                     // 仅当包内带登录账号（accounts.json）时出现
+    count: number;                 // 包内账号数
+    will_restore: boolean;         // true 仅限单账套 + 覆盖模式
+    note: string;                  // 覆盖：同名账号的密码将恢复为备份时的密码……；合并/SaaS：包内含 N 个账号，…不导入账号
+  };
 }
 ```
+
+- **登录账号**（设计 3.1）：只有单账套部署的覆盖模式恢复账号。此时 `items` 末尾多一个 `key: "accounts"`（「登录账号」）分区：
+  `added` 新建（使用备份里的 id）、`updated` 同名账号改为备份值（`reason` 含“更新密码（恢复为备份时的密码）”“更新显示名、角色或启用状态”“账号编号与备份对齐”）、
+  `deleted` 备份里没有的本地账号被删除（执行导入的管理员本人除外，列为 `skipped`；此分区另有 `deleted` 计数，其他分区没有此字段）、
+  `skipped` 与本地一致；明细 `label` 形如 `alice（成员）`，报告与日志都不含密码哈希。
+  删除语义同“删除用户”：控制库删账号，业务库镜像保留并标记已删除。新建、被删除或被改动账号的会话全部失效——执行导入的管理员若在其中，`confirm` 之后再查 `status` 会得到 401，用备份时的密码重新登录即可看到结果。
+  恢复后没有可用管理员（启用中且已设密码；内置 admin 未设密码也算）时：预览 `warnings` 中说明；执行在解包前即中止、不写任何数据（网页会话 `status=failed` 并附原因，命令行退出码 2）；
+  事务内复核失败则回滚控制库并用覆盖前备份还原数据（`status=failed`，`error` 说明已回滚）。
+  合并模式与 SaaS 目标一律不导入账号，只在 `accounts.note` 中说明；`source` 另含 `has_accounts`、`account_count`。
 
 分片协议：
 
@@ -484,10 +520,10 @@ type ImportReport = {              // 由导入引擎给出；预览与结果同
 
 #### 搬迁包格式、合并导入语义与命令行
 
-**包格式**：`manifest.json`（逐文件 SHA-256）+ `data/`（数据库快照、文件库、可选资料包）+ `ledger.json`（新增）：
+**包格式**：`manifest.json`（逐文件 SHA-256）+ `data/`（数据库快照、文件库、可选资料包，单账套另有 `accounts.json`）+ `ledger.json`（新增）：
 
 ```json
-{ "kind": "ledger",
+{ "kind": "ledger", "has_accounts": true,
   "source": { "deployment": "single|saas", "tenant": "账套名", "exported_by": "导出人", "app_version": "0.2.1" },
   "scope": { "records": 1234, "attachments": 3456, "batches": 12, "from": "2024-01-01", "to": "2026-09-21" } }
 ```
@@ -537,6 +573,8 @@ invoice-sorting import-tenant --in x.zip [--slug y] [--mode merge|replace] [--dr
 ```
 
 - `--no-settings`：合并时不导入系统设置（等同网页 `include_settings=false`，冲突保留本地）；默认导入。
+- 单账套下 `export-tenant` 带 `accounts.json`；`import-tenant --mode replace` 按设计 3.1 恢复账号（报告多“登录账号”一行与“账号：”说明），
+  合并模式与 SaaS 目标不导入账号。恢复后没有可用管理员时以退出码 2 中止（未写入任何数据）。
 - `export-tenant` 省略 `--out` 时仍写入部署根目录 `备份/租户导出/`（运维用途，不计入账套网页上的备份列表）。
 
 - `--slug` 省略时为 `default`；`--mode` 省略时为 `merge`，只给 `--overwrite` 视为 `--mode replace`（兼容旧写法）；
@@ -632,6 +670,7 @@ type Quota = {
 | GET/POST | `/api/platform/tenants/{slug}/members` | POST `{ username, display_name?, password?, role }` | `User[]` / `User` |
 | PATCH | `/api/platform/tenants/{slug}/members/{id}` | `{ display_name?, role?, is_active? }` | `User` |
 | POST | `/api/platform/tenants/{slug}/members/{id}/password` | `{ password }` | `null` |
+| DELETE | `/api/platform/tenants/{slug}/members/{id}` | —；规则与错误同 `DELETE /api/users/{id}`（不能删自己、404、最后可用管理员 409） | `DeletedUser`；把此人移出该账套，不再属于任何账套时账号一并删除 |
 | GET/POST | `/api/platform/tenants/{slug}/invites` | POST `{ role?, expires_on? }` | `Invite[]` / `Invite` |
 | POST | `/api/platform/tenants/{slug}/export` | `{ include_packages? }` → 异步任务 | `ExportJob` |
 | GET | `/api/platform/tenants/{slug}/export/{job}/status` | — | `ExportJob` |

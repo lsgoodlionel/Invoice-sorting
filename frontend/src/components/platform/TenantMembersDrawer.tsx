@@ -1,8 +1,9 @@
 import { Button, Divider, Drawer, Group, Stack, Text } from '@mantine/core';
 import { IconUserPlus } from '@tabler/icons-react';
 import { useState, type ReactNode } from 'react';
-import { useTenantMembers, useUpdateTenantMember } from '../../api/hooks/platformMembers';
+import { useDeleteTenantMember, useTenantMembers, useUpdateTenantMember } from '../../api/hooks/platformMembers';
 import type { PlatformTenant, User } from '../../api/types';
+import { useDeleteUserConfirm } from '../settings/users/useDeleteUserConfirm';
 import { AddTenantMemberModal } from './AddTenantMemberModal';
 import { TenantExportSection } from './TenantExportSection';
 import { TenantInviteSection } from './TenantInviteSection';
@@ -25,6 +26,7 @@ export function TenantMembersDrawer({ tenant, onClose }: { tenant: PlatformTenan
   const slug = tenant.slug;
   const { data: members = [], isLoading } = useTenantMembers(slug);
   const update = useUpdateTenantMember(slug);
+  const confirmDelete = useDeleteUserConfirm(useDeleteTenantMember(slug), { scope: 'tenant', tenantLabel: `账套「${tenant.name}」` });
   const [dialog, setDialog] = useState<Dialog>(null);
   const close = () => setDialog(null);
 
@@ -33,7 +35,7 @@ export function TenantMembersDrawer({ tenant, onClose }: { tenant: PlatformTenan
       <Stack gap="lg">
         <Section label="成员">
           <Group justify="space-between">
-            <Text size="xs" c="dimmed">停用后该成员立即退出登录；账套至少保留一名管理员。</Text>
+            <Text size="xs" c="dimmed">停用或移出后该成员立即退出登录；账套至少保留一名管理员。</Text>
             <Button
               size="xs"
               variant="filled"
@@ -48,6 +50,7 @@ export function TenantMembersDrawer({ tenant, onClose }: { tenant: PlatformTenan
               members={members}
               onResetPassword={(member) => setDialog({ type: 'password', member })}
               onToggleActive={(member) => update.mutate({ id: member.id, patch: { is_active: !member.is_active } })}
+              onDelete={confirmDelete}
             />
           )}
         </Section>

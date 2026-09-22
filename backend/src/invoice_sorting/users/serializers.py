@@ -7,6 +7,7 @@ from typing import Any
 
 from invoice_sorting.attachments.serializers import iso_datetime
 from invoice_sorting.control.members import Member
+from invoice_sorting.users.deletion import DeletedAccount
 
 
 def serialize_member(member: Member) -> dict[str, Any]:
@@ -21,4 +22,13 @@ def serialize_member(member: Member) -> dict[str, Any]:
         "created_at": iso_datetime(account.created_at),
         "last_login_at": iso_datetime(account.last_login_at),
         "source": account.source or "",  # "import"：合并导入账本时创建的停用占位账号
+    }
+
+
+def serialize_deleted(deleted: DeletedAccount) -> dict[str, Any]:
+    """is_account_removed=False：账号还属于别的账套，只是移出了本账套。"""
+    return {
+        "id": deleted.account_id,
+        "username": deleted.username,
+        "is_account_removed": deleted.is_account_removed,
     }

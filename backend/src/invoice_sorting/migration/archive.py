@@ -74,6 +74,12 @@ def add_file(archive: zipfile.ZipFile, source: Path, member: str) -> tuple[int, 
     return size, digest.hexdigest()
 
 
+def add_bytes(archive: zipfile.ZipFile, data: bytes, member: str) -> tuple[int, str]:
+    """写入一段内存中的小文件（如账号清单），返回 (字节数, sha256)。"""
+    archive.writestr(member, data)
+    return len(data), hashlib.sha256(data).hexdigest()
+
+
 def read_member(archive: zipfile.ZipFile, member: str, limit: int) -> bytes:
     """读取一个小成员（清单）；超过 limit 视为损坏。"""
     try:
@@ -87,6 +93,18 @@ def read_member(archive: zipfile.ZipFile, member: str, limit: int) -> bytes:
             return handle.read(limit + 1)[:limit]
     except (zipfile.BadZipFile, zlib.error, EOFError) as error:
         raise AppError(MSG_BAD_ZIP) from error
+
+
+def read_verified(archive: zipfile.ZipFile, entry: FileEntry, limit: int) -> bytes:
+    """读取清单里的一个小文件到内存，并核对大小与校验和（不落盘，适合含敏感内容的小文件）。"""
+    if entry.size > limit:
+        raise AppError(MSG_SIZE_MISMATCH.format(path=entry.path))
+    data = read_member(archive, entry.member, limit)
+    if len(data) != entry.size:
+        raise AppError(MSG_SIZE_MISMATCH.format(path=entry.path))
+    if hashlib.sha256(data).hexdigest() != entry.sha256:
+        raise AppError(MSG_CHECKSUM_MISMATCH.format(path=entry.path))
+    return data
 
 
 def extract_entry(archive: zipfile.ZipFile, entry: FileEntry, destination: Path) -> None:

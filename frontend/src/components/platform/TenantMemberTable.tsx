@@ -5,6 +5,7 @@ import { roleLabel } from '../../lib/users';
 export interface MemberHandlers {
   onResetPassword: (member: User) => void;
   onToggleActive: (member: User) => void;
+  onDelete: (member: User) => void;
 }
 
 function StatusBadge({ member }: { member: User }) {
@@ -13,7 +14,7 @@ function StatusBadge({ member }: { member: User }) {
   return <Badge size="sm" variant="light" color="ink">启用</Badge>;
 }
 
-function MemberRow({ member, onResetPassword, onToggleActive }: MemberHandlers & { member: User }) {
+function MemberRow({ member, onResetPassword, onToggleActive, onDelete }: MemberHandlers & { member: User }) {
   return (
     <Table.Tr data-testid={`member-row-${member.id}`} style={{ opacity: member.is_active ? 1 : 0.6 }}>
       <Table.Td><Text size="sm" span className="num">{member.username}</Text></Table.Td>
@@ -38,17 +39,20 @@ function MemberRow({ member, onResetPassword, onToggleActive }: MemberHandlers &
           >
             {member.is_active ? '停用' : '启用'}
           </Button>
+          <Button size="compact-xs" variant="subtle" color="red" aria-label={`删除 ${member.display_name}`} onClick={() => onDelete(member)}>
+            删除
+          </Button>
         </Group>
       </Table.Td>
     </Table.Tr>
   );
 }
 
-/** 某账套的成员（平台视角）：只做加人、重置密码与停用恢复，角色调整仍在账套内完成。 */
+/** 某账套的成员（平台视角）：加人、重置密码、停用恢复与删除（移出该账套），角色调整仍在账套内完成。 */
 export function TenantMemberTable({ members, ...handlers }: MemberHandlers & { members: readonly User[] }) {
   return (
     <div className="table-scroll">
-      <Table className="ledger-table" miw={560}>
+      <Table className="ledger-table" miw={600}>
         <Table.Thead>
           <Table.Tr>
             <Table.Th>用户名</Table.Th>

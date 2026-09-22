@@ -58,6 +58,13 @@ export interface UserCreate {
   role: UserRole;
 }
 
+/** 删除用户的结果：is_account_removed=false 表示此人还属于别的账套，只是移出了本账套 */
+export interface DeletedUser {
+  id: number;
+  username: string;
+  is_account_removed: boolean;
+}
+
 export interface UserPatch {
   display_name?: string;
   role?: UserRole;

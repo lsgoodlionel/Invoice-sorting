@@ -1,7 +1,7 @@
-"""任意账套的成员管理 API（仅平台管理员）：成员列表、添加、停用/改角色、重置密码、邀请码。
+"""任意账套的成员管理 API（仅平台管理员）：成员列表、添加、停用/改角色、重置密码、删除、邀请码。
 
 目标账套由路径里的 slug 显式指定，与当前请求解析到的账套无关；
-业务规则（不能停用自己、账套至少保留一名管理员）与租户内的用户管理完全一致。
+业务规则（不能停用/删除自己、账套至少保留一名管理员）与租户内的用户管理完全一致。
 """
 
 from typing import Any
@@ -23,9 +23,15 @@ from invoice_sorting.platform_admin.schemas import (
 )
 from invoice_sorting.platform_admin.serializers import serialize_invite
 from invoice_sorting.platform_admin.tenants import require_tenant
+from invoice_sorting.tenancy.deps import load_tenant
 from invoice_sorting.users.schemas import UserUpdate
-from invoice_sorting.users.serializers import serialize_member
-from invoice_sorting.users.service import get_member_or_404, reset_member_password, update_member
+from invoice_sorting.users.serializers import serialize_deleted, serialize_member
+from invoice_sorting.users.service import (
+    delete_member,
+    get_member_or_404,
+    reset_member_password,
+    update_member,
+)
 
 router = APIRouter(
     prefix="/api/platform/tenants/{slug}", tags=["平台成员"], dependencies=PLATFORM_ADMIN_ONLY
@@ -82,6 +88,29 @@ def post_member_password(
     tenant = require_tenant(control, slug)
     reset_member_password(control, get_member_or_404(control, tenant.id, account_id), body.password)
     return ok(None)
+
+
+@router.delete("/members/{account_id}")
+def delete_tenant_member(
+    slug: str,
+    account_id: int,
+    request: Request,
+    control: ControlSessionDep,
+    actor: PlatformAdminDep,
+) -> dict[str, Any]:
+    """把成员移出该账套；他不再属于任何账套时连账号一并删除（同 DELETE /api/users/{id}）。
+
+    先提交该账套业务库（镜像标记已删除），再由依赖提交控制库；控制库提交失败时账号仍在，
+    此人下次登录会把镜像同步回正常状态。
+    """
+    tenant = require_tenant(control, slug)
+    actor_id = actor.id if actor is not None else None
+    with load_tenant(request.app, tenant.slug).session_factory() as business:
+        deleted = delete_member(
+            control, business, account_id, actor_id=actor_id, tenant_id=tenant.id
+        )
+        business.commit()
+    return ok(serialize_deleted(deleted))
 
 
 @router.get("/invites")

@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from invoice_sorting.common.errors import AppError
 from invoice_sorting.config import LIBRARY_DIRNAME
 from invoice_sorting.migration.manifest import SECTION_LIBRARY, Manifest
+from invoice_sorting.migration.replace_preview import replace_report
 from invoice_sorting.migration.restore import import_tenant, read_manifest
 from invoice_sorting.tenancy.runtime import TenantRuntime
 
@@ -59,35 +60,43 @@ def is_mode_available(mode: str) -> bool:
     return mode == MODE_REPLACE or load_engine() is not None
 
 
-def preview(
+def preview(  # noqa: PLR0913 - 与导入请求的字段一一对应
     runtime: TenantRuntime,
     control_factory: sessionmaker[Session],
     archive_path: Path,
     slug: str,
     mode: str,
     include_settings: bool = True,
+    actor_id: int | None = None,
 ) -> dict[str, Any]:
     """只读预览：将新增、跳过与冲突各多少。不写入任何数据。"""
     engine = load_engine()
     if engine is None:
         return _manifest_summary(read_manifest(archive_path), mode)
     report = engine.preview_import(
-        runtime, control_factory, archive_path, slug, mode, include_settings=include_settings
+        runtime,
+        control_factory,
+        archive_path,
+        slug,
+        mode,
+        include_settings=include_settings,
+        **_actor_kwargs(actor_id),
     )
     return _normalized(report, mode, is_dry_run=True)
 
 
-def execute(
+def execute(  # noqa: PLR0913 - 与导入请求的字段一一对应
     runtime: TenantRuntime,
     control_factory: sessionmaker[Session],
     archive_path: Path,
     slug: str,
     mode: str,
     include_settings: bool = True,
+    actor_id: int | None = None,
 ) -> dict[str, Any]:
     """真正导入。覆盖模式走整套替换（含覆盖前备份），合并模式交给引擎。"""
     if mode == MODE_REPLACE:
-        return _replace(runtime, control_factory, archive_path, slug)
+        return _replace(runtime, control_factory, archive_path, slug, actor_id)
     engine = load_engine()
     if engine is None:
         raise AppError(MSG_MERGE_UNAVAILABLE)
@@ -97,14 +106,23 @@ def execute(
     return _normalized(report, mode, is_dry_run=False)
 
 
+def _actor_kwargs(actor_id: int | None) -> dict[str, int]:
+    """执行者只在有登录用户时传给引擎（关闭认证时没有），保持与旧引擎签名兼容。"""
+    return {"actor_id": actor_id} if actor_id is not None else {}
+
+
 def _replace(
-    runtime: TenantRuntime, control_factory: sessionmaker[Session], archive_path: Path, slug: str
+    runtime: TenantRuntime,
+    control_factory: sessionmaker[Session],
+    archive_path: Path,
+    slug: str,
+    actor_id: int | None,
 ) -> dict[str, Any]:
-    result = import_tenant(runtime, control_factory, archive_path, slug, overwrite=True)
-    summary = _manifest_summary(read_manifest(archive_path), MODE_REPLACE, is_dry_run=False)
-    # 只给备份文件名，不暴露服务器上的绝对路径
-    backup = result.backup_path.name if result.backup_path is not None else ""
-    return {**summary, "warnings": [], "backup_file": backup}
+    result = import_tenant(
+        runtime, control_factory, archive_path, slug, overwrite=True, actor_id=actor_id
+    )
+    # 与命令行同一份报告：备份只给文件名，单账套恢复账号时附 accounts 分区与说明
+    return jsonable_encoder(replace_report(archive_path, slug, result))
 
 
 def _normalized(report: Any, mode: str, is_dry_run: bool) -> dict[str, Any]:
