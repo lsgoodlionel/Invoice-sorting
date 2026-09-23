@@ -12,10 +12,17 @@ from invoice_sorting.mail_settings.constants import (
     MSG_BASE_URL_FORMAT,
     MSG_HOST_FORMAT,
     MSG_NO_CONTROL_CHARS,
+    MSG_NOTIFY_EMAIL_FORMAT,
+    MSG_NOTIFY_TOO_MANY,
     MSG_SENDER_FORMAT,
     MSG_TOO_LONG,
     PORT_MAX,
     PORT_MIN,
+)
+from invoice_sorting.mailer.recipients import (
+    NOTIFY_EMAILS_MAX,
+    join_notify_emails,
+    split_notify_emails,
 )
 from invoice_sorting.signup.codes import is_valid_email
 
@@ -83,3 +90,14 @@ def check_base_url(value: str) -> str:
     if parts.query or parts.fragment or parts.username or parts.password:
         raise _fail("base_url_format", MSG_BASE_URL_FORMAT)
     return value.rstrip("/")
+
+
+def check_notify_emails(value: str) -> str:
+    """英文逗号分隔的多个邮箱：逐个校验格式并限制数量；存成去空白后的规范串。"""
+    emails = split_notify_emails(value)
+    if len(emails) > NOTIFY_EMAILS_MAX:
+        raise _fail("notify_too_many", MSG_NOTIFY_TOO_MANY.format(limit=NOTIFY_EMAILS_MAX))
+    for email in emails:
+        if not is_valid_email(email):
+            raise _fail("notify_format", MSG_NOTIFY_EMAIL_FORMAT.format(email=email))
+    return join_notify_emails(emails)

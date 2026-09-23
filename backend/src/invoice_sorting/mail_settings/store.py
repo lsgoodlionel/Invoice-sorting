@@ -15,7 +15,7 @@ from invoice_sorting.mailer.errors import ErrorInfo
 logger = logging.getLogger(__name__)
 
 # 保存时逐项覆盖的普通字段（密码单独处理）
-PLAIN_FIELDS = ("host", "port", "tls", "username", "sender", "public_base_url")
+PLAIN_FIELDS = ("host", "port", "tls", "username", "sender", "public_base_url", "notify_emails")
 
 
 @dataclass(frozen=True)
@@ -29,6 +29,7 @@ class MailChange:
     password: str | None = None
     sender: str | None = None
     public_base_url: str | None = None
+    notify_emails: str | None = None
 
 
 def load_row(control: Session) -> MailSettings:

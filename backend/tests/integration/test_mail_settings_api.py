@@ -87,6 +87,9 @@ def test_empty_password_clears_it(app, platform):
         {"sender": "nobody"},
         {"public_base_url": "javascript:alert(1)"},
         {"tls": "ssl3"},
+        {"notify_emails": "ops@example.com,不是邮箱"},
+        {"notify_emails": ",".join(f"ops{index}@example.com" for index in range(6))},
+        {"notify_emails": "ops@example.com\nbcc@example.com"},
     ],
 )
 def test_patch_validation_errors_are_422(platform, body):
@@ -94,6 +97,33 @@ def test_patch_validation_errors_are_422(platform, body):
 
     assert response.status_code == 422
     assert response.json()["error"].startswith("参数错误")
+
+
+def test_notify_emails_are_normalized_and_returned(app, platform):
+    data = save(platform, notify_emails=" ops@example.com , boss@example.com ")
+
+    assert data["notify_emails"] == "ops@example.com,boss@example.com"
+    assert mail_row(app).notify_emails == "ops@example.com,boss@example.com"
+    assert platform.get(MAIL_PATH).json()["data"]["notify_emails"] == data["notify_emails"]
+
+
+def test_notify_emails_can_be_cleared(app, platform):
+    save(platform, notify_emails="ops@example.com")
+
+    data = save(platform, notify_emails="")
+
+    assert data["notify_emails"] == "" and mail_row(app).notify_emails == ""
+
+
+def test_env_notify_emails_are_read_only(tmp_path):
+    app = signup_app(tmp_path, signup_notify_emails="ops@example.com")
+    platform = platform_client(app)
+
+    data = platform.get(MAIL_PATH).json()["data"]
+    response = platform.patch(MAIL_PATH, json={"notify_emails": "other@example.com"})
+
+    assert data["source"] == "env" and data["notify_emails"] == "ops@example.com"
+    assert response.status_code == 409
 
 
 def test_env_config_takes_priority_and_is_read_only(tmp_path):

@@ -14,6 +14,8 @@ USERNAME_MAX = 254
 PASSWORD_MAX = 256
 SENDER_MAX = 320
 BASE_URL_MAX = 300
+# 通知接收邮箱：最多 5 个，整串长度按 5 个最长邮箱 + 分隔符留足
+NOTIFY_EMAILS_LEN_MAX = 1300
 PORT_MIN = 1
 PORT_MAX = 65535
 
@@ -26,6 +28,8 @@ MSG_TOO_FREQUENT = "测试过于频繁，请 {minutes} 分钟后再试"
 MSG_HOST_FORMAT = "SMTP 服务器地址格式不正确"
 MSG_SENDER_FORMAT = "发件人格式不正确，应为邮箱地址或「名称 <邮箱地址>」"
 MSG_BASE_URL_FORMAT = "站点地址需为 http:// 或 https:// 开头的完整地址"
+MSG_NOTIFY_EMAIL_FORMAT = "通知接收邮箱中「{email}」不是有效的邮箱地址"
+MSG_NOTIFY_TOO_MANY = "通知接收邮箱最多 {limit} 个"
 MSG_NO_CONTROL_CHARS = "{label}不能包含换行等控制字符"
 MSG_TOO_LONG = "{label}不能超过 {limit} 个字符"
 MSG_CONNECTION_OK = "连接并登录成功"

@@ -43,6 +43,7 @@ export interface MailDraft {
   username: string;
   sender: string;
   public_base_url: string;
+  notify_emails: string;
   password: string;
   passwordAction: PasswordAction;
 }
@@ -54,6 +55,7 @@ export const toMailDraft = (settings: MailSettings): MailDraft => ({
   username: settings.username,
   sender: settings.sender,
   public_base_url: settings.public_base_url,
+  notify_emails: settings.notify_emails,
   password: '',
   passwordAction: 'keep',
 });
@@ -65,7 +67,7 @@ export const applyPreset = (draft: MailDraft, preset: MailPreset): MailDraft => 
   tls: preset.tls,
 });
 
-const FIELDS = ['host', 'port', 'tls', 'username', 'sender', 'public_base_url'] as const;
+const FIELDS = ['host', 'port', 'tls', 'username', 'sender', 'public_base_url', 'notify_emails'] as const;
 
 export const isDraftDirty = (draft: MailDraft, settings: MailSettings): boolean =>
   draft.passwordAction !== 'keep' || FIELDS.some((key) => draft[key] !== settings[key]);
@@ -81,6 +83,7 @@ export function buildMailPatch(draft: MailDraft): MailSettingsPatch {
     username: draft.username.trim(),
     sender: draft.sender.trim(),
     public_base_url: draft.public_base_url.trim(),
+    notify_emails: draft.notify_emails.trim(),
   };
   if (draft.passwordAction === 'clear') return { ...base, password: '' };
   if (draft.passwordAction === 'set' && draft.password) return { ...base, password: draft.password };

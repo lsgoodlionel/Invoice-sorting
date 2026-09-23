@@ -8,7 +8,7 @@
 import secrets
 from typing import Any
 
-from fastapi import APIRouter, Query, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Query, Request, Response
 from sqlalchemy.orm import Session
 
 from invoice_sorting.attachments.serializers import iso_datetime
@@ -33,6 +33,7 @@ from invoice_sorting.signup.deps import (
     limiter_of,
     notifier_of,
 )
+from invoice_sorting.signup.notify import schedule_pending_alert
 from invoice_sorting.signup.referrals import resolve_referrer
 from invoice_sorting.signup.register import (
     RegistrationForm,
@@ -71,7 +72,9 @@ def _decoy() -> dict[str, Any]:
 
 
 @router.post("/applications")
-def post_application(body: ApplyBody, request: Request, control: ControlSessionDep):
+def post_application(
+    body: ApplyBody, request: Request, background: BackgroundTasks, control: ControlSessionDep
+):
     limiter = limiter_of(request, STATE_APPLY_LIMITER)
     key = ensure_not_limited(request, limiter)
     limiter.record_failure(key)  # 每次提交都计数：限的是提交频率，不只是失败
@@ -86,7 +89,11 @@ def post_application(body: ApplyBody, request: Request, control: ControlSessionD
         ref=body.ref,
         ip=client_ip(request),
     )
-    return ok(_submitted(submit(control, submission, notifier_of(request, control))))
+    result = submit(control, submission, notifier_of(request, control))
+    if result.application.status == APPLICATION_PENDING:
+        # 待审批才提醒平台；直接注册模式下自动批准的那些不打扰
+        schedule_pending_alert(request, background, control, result.application.id)
+    return ok(_submitted(result))
 
 
 def _guarded(request: Request, action):  # noqa: ANN001, ANN202 - 包装一次码校验

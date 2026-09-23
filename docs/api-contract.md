@@ -847,6 +847,7 @@ type SignupSettings = {
 
 - **直接注册模式**（`require_approval=false`）：带有效推荐码的申请，在推荐人本月名额内、且已配置 SMTP 时自动批准并把注册链接发到申请邮箱（`ApplySubmitted.status="approved"`）；名额用尽、未配置 SMTP 或没有推荐码时一律转为待审批。注册链接只发到邮箱，从不返回给申请人。
 - **邮件**：生效配置按「环境变量 → 网页配置（见下节「平台邮件设置」）→ 未配置」解析。环境变量 `INVOICE_SORTING_SMTP_HOST` 与 `_SMTP_FROM` 都配置时整体以环境变量为准（`_SMTP_PORT` 默认 465、`_SMTP_USER`、`_SMTP_PASSWORD`、`_SMTP_TLS`：`ssl` 默认 / `starttls` / `none`、`INVOICE_SORTING_PUBLIC_BASE_URL`）；否则用网页保存的配置（主机与发件人都填了才算已配置；站点地址未填时退回 `PUBLIC_BASE_URL`）。`SignupSettings.is_mail_configured` 与推荐链接的站点地址也按此解析。连接超时 10 秒，失败重试 1 次（认证失败、收件人被拒不重试）。邮件只含结果、注册链接与有效期。发送失败不影响审批结果，可「重新发送」。网页保存的密码无法解密时发信记为 `failed`，`mail_error` 提示「请重新填写 SMTP 密码」。凭证不进日志、错误信息与诊断包（诊断包 env.txt 只列出这些变量「已设置/未设置」）。
+- **新申请提醒**：申请进入**待审批**时（普通与推荐申请都算；直接注册模式下自动批准的不发），给邮件设置里的 `notify_emails` 发一封提醒，内容为申请编号、姓名、邮箱、单位或身份、需求摘要（截断 200 字）、推荐人（用户名与姓名）、提交时间与后台直达链接 `<站点地址>/platform?tab=applications`，**不含注册码、注册链接或任何凭据**。发送在响应之后的后台任务里进行，`POST /api/signup/applications` 的返回不受影响（发信失败仍 200）；结果记在申请行的 `notify_status`（`sent`/`failed`/`skipped`/`throttled`）与 `notify_error` 上，仅供排查，不在任何响应中返回。未配置 SMTP 或未填通知邮箱时不发（记 `skipped`）；同一实例每小时最多 20 封，超出的跳过并记日志（记 `throttled`）。
 - **隐私**：否决满 180 天的申请自动清除姓名、邮箱、身份、需求、账本名、原因与 IP 哈希（`is_purged=true`），保留状态与时间用于统计；启动时及之后每天执行一次。来源 IP 只存带实例盐的哈希。
 
 #### 平台邮件设置（仅平台管理员，仅多账套）
@@ -856,11 +857,13 @@ type SignupSettings = {
 | 方法 | 路径 | 请求 | 返回 data |
 | --- | --- | --- | --- |
 | GET | `/api/platform/mail-settings` | — | `MailSettings` |
-| PATCH | `/api/platform/mail-settings` | `MailSettingsPatch`；字段缺省或 null 表示不改。`password` 缺省或 null 不改、空串清除、其他值加密保存。校验失败 422（主机名/IP 合法、端口 1–65535、发件人为邮箱或「名称 <邮箱>」、站点地址为 http(s) 绝对地址且不含账号/查询串；任何字段不得含换行等控制字符）。`source="env"` 时 409「邮件由服务器环境变量配置，网页上不能修改」。服务器密钥 `INVOICE_SORTING_SECRET_KEY` 格式无效时 400 | `MailSettings` |
+| PATCH | `/api/platform/mail-settings` | `MailSettingsPatch`；字段缺省或 null 表示不改。`password` 缺省或 null 不改、空串清除、其他值加密保存。校验失败 422（主机名/IP 合法、端口 1–65535、发件人为邮箱或「名称 <邮箱>」、站点地址为 http(s) 绝对地址且不含账号/查询串；通知接收邮箱为英文逗号分隔的邮箱、最多 5 个且逐个校验格式，保存时去掉空白与空项；任何字段不得含换行等控制字符）。`source="env"` 时 409「邮件由服务器环境变量配置，网页上不能修改」。服务器密钥 `INVOICE_SORTING_SECRET_KEY` 格式无效时 400 | `MailSettings` |
 | POST | `/api/platform/mail-settings/test-connection` | —；用**当前已保存并生效**的配置（环境变量优先）连接并登录，不发信。未配置 409「请先填写并保存 SMTP 服务器与发件人」；每位平台管理员每分钟 10 次，超出 429 | `MailCheckResult` |
 | POST | `/api/platform/mail-settings/test-email` | `{ to: string }`（邮箱格式，否则 422）；用当前生效配置发一封中文测试邮件。未配置 409；每位平台管理员每分钟 3 次，超出 429「测试过于频繁，请 N 分钟后再试」 | `MailCheckResult` |
 
-测试接口不接受请求体里临时带的配置：页面有未保存修改时需先保存再测，保证测的就是实际发信用的配置。测试结果（成功或失败）写入「最近一次验证」并记录操作人。
+测试接口不接受请求体里临时带的配置：页面有未保存修改时需先保存再测，保证测的就是实际发信用的配置。测试结果（成功或失败）写入「最近一次验证」并记录操作人。「发送测试邮件」仍然发给手填的地址，与通知接收邮箱无关。
+
+`notify_emails` 是**有新申请待审批时提醒谁**（见下面「新申请提醒」）。`source="env"` 时整份配置只读，通知邮箱改由环境变量 `INVOICE_SORTING_SIGNUP_NOTIFY_EMAILS` 配置（同样是逗号分隔、最多 5 个，格式不对的地址读取时跳过并记日志）。
 
 ```ts
 type MailSettings = {
@@ -868,6 +871,7 @@ type MailSettings = {
   is_configured: boolean;
   host: string; port: number; tls: "ssl" | "starttls" | "none";
   username: string; sender: string; public_base_url: string;
+  notify_emails: string;              // 有新申请待审批时提醒谁：英文逗号分隔，最多 5 个；留空不发提醒
   password_set: boolean;              // 只说明是否已设置，从不返回密码或密文
   password_error: string;             // 非空：已保存的密码无法解密（服务器密钥更换或丢失），请重新填写
   updated_at: string | null; updated_by: string;   // 最后修改时间与操作人（env 时为空）
@@ -876,7 +880,7 @@ type MailSettings = {
     message: string; checked_at: string | null; checked_by: string;
   } | null;
 }
-type MailSettingsPatch = Partial<Pick<MailSettings, "host" | "port" | "tls" | "username" | "sender" | "public_base_url">> & { password?: string | null }
+type MailSettingsPatch = Partial<Pick<MailSettings, "host" | "port" | "tls" | "username" | "sender" | "public_base_url" | "notify_emails">> & { password?: string | null }
 type MailCheckCategory = "ok" | "connect" | "timeout" | "tls" | "auth" | "sender" | "recipient" | "password" | "other"
 type MailCheckResult = { ok: boolean; category: MailCheckCategory; message: string; checked_at: string | null }
 ```

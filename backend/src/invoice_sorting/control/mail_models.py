@@ -28,6 +28,8 @@ class MailSettings(ControlBase):
     sender: Mapped[str] = mapped_column(String(320), default="")
     tls: Mapped[str] = mapped_column(String(16), default=SMTP_TLS_SSL)
     public_base_url: Mapped[str] = mapped_column(String(300), default="")
+    # 有新申请待审批时提醒谁：英文逗号分隔，最多 5 个；留空表示不发提醒
+    notify_emails: Mapped[str] = mapped_column(String(1300), default="")
     updated_by: Mapped[int | None] = mapped_column(ForeignKey(ACCOUNT_FK), nullable=True)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # 最近一次验证：kind 为 connection / email；category 为失败分类（成功时为 ok）

@@ -35,6 +35,8 @@ export interface MailSettings {
   username: string;
   sender: string;
   public_base_url: string;
+  /** 有新申请待审批时提醒谁：英文逗号分隔，最多 5 个；留空表示不发提醒 */
+  notify_emails: string;
   password_set: boolean;
   /** 非空表示已保存的密码无法解密（服务器密钥更换或丢失），需重新填写 */
   password_error: string;
@@ -54,6 +56,7 @@ export interface MailSettingsPatch {
   password?: string;
   sender?: string;
   public_base_url?: string;
+  notify_emails?: string;
 }
 
 export interface MailCheckResult {

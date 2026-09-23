@@ -1,6 +1,6 @@
 import { Alert, Badge, Loader, Stack, Tabs, Title } from '@mantine/core';
 import { useState } from 'react';
-import { Navigate } from 'react-router';
+import { Navigate, useSearchParams } from 'react-router';
 import { usePendingApplicationCount } from '../api/hooks/platformSignup';
 import { PlatformBackupManager } from '../components/platform/backup/PlatformBackupManager';
 import { LicenseManager } from '../components/platform/LicenseManager';
@@ -15,6 +15,9 @@ import { usePlatformAccess } from '../components/platform/usePlatformAccess';
 const INTRO = '开通与维护账套、套餐与私有化授权，审批注册申请，配置通知邮件，备份平台数据库。这里的操作会影响所有客户，请谨慎。';
 const DEFAULT_TAB = 'tenants';
 const MAIL_TAB = 'mail';
+const TAB_PARAM = 'tab';
+/** 允许从地址栏直达的页签（提醒邮件里的链接用 ?tab=applications） */
+const TABS = ['tenants', 'plans', 'licenses', 'applications', 'referrals', MAIL_TAB, 'backups'] as const;
 
 /** 「申请」页签：有待审批时显示数量角标。 */
 function ApplicationsTab() {
@@ -25,10 +28,14 @@ function ApplicationsTab() {
   return <Tabs.Tab value="applications" rightSection={badge}>申请</Tabs.Tab>;
 }
 
+const initialTab = (value: string | null): string =>
+  TABS.find((name) => name === value) ?? DEFAULT_TAB;
+
 /** 平台运营后台：仅平台管理员可见，其他账号直接回到记录清单。 */
 export function PlatformPage() {
   const { canSeePlatform, isChecking } = usePlatformAccess();
-  const [tab, setTab] = useState<string>(DEFAULT_TAB);
+  const [params] = useSearchParams();
+  const [tab, setTab] = useState<string>(() => initialTab(params.get(TAB_PARAM)));
   if (isChecking) return <Loader size="sm" m="xl" />;
   if (!canSeePlatform) return <Navigate to="/expenses" replace />;
 

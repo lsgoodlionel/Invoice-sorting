@@ -13,7 +13,7 @@ type Routes = Record<string, unknown>;
 
 const MEMBER_CONTEXT = { user: null, isAdmin: false, authEnabled: true };
 
-function setup(routes: Routes, currentUser = ADMIN_CONTEXT) {
+function setup(routes: Routes, currentUser = ADMIN_CONTEXT, route = '/platform') {
   const result = mockFetch({
     'GET /api/auth/status': SAAS_AUTHENTICATED,
     'GET /api/platform/overview': OVERVIEW,
@@ -22,7 +22,7 @@ function setup(routes: Routes, currentUser = ADMIN_CONTEXT) {
     'GET /api/platform/applications': makeApplicationPage([]),
     ...routes,
   });
-  renderWithProviders(<PlatformPage />, { currentUser });
+  renderWithProviders(<PlatformPage />, { currentUser, route });
   return result;
 }
 
@@ -79,6 +79,12 @@ describe('申请与推荐页签', () => {
     expect(probe?.url).toContain('status=pending');
   });
 
+  test('邮件里的链接（?tab=applications）直接打开「申请」页签', async () => {
+    setup({}, ADMIN_CONTEXT, '/platform?tab=applications');
+
+    expect(await screen.findByRole('tab', { name: /申请/ })).toHaveAttribute('aria-selected', 'true');
+  });
+
   test('没有待审批时不显示角标', async () => {
     setup({});
     expect(await screen.findByRole('tab', { name: /申请/ })).toBeInTheDocument();
@@ -99,6 +105,17 @@ describe('邮件页签', () => {
     expect(await screen.findByLabelText('SMTP 服务器')).toBeInTheDocument();
   });
 
+  test('已配置邮件但没填通知邮箱时提示新申请不会发提醒', async () => {
+    const user = userEvent.setup();
+    setup({ 'GET /api/platform/mail-settings': makeMailSettings({ notify_emails: '' }) });
+
+    await user.click(await screen.findByRole('tab', { name: /申请/ }));
+    expect(await screen.findByTestId('notify-emails-missing')).toHaveTextContent('未设置通知邮箱');
+    await user.click(screen.getByRole('button', { name: '去设置通知邮箱' }));
+
+    expect(screen.getByRole('tab', { name: '邮件' })).toHaveAttribute('aria-selected', 'true');
+  });
+
   test('已配置邮件时不显示提示', async () => {
     const user = userEvent.setup();
     const { calls } = setup({ 'GET /api/platform/mail-settings': makeMailSettings() });
@@ -106,6 +123,7 @@ describe('邮件页签', () => {
     await user.click(await screen.findByRole('tab', { name: /申请/ }));
     await waitFor(() => expect(calls.some((call) => call.url === '/api/platform/mail-settings')).toBe(true));
     expect(screen.queryByTestId('mail-not-configured')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('notify-emails-missing')).not.toBeInTheDocument();
   });
 });
 

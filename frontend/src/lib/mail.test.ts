@@ -11,6 +11,7 @@ const SETTINGS: MailSettings = {
   username: 'robot@example.com',
   sender: 'robot@example.com',
   public_base_url: 'https://fp.example.com',
+  notify_emails: 'ops@example.com',
   password_set: true,
   password_error: '',
   updated_at: null,

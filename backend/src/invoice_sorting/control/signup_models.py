@@ -35,6 +35,13 @@ MAIL_SENT = "sent"
 MAIL_FAILED = "failed"
 MAIL_SKIPPED = "skipped"
 
+# 「有新申请待审批」提醒（发给平台通知邮箱）的发送状态：空串为未发过
+NOTIFY_NONE = ""
+NOTIFY_SENT = "sent"
+NOTIFY_FAILED = "failed"
+NOTIFY_SKIPPED = "skipped"  # 未配置 SMTP 或未填通知邮箱
+NOTIFY_THROTTLED = "throttled"  # 超过每小时上限，本条跳过
+
 SETTINGS_ROW_ID = 1
 DEFAULT_REQUIRE_APPROVAL = True
 DEFAULT_MONTHLY_REFERRAL_QUOTA = 5
@@ -72,6 +79,9 @@ class SignupApplication(ControlBase):
     mail_status: Mapped[str] = mapped_column(String(20), default=MAIL_NONE)
     mail_error: Mapped[str] = mapped_column(String(200), default="")
     mail_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # 「有新申请待审批」提醒的发送留痕（与上面发给申请人的通知相互独立）
+    notify_status: Mapped[str] = mapped_column(String(20), default=NOTIFY_NONE)
+    notify_error: Mapped[str] = mapped_column(String(200), default="")
     registered_account_id: Mapped[int | None] = mapped_column(ForeignKey(ACCOUNT_FK), nullable=True)
     registered_tenant_id: Mapped[int | None] = mapped_column(ForeignKey(TENANT_FK), nullable=True)
     registered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

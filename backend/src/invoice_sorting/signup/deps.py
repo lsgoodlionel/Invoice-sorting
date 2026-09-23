@@ -18,6 +18,7 @@ from invoice_sorting.signup.constants import (
     MSG_SAAS_ONLY,
     MSG_TOO_FREQUENT,
 )
+from invoice_sorting.signup.notify import install_notify_limiter
 from invoice_sorting.signup.review import Notifier
 
 STATE_APPLY_LIMITER = "signup_apply_limiter"
@@ -34,8 +35,9 @@ SAAS_ONLY = [Depends(require_saas)]
 
 
 def install_signup_state(app: Any, mailer_factory: MailerFactory) -> None:
-    """装配发信服务与两个限流器（申请提交按次数计，码校验按失败次数计）。"""
+    """装配发信服务与限流器（申请提交按次数计，码校验按失败次数计，待审批提醒按实例计）。"""
     setattr(app.state, STATE_MAILER_KEY, mailer_factory)
+    install_notify_limiter(app)
     setattr(
         app.state,
         STATE_APPLY_LIMITER,

@@ -89,6 +89,20 @@ describe('邮件设置表单', () => {
     expect(screen.getByLabelText('站点地址')).toHaveValue(window.location.origin);
   });
 
+  test('填写通知接收邮箱后随保存提交', async () => {
+    const user = userEvent.setup();
+    const { calls } = setup(makeMailSettings(), { [`PATCH ${PATH}`]: makeMailSettings() });
+    const field = await screen.findByLabelText('通知接收邮箱');
+
+    await user.clear(field);
+    await user.type(field, 'ops@example.com,boss@example.com');
+    await user.click(screen.getByRole('button', { name: '保存' }));
+
+    await waitFor(() =>
+      expect(lastCall(calls, 'PATCH', PATH)?.body).toMatchObject({ notify_emails: 'ops@example.com,boss@example.com' }));
+    expect(screen.getByText(/多个用英文逗号分隔/)).toBeInTheDocument();
+  });
+
   test('密码无法解密时提示重新填写', async () => {
     setup(makeMailSettings({ password_error: 'SMTP 密码无法解密，请重新填写 SMTP 密码' }));
     expect(await screen.findByText(/请重新填写 SMTP 密码/)).toBeInTheDocument();

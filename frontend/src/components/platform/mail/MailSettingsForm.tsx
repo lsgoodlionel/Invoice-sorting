@@ -20,6 +20,7 @@ interface MailSettingsFormProps {
 }
 
 const PRESET_OPTIONS = MAIL_PRESETS.map((preset) => ({ value: preset.value, label: preset.label }));
+const NOTIFY_DESCRIPTION = '有新申请待审批时给这些地址发提醒；多个用英文逗号分隔，最多 5 个，留空则不发';
 
 /** 邮件服务器参数表单（受控）：预设、服务器、加密方式与端口、账号密码、发件人、站点地址。 */
 export function MailSettingsForm({ draft, isReadOnly, passwordSet, passwordError, onChange }: MailSettingsFormProps) {
@@ -69,6 +70,9 @@ export function MailSettingsForm({ draft, isReadOnly, passwordSet, passwordError
           <Button variant="default" onClick={() => patch({ public_base_url: window.location.origin })}>使用当前地址</Button>
         )}
       </Group>
+      <TextInput label="通知接收邮箱" description={NOTIFY_DESCRIPTION} placeholder="ops@example.com,boss@example.com"
+        autoComplete="off" value={draft.notify_emails} {...common}
+        onChange={(event) => patch({ notify_emails: event.currentTarget.value })} />
     </Stack>
   );
 }

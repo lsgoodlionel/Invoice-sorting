@@ -10,6 +10,7 @@ from pydantic import AfterValidator, BaseModel, Field, StrictInt, StrictStr
 from invoice_sorting.mail_settings.constants import (
     BASE_URL_MAX,
     HOST_MAX,
+    NOTIFY_EMAILS_LEN_MAX,
     PASSWORD_MAX,
     SENDER_MAX,
     USERNAME_MAX,
@@ -17,6 +18,7 @@ from invoice_sorting.mail_settings.constants import (
 from invoice_sorting.mail_settings.validation import (
     check_base_url,
     check_host,
+    check_notify_emails,
     check_port,
     check_sender,
     text_field,
@@ -35,6 +37,11 @@ Sender = Annotated[
 BaseUrl = Annotated[
     StrictStr, AfterValidator(text_field("站点地址", BASE_URL_MAX)), AfterValidator(check_base_url)
 ]
+NotifyEmails = Annotated[
+    StrictStr,
+    AfterValidator(text_field("通知接收邮箱", NOTIFY_EMAILS_LEN_MAX)),
+    AfterValidator(check_notify_emails),
+]
 
 
 class MailSettingsPatch(BaseModel):
@@ -45,6 +52,7 @@ class MailSettingsPatch(BaseModel):
     password: Password | None = None
     sender: Sender | None = None
     public_base_url: BaseUrl | None = None
+    notify_emails: NotifyEmails | None = None
 
 
 class TestEmailBody(BaseModel):

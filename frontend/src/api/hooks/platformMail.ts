@@ -17,14 +17,20 @@ export const platformMailApi = {
 export const useMailSettings = () =>
   useQuery({ queryKey: queryKeys.platformMailSettings, queryFn: platformMailApi.settings });
 
-/** 「是否已配置邮件」提示用：静默查询，失败时不弹通知。 */
-export const useMailConfigured = (): boolean | undefined => {
+export interface MailStatus {
+  /** 未取到时为 undefined，取到后才判断 */
+  isConfigured: boolean | undefined;
+  hasNotifyEmails: boolean;
+}
+
+/** 顶部提示用：是否已配置邮件、是否填了通知邮箱。静默查询，失败时不弹通知。 */
+export const useMailStatus = (): MailStatus => {
   const { data } = useQuery({
     queryKey: queryKeys.platformMailSettings,
     queryFn: platformMailApi.settings,
     meta: { silent: true },
   });
-  return data?.is_configured;
+  return { isConfigured: data?.is_configured, hasNotifyEmails: Boolean(data?.notify_emails.trim()) };
 };
 
 function useRefreshAfterSave() {

@@ -80,6 +80,8 @@ class Settings(BaseSettings):
     smtp_from: str = ""
     smtp_tls: SmtpTls = SMTP_TLS_SSL
     public_base_url: str = ""  # 生成注册链接与推荐链接用的站点地址，如 https://fp.example.com
+    # 有新申请待审批时提醒谁（英文逗号分隔，最多 5 个）；环境变量模式下只能在这里配置
+    signup_notify_emails: str = ""
     # 网页 SMTP 密码的加密密钥（base64 Fernet key）；留空时首次需要时在 data_dir 生成 secret.key
     secret_key: SecretStr = SecretStr("")
 
