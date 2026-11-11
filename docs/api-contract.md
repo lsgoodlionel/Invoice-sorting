@@ -344,7 +344,7 @@ type ConfirmGroup = {
 | PATCH | `/api/batches/{id}` | `{ name?, project_id?, note?, sent_via?, receiver?, external_no? }` | `BatchDetail` |
 | DELETE | `/api/batches/{id}` | 仅 draft 可删；记录回到未分批 | `null` |
 | POST | `/api/batches/{id}/items` | `{ add?: number[], remove?: number[], force?: boolean }`；加入含必需缺项的记录且 force=false 时返回 409 并在 error 中说明；项目不一致同样 409 | `BatchDetail` |
-| POST | `/api/batches/{id}/export` | `{ layout: "by_expense" \| "by_kind" }` | `ExportRecord` |
+| POST | `/api/batches/{id}/export` | `{ layout: "by_expense" \| "by_kind", duplex?: boolean }`（`duplex` 默认 false；为 true 时，除各打印 PDF 最后一条外，奇数页记录补一张 A4 空白页） | `ExportRecord` |
 | GET | `/api/exports/{id}/file` | — | ZIP 文件流 |
 | DELETE | `/api/exports/{id}` | — 删除资料包文件与导出记录（记录与凭证不受影响） | `null` |
 | POST | `/api/batches/{id}/sent` | `{ sent_on, sent_via?, receiver?, external_no? }` | `BatchDetail` |
