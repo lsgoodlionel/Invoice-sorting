@@ -1,6 +1,7 @@
 """服务器密文箱：加解密往返、密钥自动生成（0600）、环境变量密钥优先、密钥丢失友好报错。"""
 
 import stat
+import sys
 
 import pytest
 from cryptography.fernet import Fernet
@@ -32,6 +33,7 @@ def test_encrypt_then_decrypt_round_trips(settings):
     assert decrypt_secret(settings, token) == PLAINTEXT
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows 不支持 Unix 文件权限位")
 def test_key_file_generated_on_first_encrypt_with_0600(settings):
     assert not settings.secret_key_path.exists()
 

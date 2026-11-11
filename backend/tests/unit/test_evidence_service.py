@@ -76,7 +76,7 @@ def test_empty_pdf_falls_back_to_filename(tmp_path: Path) -> None:
 def test_missing_file_and_unsupported_type(tmp_path: Path) -> None:
     assert recognize_evidence(tmp_path / "nope.png", "x.png").doc_type == "unknown"
     other = tmp_path / "notes.txt"
-    other.write_text("实付款 合计¥10")
+    other.write_text("实付款 合计¥10", encoding="utf-8")
     assert recognize_evidence(other, "notes.txt").recognizer == "none"
 
 

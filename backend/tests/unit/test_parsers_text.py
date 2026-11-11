@@ -199,6 +199,8 @@ def test_xml_parser_accepts_text_argument():
         b'<!DOCTYPE x [<!ENTITY a "b">]><EInvoice><EIid>&a;</EIid></EInvoice>',
         b"<EInvoice>" + b" " * (5 * 1024 * 1024) + b"</EInvoice>",
     ],
+    # 显式 id：5MB 参数作测试名会超出 Windows 环境变量长度上限（PYTEST_CURRENT_TEST）
+    ids=["unknown", "malformed", "dtd", "oversized"],
 )
 def test_xml_unknown_malformed_dtd_or_oversized_raise_parse_error(data):
     with pytest.raises(InvoiceParseError):
