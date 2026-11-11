@@ -113,7 +113,13 @@ def post_reopen(batch_id: int, session: SessionDep, config: ConfigDep) -> dict[s
 def post_export(
     batch_id: int, body: ExportRequest, session: SessionDep, config: ConfigDep
 ) -> dict[str, Any]:
-    record = export_batch(session, config, get_batch_or_404(session, batch_id), body.layout)
+    record = export_batch(
+        session,
+        config,
+        get_batch_or_404(session, batch_id),
+        body.layout,
+        duplex=body.duplex,
+    )
     session.commit()
     return ok(serialize_export_record(record))
 

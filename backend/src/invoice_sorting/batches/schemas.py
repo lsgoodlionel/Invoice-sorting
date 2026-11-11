@@ -77,3 +77,4 @@ class ExportRequest(BaseModel):
     model_config = _STRICT
 
     layout: ExportLayout = ExportLayout.BY_EXPENSE
+    duplex: bool = False
