@@ -9,7 +9,7 @@ from PIL import Image
 
 from invoice_sorting.attachments.storage import store_file
 from invoice_sorting.common.constants import AttachmentKind
-from invoice_sorting.db.models import InvoiceData
+from invoice_sorting.db.models import Attachment, InvoiceData, SourceDocument
 
 
 def png_bytes(color: str = "red", size: tuple[int, int] = (960, 480)) -> bytes:
@@ -59,6 +59,35 @@ def test_unassigned_lists_attachment_shape(client, stored):
     assert pdf["file_name"].endswith(".pdf")
     assert pdf["invoice"]["invoice_no"] == "24312000000012345678"
     assert pdf["invoice"]["buyer_mismatch"] is False  # 未设置抬头时不提示
+
+
+def test_attachment_serializes_composite_source(client, app, stored):
+    with app.state.session_factory() as session:
+        source = SourceDocument(
+            sha256="a" * 64,
+            file_path="导入来源/apple.pdf",
+            original_name="Gmail - Your purchases from Apple.pdf",
+            mime="application/pdf",
+            size=1234,
+        )
+        session.add(source)
+        session.flush()
+        attachment = session.get(Attachment, stored["pdf"])
+        attachment.source_document_id = source.id
+        attachment.source_page_start = 2
+        attachment.source_page_end = 3
+        attachment.source_splitter = "apple_gmail_v1"
+        session.commit()
+
+    items = client.get("/api/attachments/unassigned").json()["data"]
+    pdf = next(item for item in items if item["id"] == stored["pdf"])
+    assert pdf["source"] == {
+        "id": source.id,
+        "original_name": "Gmail - Your purchases from Apple.pdf",
+        "page_start": 2,
+        "page_end": 3,
+        "splitter": "apple_gmail_v1",
+    }
 
 
 def test_buyer_mismatch_flag_uses_settings(client, stored):

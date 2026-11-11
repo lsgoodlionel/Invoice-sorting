@@ -106,6 +106,7 @@ def serialize_attachment(
     policy: RegionPolicy = DEFAULT_POLICY,
 ) -> dict[str, Any]:
     invoice, evidence = attachment.invoice_data, attachment.evidence_data
+    source = attachment.source_document
     return {
         "id": attachment.id,
         "expense_id": attachment.expense_id,
@@ -119,6 +120,17 @@ def serialize_attachment(
         "uploaded_by": user_ref(attachment.uploaded_by),
         "url": f"/api/attachments/{attachment.id}/file",
         "file_key": attachment.file_key or "",
+        "source": (
+            {
+                "id": source.id,
+                "original_name": source.original_name,
+                "page_start": attachment.source_page_start,
+                "page_end": attachment.source_page_end,
+                "splitter": attachment.source_splitter or "",
+            }
+            if source is not None
+            else None
+        ),
         "invoice": serialize_invoice(invoice, buyer, policy) if invoice is not None else None,
         "evidence": serialize_evidence(evidence) if evidence is not None else None,
     }
