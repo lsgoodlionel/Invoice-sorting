@@ -159,6 +159,14 @@ export interface Attachment {
   evidence: EvidenceData | null;
   /** 文件名键（用于同组判断） */
   file_key: string;
+  /** 从复合 PDF 拆分时的原始来源与页码；普通附件为 null */
+  source: {
+    id: number;
+    original_name: string;
+    page_start: number | null;
+    page_end: number | null;
+    splitter: string;
+  } | null;
   /** 上传人；收件箱自动导入为 null */
   uploaded_by: UserRef | null;
 }
