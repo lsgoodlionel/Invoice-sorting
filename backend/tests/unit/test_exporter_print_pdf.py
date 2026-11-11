@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import pypdfium2 as pdfium
 import pytest
 from PIL import Image
-from pypdf import PdfReader
+from pypdf import PdfReader, PdfWriter
 
 from invoice_sorting.exporter.naming import (
     PackageItem,
@@ -35,6 +35,14 @@ def fake_attachment(att_id: int, mime: str, name: str, kind: str = "order"):
 def fake_item(attachments, seq: int = 1, expense_id: int = 7):
     expense = SimpleNamespace(id=expense_id, merchant="京东", amount_cents=96000)
     return PackageItem(seq=seq, expense=expense, attachments=tuple(attachments))
+
+
+def blank_pdf(path: Path, pages: int = 1) -> None:
+    writer = PdfWriter()
+    for _ in range(pages):
+        writer.add_blank_page(width=A4_WIDTH_PT, height=A4_HEIGHT_PT)
+    with path.open("wb") as handle:
+        writer.write(handle)
 
 
 def red_bbox(pdf_bytes: bytes) -> tuple[int, int]:
@@ -94,6 +102,49 @@ def test_build_print_pdf_merges_and_skips(tmp_path: Path):
 def test_empty_print_pdf_has_blank_page():
     result = build_print_pdf([fake_item([])], lambda a: Path("/nope"))
     assert len(PdfReader(io.BytesIO(result.pdf_bytes)).pages) == 1
+
+
+def test_duplex_pads_odd_records_except_last(tmp_path: Path):
+    files: dict[int, Path] = {}
+    items = []
+    for index in range(3):
+        path = tmp_path / f"{index}.pdf"
+        blank_pdf(path)
+        attachment = fake_attachment(index + 1, "application/pdf", path.name)
+        files[attachment.id] = path
+        items.append(fake_item([attachment], seq=index + 1, expense_id=index + 1))
+
+    result = build_print_pdf(items, lambda attachment: files[attachment.id], duplex=True)
+
+    assert len(PdfReader(io.BytesIO(result.pdf_bytes)).pages) == 5
+
+
+def test_duplex_uses_successful_records_for_last_page_decision(tmp_path: Path):
+    first = tmp_path / "first.pdf"
+    blank_pdf(first)
+    printable = fake_attachment(1, "application/pdf", first.name)
+    unsupported = fake_attachment(2, "application/xml", "trailing.xml")
+    items = [fake_item([printable], expense_id=1), fake_item([unsupported], seq=2, expense_id=2)]
+
+    result = build_print_pdf(items, lambda _attachment: first, duplex=True)
+
+    assert len(PdfReader(io.BytesIO(result.pdf_bytes)).pages) == 1
+    assert result.skipped[2] == ["trailing.xml"]
+
+
+def test_duplex_false_keeps_existing_page_count(tmp_path: Path):
+    files: dict[int, Path] = {}
+    items = []
+    for index in range(3):
+        path = tmp_path / f"{index}.pdf"
+        blank_pdf(path)
+        attachment = fake_attachment(index + 1, "application/pdf", path.name)
+        files[attachment.id] = path
+        items.append(fake_item([attachment], seq=index + 1, expense_id=index + 1))
+
+    result = build_print_pdf(items, lambda attachment: files[attachment.id], duplex=False)
+
+    assert len(PdfReader(io.BytesIO(result.pdf_bytes)).pages) == 3
 
 
 def test_naming_helpers():
