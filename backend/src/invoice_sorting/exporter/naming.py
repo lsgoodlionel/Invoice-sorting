@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from pathlib import Path
+from pathlib import PurePosixPath
 
 from invoice_sorting.attachments.filetypes import extension_for
 from invoice_sorting.attachments.serializers import kind_label
@@ -136,7 +136,9 @@ def support_name(item: PackageItem, attachment: Attachment, index: int, layout: 
 
 def unique_name(name: str, used: set[str]) -> str:
     """ZIP 内同名时追加 `_2`、`_3`…，并登记到 used。"""
-    candidate, stem, suffix, index = name, str(Path(name).with_suffix("")), Path(name).suffix, 2
+    # ZIP 条目名一律用 "/"：用 Path 在 Windows 上会把分隔符换成 "\\"
+    zip_path = PurePosixPath(name)
+    candidate, stem, suffix, index = name, str(zip_path.with_suffix("")), zip_path.suffix, 2
     while candidate in used:
         candidate = f"{stem}_{index}{suffix}"
         index += 1

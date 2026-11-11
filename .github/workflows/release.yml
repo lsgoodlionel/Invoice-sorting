@@ -56,6 +56,31 @@ jobs:
         working-directory: backend
         run: uv run pytest
 
+  # Windows 本机自用（scripts/setup.ps1）的兼容性闸门：路径分隔符、时区库、文本编码等只在 Windows 上暴露的问题
+  backend-windows:
+    name: 后端测试（Windows）
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      # 与 Linux 一致按 LF 检出，避免换行符差异影响按字节比较的测试
+      - name: 关闭换行符转换
+        run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+
+      - name: 安装依赖（严格按 uv.lock）
+        working-directory: backend
+        run: uv sync --frozen
+
+      - name: pytest
+        working-directory: backend
+        run: uv run pytest
+
   frontend:
     name: 前端测试、lint 与构建
     runs-on: ubuntu-latest
@@ -111,10 +136,23 @@ jobs:
       - name: 安装脚本回归测试
         run: bash deploy/tests/install_env_test.sh
 
+      - name: Windows 安装脚本语法检查（setup.ps1）
+        shell: pwsh
+        run: |
+          $errors = $null
+          $null = [System.Management.Automation.Language.Parser]::ParseFile(
+            "$PWD/scripts/setup.ps1", [ref]$null, [ref]$errors)
+          if ($errors) { $errors | ForEach-Object { Write-Error $_.ToString() }; exit 1 }
+          # PowerShell 5.1 按系统代码页读取无 BOM 文件，中文会读坏
+          $head = [System.IO.File]::ReadAllBytes("$PWD/scripts/setup.ps1")[0..2]
+          if (-not ($head[0] -eq 0xEF -and $head[1] -eq 0xBB -and $head[2] -eq 0xBF)) {
+            Write-Error 'scripts/setup.ps1 必须保存为带 BOM 的 UTF-8'; exit 1
+          }
+
   # ---------- 打包并发布 ----------
   release:
     name: 打包并创建 Release
-    needs: [backend, frontend, scripts]
+    needs: [backend, backend-windows, frontend, scripts]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

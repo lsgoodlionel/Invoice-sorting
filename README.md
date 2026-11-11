@@ -86,6 +86,18 @@ Invoice-sorting/backend/.venv/bin/invoice-sorting
 `FRONTEND_BUILD`（`local` 本地构建 / `prebuilt` 用 CI 预构建前端，无需 Node.js / `auto` 先试预构建）、
 `SKIP_FRONTEND=1`、`PYPI_INDEX` 与 `NPM_REGISTRY`（手工指定源地址，跳过测速）。
 
+**Windows**（10 1803+ / 11）：在 PowerShell 里把后两步换成下面两条。`setup.cmd` 与 `setup.sh` 行为、变量相同
+（写成 `$env:NO_OCR = '1'`），不需要修改脚本执行策略；装 pnpm 用 `npm.cmd install -g pnpm`。
+详见 [部署与运维 · Windows](docs/部署与运维.md#21-windows)。
+
+```powershell
+Invoice-sorting\scripts\setup.cmd
+```
+
+```powershell
+Invoice-sorting\backend\.venv\Scripts\invoice-sorting.exe
+```
+
 启动后自动打开 <http://127.0.0.1:8765>，只监听本机，不对局域网开放。数据默认在 `~/InvoiceSorting`，
 用 `INVOICE_SORTING_DATA_DIR` 可以换地方。升级：`git pull` 后重新执行上面的 `scripts/setup.sh` 与启动命令。
 只有自己一个人用、不想每次登录时，启动前设 `INVOICE_SORTING_AUTH_ENABLED=false`。
