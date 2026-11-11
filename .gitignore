@@ -29,3 +29,6 @@ coverage/
 
 # 本地工具配置
 .claude/
+
+# 本地隔离工作树
+.worktrees/
