@@ -22,7 +22,13 @@ def test_splits_apple_gmail_receipts_and_keeps_cross_page_range(tmp_path: Path):
     write_pdf(
         source,
         [
-            ["Gmail - Your purchases from Apple", "Receipt", "October 1, 2026", "Order ID:", "ORDER-A1"],
+            [
+                "Gmail - Your purchases from Apple",
+                "Receipt",
+                "October 1, 2026",
+                "Order ID:",
+                "ORDER-A1",
+            ],
             ["Receipt", "October 2, 2026", "Item B continues"],
             ["ORDER ID", "ORDER-B2", "Total USD 20.00"],
             ["Receipt", "October 3, 2026", "Order ID: ORDER-C3"],
@@ -51,7 +57,15 @@ def test_rejects_two_receipt_starts_on_one_page(tmp_path: Path):
     source = tmp_path / "ambiguous.pdf"
     write_pdf(
         source,
-        [["Gmail - Your purchases from Apple", "Receipt", "Order ID: A1", "Receipt", "Order ID: B2"]],
+        [
+            [
+                "Gmail - Your purchases from Apple",
+                "Receipt",
+                "Order ID: A1",
+                "Receipt",
+                "Order ID: B2",
+            ]
+        ],
     )
 
     with pytest.raises(CompositeSplitError, match="同一页包含多张 Apple 回执"):

@@ -16,6 +16,11 @@ from sqlalchemy.orm import Session
 from invoice_sorting.attachments import evidence_records
 from invoice_sorting.attachments.file_keys import compute_file_key
 from invoice_sorting.attachments.filetypes import validate_file
+from invoice_sorting.attachments.sources import (
+    DuplicateSourceError,
+    source_absolute_path,
+    store_source_document,
+)
 from invoice_sorting.attachments.storage import (
     DuplicateFileError,
     absolute_path,
@@ -30,6 +35,8 @@ from invoice_sorting.common.errors import AppError
 from invoice_sorting.config import Settings
 from invoice_sorting.db.models import Attachment, InvoiceData
 from invoice_sorting.evidence import RecognizedEvidence
+from invoice_sorting.evidence.composite import CompositeSplitError, split_apple_gmail_pdf
+from invoice_sorting.importer.composite import APPLE_SPLITTER, prepare_apple_children
 from invoice_sorting.importer.groups import ImportGroup, build_groups
 from invoice_sorting.importer.items import EvidenceItem, item_from_attachment
 from invoice_sorting.importer.recognition_labels import UNRECOGNIZED, recognized_as
@@ -63,6 +70,14 @@ class FileOutcome:
     message: str = ""
     existing_expense_id: int | None = None
     warnings: tuple[str, ...] = ()  # 发票提示（购方不一致、外地发票等）
+    additional_entries: tuple[tuple[Attachment, EvidenceItem], ...] = ()
+    stored_paths: tuple[Path, ...] = ()
+
+    @property
+    def entries(self) -> tuple[tuple[Attachment, EvidenceItem], ...]:
+        if self.attachment is None or self.item is None:
+            return self.additional_entries
+        return ((self.attachment, self.item), *self.additional_entries)
 
 
 class ImportDatabaseError(Exception):
@@ -107,9 +122,10 @@ class ImportResult:
             self.add_duplicate(name, outcome.existing_expense_id, outcome.message)
         elif outcome.status == STATUS_ERROR:
             self.add_error(name, outcome.message, index)
-        elif outcome.attachment is not None and outcome.item is not None:
-            self.entries.append((outcome.attachment, outcome.item))
-            self.warnings[outcome.attachment.id] = list(outcome.warnings)
+        elif outcome.entries:
+            self.entries.extend(outcome.entries)
+            for attachment, _item in outcome.entries:
+                self.warnings[attachment.id] = list(outcome.warnings)
             if outcome.message:
                 self.add_notice(name, outcome.message)
 
@@ -246,11 +262,61 @@ def _import_one(ctx: _Context, src: Path, name: str) -> FileOutcome:
     if rejected is not None:
         return rejected
     try:
+        parts = split_apple_gmail_pdf(src) if src.suffix.lower() == ".pdf" else []
+        if parts:
+            return _import_composite(ctx, src, name, parts)
         recognition = _recognize(src, name)
+    except CompositeSplitError as exc:
+        return _error(name, str(exc))
     except Exception:
         logger.exception("识别文件时出错：%s", name)
         return _error(name, UNEXPECTED_ERROR)
     return _store_and_register(ctx, src, name, recognition)
+
+
+def _import_composite(ctx: _Context, src: Path, name: str, parts) -> FileOutcome:
+    try:
+        source = store_source_document(ctx.session, ctx.settings, src, name)
+    except DuplicateSourceError:
+        return _duplicate(name, None, "来源文件已导入")
+    source_path = source_absolute_path(ctx.settings, source)
+    entries: list[tuple[Attachment, EvidenceItem]] = []
+    stored_paths: list[Path] = [source_path]
+    try:
+        for child in prepare_apple_children(src, source, parts, src.parent):
+            recognition = _recognize(child.path, child.name)
+            outcome = _store_and_register(ctx, child.path, child.name, recognition)
+            if not outcome.entries:
+                continue
+            attachment, item = outcome.entries[0]
+            attachment.source_document = source
+            attachment.source_page_start = child.part.start_page
+            attachment.source_page_end = child.part.end_page
+            attachment.source_splitter = APPLE_SPLITTER
+            entries.append((attachment, item))
+            stored_paths.append(absolute_path(ctx.settings, attachment))
+        if not entries:
+            ctx.session.delete(source)
+            ctx.session.flush()
+            source_path.unlink(missing_ok=True)
+            return _error(name, "Apple 回执拆分后没有可导入的订单")
+        first_attachment, first_item = entries[0]
+        return FileOutcome(
+            name,
+            STATUS_IMPORTED,
+            attachment=first_attachment,
+            item=first_item,
+            recognized_as=f"Apple 回执（已拆分 {len(entries)} 张）",
+            message=f"已拆分 {len(entries)} 张 Apple 回执",
+            additional_entries=tuple(entries[1:]),
+            stored_paths=tuple(stored_paths),
+        )
+    except ImportDatabaseError as exc:
+        paths = tuple(dict.fromkeys((*stored_paths, *exc.paths)))
+        raise ImportDatabaseError(paths, exc.is_duplicate) from exc
+    except Exception:
+        logger.exception("导入 Apple 多回执文件时出错：%s", name)
+        raise ImportDatabaseError(tuple(stored_paths), False) from None
 
 
 def _context(session: Session, settings: Settings) -> _Context:

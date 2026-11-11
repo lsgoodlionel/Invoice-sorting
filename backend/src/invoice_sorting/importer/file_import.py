@@ -58,8 +58,9 @@ def import_and_commit(
     except ImportDatabaseError as exc:
         logger.warning("导入写库冲突，已回滚：%s", original_name, exc_info=exc.__cause__)
         return _rolled_back(session, original_name, exc.paths, exc.is_duplicate)
-    attachment = outcome.attachment
-    paths = (absolute_path(settings, attachment),) if attachment is not None else ()
+    paths = outcome.stored_paths or tuple(
+        absolute_path(settings, attachment) for attachment, _item in outcome.entries
+    )
     try:
         session.commit()
     except SQLAlchemyError as exc:
@@ -80,15 +81,19 @@ def record_outcome(store: ImportSessionStore, session_id: str, outcome: FileOutc
         store.add_file_outcome(session_id, duplicate=duplicate)
     elif outcome.status == STATUS_ERROR:
         store.add_file_outcome(session_id, error={"original_name": name, "error": message})
-    elif outcome.attachment is not None:
-        item = outcome.item
-        store.add_file_outcome(
-            session_id,
-            attachment_id=outcome.attachment.id,
-            warnings=outcome.warnings,
-            occurred_on=item.occurred_on if item is not None and item.is_invoice else None,
-            notice={"original_name": name, "message": message} if message else None,
-        )
+    elif outcome.entries:
+        for index, (attachment, item) in enumerate(outcome.entries):
+            store.add_file_outcome(
+                session_id,
+                attachment_id=attachment.id,
+                warnings=outcome.warnings,
+                occurred_on=item.occurred_on if item.is_invoice else None,
+                notice=(
+                    {"original_name": name, "message": message}
+                    if message and index == 0
+                    else None
+                ),
+            )
 
 
 def serialize_file_outcome(
