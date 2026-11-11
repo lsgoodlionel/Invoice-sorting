@@ -26,6 +26,9 @@ from invoice_sorting.parsers.travel_common import (
 STATION = r"([一-鿿]{1,12}?)\s*站"
 TRAIN = r"([GDCZTKLYS]?\d{1,5})"
 ROUTE_RE = re.compile(STATION + r"\s+" + TRAIN + r"\s+" + STATION)
+SPLIT_STATION_ROUTE_RE = re.compile(
+    r"(?m)^\s*([一-鿿]{1,12})\s+" + TRAIN + r"\s+([一-鿿]{1,12})\s*\n\s*站\s+站\s*$"
+)
 DEPARTURE_RE = re.compile(DATE_PATTERN + r"\s*\d{1,2}:\d{2}\s*开")
 FARE_RE = re.compile(spaced("票价") + r"\s*:?\s*¥?\s*(" + AMOUNT + ")")
 YUAN_RE = re.compile(r"¥\s*(" + AMOUNT + ")")
@@ -50,6 +53,10 @@ def _invoice_type(text: str) -> str:
     return "电子发票（铁路电子客票）" if "电子发票" in compact(text) else "铁路电子客票"
 
 
+def _route(text: str) -> re.Match[str] | None:
+    return ROUTE_RE.search(text) or SPLIT_STATION_ROUTE_RE.search(text)
+
+
 class RailTicketParser:
     name = "rail_ticket"
 
@@ -63,7 +70,7 @@ class RailTicketParser:
     def parse(self, path: Path, text: str | None) -> ParsedInvoice:
         raw_text = pdf_text_or_raise(path, text)
         normalized = normalize_text(raw_text)
-        route = ROUTE_RE.search(normalized)
+        route = _route(normalized)
         fields = TravelFields(
             invoice_no=find_invoice_no(normalized),
             issued_on=find_labeled_date(("开票日期",), normalized),
