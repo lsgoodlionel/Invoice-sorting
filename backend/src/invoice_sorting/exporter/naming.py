@@ -56,9 +56,16 @@ def ordered_attachments(expense: Expense) -> tuple[Attachment, ...]:
     return tuple(sorted(expense.attachments, key=lambda item: (kind_rank(item.kind), item.id)))
 
 
+def package_item_sort_key(expense: Expense) -> tuple[object, ...]:
+    """已分类按配置顺序在前；分类内按消费日期和记录 id 稳定排序。"""
+    category = expense.category
+    category_key = (1, 0, 0) if category is None else (0, category.sort, category.id)
+    return (*category_key, expense.spent_on, expense.id)
+
+
 def package_items(expenses: list[Expense]) -> list[PackageItem]:
-    """按日期升序、id 升序编号，序号从 1 开始。"""
-    ordered = sorted(expenses, key=lambda expense: (expense.spent_on, expense.id))
+    """按分类配置顺序、消费日期和 id 编号，未分类置后，序号从 1 开始。"""
+    ordered = sorted(expenses, key=package_item_sort_key)
     return [
         PackageItem(seq=index, expense=expense, attachments=ordered_attachments(expense))
         for index, expense in enumerate(ordered, start=1)

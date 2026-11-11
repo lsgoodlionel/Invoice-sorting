@@ -112,8 +112,28 @@ def test_naming_helpers():
         == "03_支撑材料/01_京东_960.00/支付记录_1.png"
     )
     expenses = [
-        SimpleNamespace(id=2, spent_on=date(2026, 9, 2), attachments=[]),
-        SimpleNamespace(id=3, spent_on=date(2026, 9, 1), attachments=[]),
-        SimpleNamespace(id=1, spent_on=date(2026, 9, 2), attachments=[]),
+        SimpleNamespace(id=2, spent_on=date(2026, 9, 2), category=None, attachments=[]),
+        SimpleNamespace(id=3, spent_on=date(2026, 9, 1), category=None, attachments=[]),
+        SimpleNamespace(id=1, spent_on=date(2026, 9, 2), category=None, attachments=[]),
     ]
     assert [(i.seq, i.expense.id) for i in package_items(expenses)] == [(1, 3), (2, 1), (3, 2)]
+
+
+def test_package_items_sort_by_category_then_date_and_put_uncategorized_last():
+    first = SimpleNamespace(id=10, sort=1)
+    second = SimpleNamespace(id=20, sort=2)
+    expenses = [
+        SimpleNamespace(id=5, spent_on=date(2026, 8, 1), category=second, attachments=[]),
+        SimpleNamespace(id=4, spent_on=date(2026, 9, 2), category=first, attachments=[]),
+        SimpleNamespace(id=3, spent_on=date(2026, 9, 1), category=first, attachments=[]),
+        SimpleNamespace(id=2, spent_on=date(2026, 9, 1), category=first, attachments=[]),
+        SimpleNamespace(id=1, spent_on=date(2026, 7, 1), category=None, attachments=[]),
+    ]
+
+    assert [(item.seq, item.expense.id) for item in package_items(expenses)] == [
+        (1, 2),
+        (2, 3),
+        (3, 4),
+        (4, 5),
+        (5, 1),
+    ]

@@ -125,6 +125,57 @@ def test_export_by_kind_layout(client, eight_items):
     assert any(n.startswith("03_支撑材料/支付记录/") for n in names)
 
 
+def test_export_by_kind_uses_category_then_date_order_for_every_member(client):
+    categories = client.get("/api/categories").json()["data"][:2]
+    first, second = categories
+    expenses = [
+        make_expense(
+            client,
+            spent_on="2026-09-03",
+            merchant="前分类晚日期",
+            category_id=first["id"],
+        ),
+        make_expense(
+            client,
+            spent_on="2026-09-01",
+            merchant="前分类早日期",
+            category_id=first["id"],
+        ),
+        make_expense(
+            client,
+            spent_on="2026-08-01",
+            merchant="后分类更早日期",
+            category_id=second["id"],
+        ),
+        make_expense(client, spent_on="2026-07-01", merchant="未分类最早日期"),
+    ]
+    for expense in expenses:
+        upload(client, expense["id"], [("订单.png", png_bytes())], kind="order")
+    batch = make_batch(client, "分类排序批次")
+    add_items(client, batch["id"], [expense["id"] for expense in expenses], force=True)
+
+    archive = download(client, export(client, batch["id"], "by_kind"))
+    summary, _ = summary_rows(archive)
+    body = summary[2:-1]
+    expected_merchants = ["前分类早日期", "前分类晚日期", "后分类更早日期", "未分类最早日期"]
+    assert [row[2] for row in body] == expected_merchants
+
+    invoice_merchants = [
+        Path(name).stem.split("_")[3]
+        for name in sorted(
+            name for name in archive.namelist() if name.startswith("02_发票原件/")
+        )
+    ]
+    assert invoice_merchants == expected_merchants
+
+    order_members = sorted(
+        name
+        for name in archive.namelist()
+        if name.startswith("03_支撑材料/订单明细/")
+    )
+    assert [Path(name).stem.split("_")[1] for name in order_members] == expected_merchants
+
+
 def test_export_twice_keeps_old_package(client, settings, eight_items):  # T11
     batch, _ = eight_items
     first, second = export(client, batch["id"]), export(client, batch["id"])
