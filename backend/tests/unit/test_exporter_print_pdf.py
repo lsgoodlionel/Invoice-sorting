@@ -12,6 +12,7 @@ from pypdf import PdfReader, PdfWriter
 
 from invoice_sorting.exporter.naming import (
     PackageItem,
+    category_print_groups,
     kind_rank,
     package_items,
     support_name,
@@ -187,4 +188,34 @@ def test_package_items_sort_by_category_then_date_and_put_uncategorized_last():
         (3, 4),
         (4, 5),
         (5, 1),
+    ]
+
+
+def test_category_print_groups_follow_package_order_and_use_safe_unique_names():
+    first = SimpleNamespace(id=10, name="差旅/交通", sort=1)
+    duplicate = SimpleNamespace(id=20, name="差旅:交通", sort=2)
+    expenses = [
+        SimpleNamespace(
+            id=3, spent_on=date(2026, 11, 3), category=first, attachments=[]
+        ),
+        SimpleNamespace(
+            id=4, spent_on=date(2026, 11, 4), category=first, attachments=[]
+        ),
+        SimpleNamespace(
+            id=2, spent_on=date(2026, 11, 2), category=duplicate, attachments=[]
+        ),
+        SimpleNamespace(id=1, spent_on=date(2026, 11, 1), category=None, attachments=[]),
+    ]
+
+    groups = category_print_groups(package_items(expenses))
+
+    assert [group.name for group in groups] == [
+        "02_按分类打印/01_差旅_交通.pdf",
+        "02_按分类打印/02_差旅_交通.pdf",
+        "02_按分类打印/03_未分类.pdf",
+    ]
+    assert [[item.expense.id for item in group.items] for group in groups] == [
+        [3, 4],
+        [2],
+        [1],
     ]
