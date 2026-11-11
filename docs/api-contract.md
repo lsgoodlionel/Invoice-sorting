@@ -275,6 +275,9 @@ type ImportGroup = {
   warnings: string[]                  // 购方不一致、外地发票、可能重复（同订单同类型凭证已在 #id）等
 }
 
+// Attachment.source：普通文件为 null；Apple Gmail 多回执拆分件为
+// { id, original_name, page_start, page_end, splitter }，指向只保存一次的原始 PDF 及该回执页码。
+
 // summary 来源：金额与日期取 发票 > 人民币支付记录 > 订单/收据；商家与摘要取 发票 > 订单/收据 > 支付记录；
 // 原币取外币订单/收据（其次外币支付记录）；分类先按文件名首段分类词（办公→办公用品、软件→软件服务、
 // 打车/出行/交通/差旅/出差/住宿/酒店→差旅交通、线缆/数码/数据→易耗品、图书→图书、设备→设备，或同名分类），否则走分类建议。
@@ -282,11 +285,13 @@ type ImportGroup = {
 // 只有订单时取订单金额，invoice_exempt=false）；商家 = 酒店名（订单 details.hotel，否则住宿发票销售方）；
 // 摘要 = “酒店名 N晚 + 交通 K 张”；分类 = 差旅交通；日期 = 入住日期（无订单时取住宿发票开票日期）。
 // suggested_action：含“可能重复”提示 → skip；有强匹配 → attach；含发票或有金额和日期 → create；否则 skip。
-// link_reasons 取值：订单号一致、文件名一致、金额与日期一致、境外订单与银行交易日期一致、卡号末四位一致、
+// link_reasons 取值：订单号一致、文件名一致、金额与日期一致、境外订单与银行交易日期一致、
+// 境外订单与人民币付款日期及平台一致、卡号末四位一致、
 // 酒店发票与订单一致（金额相同 + 酒店名与销售方有 ≥2 字公共子串 + 开票日期在入住至离店后 30 天内）、
 // 往返酒店所在地的交通凭证（交通日期在入住−1 至离店+1 天内，且起点或终点包含酒店城市）。
 // MatchCandidate.reasons 另有：“往返 苏州 的交通凭证（入住 08-15、离店 08-16）”（住宿记录 ↔ 新交通凭证，+60）、
-// “酒店发票与订单一致”（住宿发票 ↔ 只有订单的记录，+70）。
+// “酒店发票与订单一致”（住宿发票 ↔ 只有订单的记录，+70）、
+// “外币订单与人民币付款平台一致”（分次上传时 +20；仍需日期/商家等总分达到阈值并领先其他候选）。
 
 type ImportSession = {
   session_id: string;
@@ -344,7 +349,7 @@ type ConfirmGroup = {
 | PATCH | `/api/batches/{id}` | `{ name?, project_id?, note?, sent_via?, receiver?, external_no? }` | `BatchDetail` |
 | DELETE | `/api/batches/{id}` | 仅 draft 可删；记录回到未分批 | `null` |
 | POST | `/api/batches/{id}/items` | `{ add?: number[], remove?: number[], force?: boolean }`；加入含必需缺项的记录且 force=false 时返回 409 并在 error 中说明；项目不一致同样 409 | `BatchDetail` |
-| POST | `/api/batches/{id}/export` | `{ layout: "by_expense" \| "by_kind" }` | `ExportRecord` |
+| POST | `/api/batches/{id}/export` | `{ layout: "by_expense" \| "by_kind", duplex?: boolean }`（`duplex` 默认 false；为 true 时，除各打印 PDF 最后一条外，奇数页记录补一张 A4 空白页） | `ExportRecord` |
 | GET | `/api/exports/{id}/file` | — | ZIP 文件流 |
 | DELETE | `/api/exports/{id}` | — 删除资料包文件与导出记录（记录与凭证不受影响） | `null` |
 | POST | `/api/batches/{id}/sent` | `{ sent_on, sent_via?, receiver?, external_no? }` | `BatchDetail` |

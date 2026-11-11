@@ -54,6 +54,70 @@ def test_app_store_japanese_yen_and_english_labels() -> None:
     assert (result.amount_cents, result.currency) == (300000, "JPY")
     assert result.occurred_on == date(2026, 3, 5)
     assert result.order_no == "MABCDE1234"
+    assert result.details == {"document_no": "200000000002"}
+
+
+def test_app_store_receipt_prefers_receipt_date_over_gmail_header() -> None:
+    text = "\n".join(
+        [
+            "Tue, Nov 11, 2026 at 10:35 AM",
+            "Gmail - Your purchases from Apple",
+            "Receipt",
+            "Billed To PayPal",
+            "DATE",
+            "October 30, 2026",
+            "Order ID: MSHQ92HTXH",
+            "Document: 654211965027",
+            "Apple Account",
+            "USA",
+            "App Store",
+            "ChatGPT",
+            "100 Credits",
+            "In-App Purchase",
+            "Demo iPhone",
+            "Report a Problem",
+            "$4.00",
+            "TOTAL $4.00",
+            "Resend Receipt",
+        ]
+    )
+
+    result = app_store.recognize(lines_from_text(text))
+
+    assert result is not None
+    assert result.occurred_on == date(2026, 10, 30)
+    assert (result.amount_cents, result.currency) == (400, "USD")
+    assert result.item_name == "ChatGPT 100 Credits"
+    assert result.order_no == "MSHQ92HTXH"
+    assert result.details == {"document_no": "654211965027"}
+
+
+def test_app_store_subscription_receipt_finds_product_before_renewal_line() -> None:
+    text = "\n".join(
+        [
+            "Receipt",
+            "October 30, 2026",
+            "Order ID:",
+            "MSHQ92HTXH",
+            "Document:",
+            "654211965027",
+            "Apple Account:",
+            "demo@example.com",
+            "Save 3% on all your Apple purchases with Apple Card.",
+            "ChatGPT",
+            "ChatGPT Pro 100 (Monthly)",
+            "Renews November 30, 2026",
+            "$100.00",
+            "Billing and Payment",
+            "Resend Receipt",
+        ]
+    )
+
+    result = app_store.recognize(lines_from_text(text))
+
+    assert result is not None
+    assert result.item_name == "ChatGPT ChatGPT Pro 100 (Monthly)"
+    assert result.details == {"document_no": "654211965027"}
 
 
 def test_app_store_rejects_unrelated_text() -> None:

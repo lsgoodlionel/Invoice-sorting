@@ -14,6 +14,7 @@ from invoice_sorting.db.models import Attachment, Batch, Expense
 MERCHANT_MAX_CHARS = 30
 SUMMARY_NAME = "00_报销汇总表.xlsx"
 PRINT_NAME = "01_打印版_全部材料.pdf"
+CATEGORY_PRINT_DIR = "02_按分类打印"
 INVOICE_DIR = "02_发票原件"
 SUPPORT_DIR = "03_支撑材料"
 FALLBACK_MERCHANT = "未填商家"
@@ -45,6 +46,14 @@ class PackageItem:
     attachments: tuple[Attachment, ...] = field(default_factory=tuple)
 
 
+@dataclass(frozen=True)
+class CategoryPrintGroup:
+    """同一分类的打印版文件名与记录。"""
+
+    name: str
+    items: tuple[PackageItem, ...]
+
+
 def kind_rank(kind: str) -> int:
     try:
         return KIND_ORDER.index(AttachmentKind(kind))
@@ -69,6 +78,24 @@ def package_items(expenses: list[Expense]) -> list[PackageItem]:
     return [
         PackageItem(seq=index, expense=expense, attachments=ordered_attachments(expense))
         for index, expense in enumerate(ordered, start=1)
+    ]
+
+
+def category_print_groups(items: list[PackageItem]) -> list[CategoryPrintGroup]:
+    """按资料包顺序分组；分类配置顺序已由 package_items 保证。"""
+    grouped: dict[tuple[int | None, str], list[PackageItem]] = {}
+    for item in items:
+        category = item.expense.category
+        key = (category.id if category else None, category_token(item.expense))
+        grouped.setdefault(key, []).append(item)
+    return [
+        CategoryPrintGroup(
+            name=f"{CATEGORY_PRINT_DIR}/{index:02d}_{category}.pdf",
+            items=tuple(grouped_items),
+        )
+        for index, ((_category_id, category), grouped_items) in enumerate(
+            grouped.items(), start=1
+        )
     ]
 
 

@@ -21,6 +21,10 @@ export type ChecklistLevel = 'required' | 'suggested';
 export type ChecklistState = 'missing' | 'present' | 'not_needed';
 export type BatchStatus = 'draft' | 'sent' | 'partial' | 'received';
 export type ExportLayout = 'by_expense' | 'by_kind';
+export interface BatchExportOptions {
+  layout: ExportLayout;
+  duplex: boolean;
+}
 export type DateBasis = 'spent' | 'invoiced' | 'sent' | 'received';
 export type StatsGroupBy = 'category' | 'project' | 'merchant' | 'month';
 
@@ -155,6 +159,14 @@ export interface Attachment {
   evidence: EvidenceData | null;
   /** 文件名键（用于同组判断） */
   file_key: string;
+  /** 从复合 PDF 拆分时的原始来源与页码；普通附件为 null */
+  source: {
+    id: number;
+    original_name: string;
+    page_start: number | null;
+    page_end: number | null;
+    splitter: string;
+  } | null;
   /** 上传人；收件箱自动导入为 null */
   uploaded_by: UserRef | null;
 }

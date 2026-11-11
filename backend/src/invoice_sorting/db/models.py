@@ -158,6 +158,22 @@ class Expense(Base):
     )
 
 
+class SourceDocument(Base):
+    """复合凭证的原始来源文件，只存一份并供拆分附件追溯。"""
+
+    __tablename__ = "source_document"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    sha256: Mapped[str] = mapped_column(String(64), unique=True)
+    file_path: Mapped[str] = mapped_column(String(500))
+    original_name: Mapped[str] = mapped_column(String(300))
+    mime: Mapped[str] = mapped_column(String(100), default="application/pdf")
+    size: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+    attachments: Mapped[list["Attachment"]] = relationship(back_populates="source_document")
+
+
 class Attachment(Base):
     """附件。expense_id 为空表示“待归属”。file_path 为相对 data_dir 的路径。"""
 
@@ -172,10 +188,19 @@ class Attachment(Base):
     mime: Mapped[str] = mapped_column(String(100), default="")
     size: Mapped[int] = mapped_column(Integer, default=0)
     file_key: Mapped[str] = mapped_column(String(200), default="")  # 文件名键（设计 3.3）
+    source_document_id: Mapped[int | None] = mapped_column(
+        ForeignKey("source_document.id"), nullable=True
+    )
+    source_page_start: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    source_page_end: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    source_splitter: Mapped[str] = mapped_column(String(50), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     uploaded_by_id: Mapped[int | None] = actor_column()
 
     expense: Mapped[Expense | None] = relationship(back_populates="attachments")
+    source_document: Mapped[SourceDocument | None] = relationship(
+        back_populates="attachments", lazy="selectin"
+    )
     uploaded_by: Mapped[User | None] = actor_relationship("Attachment.uploaded_by_id")
     invoice_data: Mapped["InvoiceData | None"] = relationship(
         back_populates="attachment", cascade="all, delete-orphan", uselist=False

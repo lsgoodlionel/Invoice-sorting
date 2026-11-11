@@ -93,14 +93,14 @@ describe('endpoint functions follow the contract', () => {
     await batchesApi.update(4, { note: 'n' });
     await batchesApi.remove(4);
     await batchesApi.changeItems(4, { add: [1], force: true });
-    await batchesApi.exportZip(4, 'by_kind');
+    await batchesApi.exportZip(4, { layout: 'by_kind', duplex: false });
     await batchesApi.markSent(4, { sent_on: '2026-09-01' });
     await batchesApi.markReceived(4, { received_on: '2026-09-02', expense_ids: [1] });
     await batchesApi.reopen(4);
     await batchesApi.removeExport(8);
     expect(calls[0].url).toBe('/api/batches?status=draft');
     expect(calls[5].body).toEqual({ add: [1], force: true });
-    expect(calls[6].body).toEqual({ layout: 'by_kind' });
+    expect(calls[6].body).toEqual({ layout: 'by_kind', duplex: false });
     expect(batchesApi.exportFileUrl(8)).toBe('/api/exports/8/file');
     expect(calls.at(-2)?.url).toBe('/api/batches/4/reopen');
     expect(calls.at(-1)).toMatchObject({ method: 'DELETE', url: '/api/exports/8' });

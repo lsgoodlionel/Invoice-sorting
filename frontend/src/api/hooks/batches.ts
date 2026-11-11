@@ -4,12 +4,12 @@ import type {
   Batch,
   BatchCreate,
   BatchDetail,
+  BatchExportOptions,
   BatchItemsChange,
   BatchPatch,
   BatchReceived,
   BatchSent,
   BatchStatus,
-  ExportLayout,
   ExportRecord,
 } from '../types';
 import { invalidateWorkflow } from './invalidate';
@@ -22,7 +22,8 @@ export const batchesApi = {
   update: (id: number, patch: BatchPatch) => api.patch<BatchDetail>(`/batches/${id}`, patch),
   remove: (id: number) => api.del<null>(`/batches/${id}`),
   changeItems: (id: number, change: BatchItemsChange) => api.post<BatchDetail>(`/batches/${id}/items`, change),
-  exportZip: (id: number, layout: ExportLayout) => api.post<ExportRecord>(`/batches/${id}/export`, { layout }),
+  exportZip: (id: number, options: BatchExportOptions) =>
+    api.post<ExportRecord>(`/batches/${id}/export`, options),
   markSent: (id: number, input: BatchSent) => api.post<BatchDetail>(`/batches/${id}/sent`, input),
   markReceived: (id: number, input: BatchReceived) => api.post<BatchDetail>(`/batches/${id}/received`, input),
   reopen: (id: number) => api.post<BatchDetail>(`/batches/${id}/reopen`, {}),
@@ -62,7 +63,7 @@ export const useBatchItems = () =>
     [CONFLICT_STATUS],
   );
 export const useExportBatch = (id: number) =>
-  useBatchMutation((layout: ExportLayout) => batchesApi.exportZip(id, layout));
+  useBatchMutation((options: BatchExportOptions) => batchesApi.exportZip(id, options));
 export const useMarkBatchSent = (id: number) => useBatchMutation((input: BatchSent) => batchesApi.markSent(id, input));
 export const useMarkBatchReceived = (id: number) =>
   useBatchMutation((input: BatchReceived) => batchesApi.markReceived(id, input));

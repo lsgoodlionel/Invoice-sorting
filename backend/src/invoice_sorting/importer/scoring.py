@@ -10,16 +10,17 @@ from datetime import date
 from invoice_sorting.attachments.serializers import kind_label
 from invoice_sorting.common.constants import AttachmentKind, ChecklistLevel, ChecklistState
 from invoice_sorting.db.models import Expense
-from invoice_sorting.importer.items import CNY, EvidenceItem
+from invoice_sorting.importer.items import CNY, EvidenceItem, item_from_attachment
 from invoice_sorting.importer.lodging_scoring import lodging_score
 from invoice_sorting.importer.merchants import merchants_overlap
-from invoice_sorting.importer.platforms import platform_tokens
+from invoice_sorting.importer.platforms import platform_tokens, platforms_compatible
 
 SCORE_AMOUNT = 40
 SCORE_DATE_CLOSE = 30
 SCORE_DATE_NEAR = 15
 SCORE_MERCHANT = 20
 SCORE_FILLS_MISSING = 10
+SCORE_FOREIGN_SETTLEMENT = 20
 PENALTY_SAME_KIND = 30
 DATE_CLOSE_DAYS = 3
 DATE_NEAR_DAYS = 7
@@ -107,6 +108,40 @@ def _merchant_score(profile: GroupProfile, expense: Expense) -> tuple[int, str |
     return 0, None
 
 
+def _foreign_settlement_score(
+    profile: GroupProfile, expense: Expense
+) -> tuple[int, str | None]:
+    """外币订单与人民币付款分批导入时，按平台关系补足匹配置信度。"""
+    existing = [item_from_attachment(attachment) for attachment in expense.attachments]
+    incoming_orders = [
+        item
+        for item in profile.items
+        if item.kind == AttachmentKind.ORDER and item.is_foreign_currency
+    ]
+    existing_payments = [
+        item
+        for item in existing
+        if item.kind == AttachmentKind.PAYMENT and not item.is_foreign_currency
+    ]
+    incoming_payments = [
+        item
+        for item in profile.items
+        if item.kind == AttachmentKind.PAYMENT and not item.is_foreign_currency
+    ]
+    existing_orders = [
+        item
+        for item in existing
+        if item.kind == AttachmentKind.ORDER and item.is_foreign_currency
+    ]
+    pairs = [
+        *[(order, payment) for order in incoming_orders for payment in existing_payments],
+        *[(order, payment) for order in existing_orders for payment in incoming_payments],
+    ]
+    if any(platforms_compatible(order.platforms, payment.platforms) for order, payment in pairs):
+        return SCORE_FOREIGN_SETTLEMENT, "外币订单与人民币付款平台一致"
+    return 0, None
+
+
 def missing_kinds(expense: Expense) -> list[str]:
     """记录必需且缺少的凭证类型（按清单项 id 排序）。"""
     items = sorted(expense.checklist_items, key=lambda item: item.id or 0)
@@ -139,6 +174,7 @@ def score_expense(profile: GroupProfile, expense: Expense) -> MatchCandidate:
         _amount_score(profile, expense),
         _date_score(profile, expense),
         _merchant_score(profile, expense),
+        _foreign_settlement_score(profile, expense),
         *lodging.parts,
         *_kind_scores(profile, expense, exempt),
     ]

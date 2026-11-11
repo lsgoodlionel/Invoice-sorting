@@ -143,7 +143,7 @@ describe('mutation hooks', () => {
       await r.create.mutateAsync({ name: 'b' });
       await r.update.mutateAsync({ name: 'c' });
       await r.items.mutateAsync({ id: 3, change: { remove: [1] } });
-      await r.exportZip.mutateAsync('by_expense');
+      await r.exportZip.mutateAsync({ layout: 'by_expense', duplex: false });
       await r.sent.mutateAsync({ sent_on: '2026-09-01' });
       await r.received.mutateAsync({ received_on: '2026-09-02' });
       await r.remove.mutateAsync(3);

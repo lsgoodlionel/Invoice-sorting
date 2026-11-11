@@ -166,6 +166,38 @@ def test_v02_foreign_order_and_bank_transaction_become_exempt_expense(
     assert expense["status"] == "complete" and expense["missing_count"] == 0
 
 
+def test_usd_order_and_cny_payment_are_matched(
+    client, session, tmp_path, fake_recognition
+):
+    order_png = png(tmp_path / "uploads", "软件-Claude Pro-美元订单.png")
+    bank_png = png(tmp_path / "uploads", "软件-Claude Pro-人民币付款.png")
+    fake_recognition.set(order_png.name, claude_order(), category="软件")
+    fake_recognition.set(
+        bank_png.name,
+        apple_bank(
+            amount_cents=14426,
+            currency="CNY",
+            cny_cents=14426,
+            is_foreign=False,
+        ),
+        category="软件",
+    )
+
+    data = upload(client, order_png, bank_png)
+
+    assert len(data["groups"]) == 1
+    group = data["groups"][0]
+    assert group["link_reasons"] == ["境外订单与人民币付款日期及平台一致"]
+    assert group["summary"]["amount_cents"] == 14426
+    assert group["summary"]["currency"] == "USD"
+    assert group["summary"]["original_amount_cents"] == 2000
+
+    result = confirm(client, data, payload(group, category_id=None))
+    expense = detail(client, result["created"][0])
+    assert expense["amount_cents"] == 14426
+    assert (expense["currency"], expense["original_amount_cents"]) == ("USD", 2000)
+
+
 def chatgpt_bank():
     return recognized(
         "payment",
@@ -212,6 +244,35 @@ def test_v03_v04_bank_first_then_order_suggests_attach(client, tmp_path, fake_re
     result = confirm(client, second, payload(group, "attach", expense_id=expense_id))
     assert result == {"created": [], "attached": [expense_id], "skipped": 0}
     assert detail(client, expense_id)["status"] == "complete"
+
+
+def test_cny_bank_first_then_usd_order_suggests_attach(client, tmp_path, fake_recognition):
+    bank_png = png(tmp_path / "uploads", "Apple-人民币付款.png")
+    fake_recognition.set(
+        bank_png.name,
+        apple_bank(
+            amount_cents=14426,
+            currency="CNY",
+            cny_cents=14426,
+            is_foreign=False,
+        ),
+    )
+    first = upload(client, bank_png)
+    expense_id = confirm(client, first, payload(first["groups"][0]))["created"][0]
+
+    order_png = png(tmp_path / "uploads", "Apple-美元订单.png")
+    fake_recognition.set(order_png.name, claude_order())
+    second = upload(client, order_png)
+
+    group = second["groups"][0]
+    assert group["suggested_action"] == "attach"
+    assert group["match"]["expense_id"] == expense_id
+    assert "外币订单与人民币付款平台一致" in group["match"]["reasons"]
+
+    confirm(client, second, payload(group, "attach", expense_id=expense_id))
+    expense = detail(client, expense_id)
+    assert expense["amount_cents"] == 14426
+    assert (expense["currency"], expense["original_amount_cents"]) == ("USD", 2000)
 
 
 def test_v05_order_screenshot_after_invoice_matches_by_order_no(

@@ -18,6 +18,7 @@ from invoice_sorting.exporter.naming import (
     PRINT_NAME,
     SUMMARY_NAME,
     PackageItem,
+    category_print_groups,
     invoice_original_name,
     package_dir_name,
     package_file_name,
@@ -84,6 +85,8 @@ def export_batch(
     batch: Batch,
     layout: ExportLayout,
     moment: datetime | None = None,
+    *,
+    duplex: bool = False,
 ) -> ExportRecord:
     """生成资料包并写入导出记录。空批次抛 AppError。"""
     expenses = active_expenses(batch)
@@ -95,12 +98,16 @@ def export_batch(
     def resolve(attachment: Attachment) -> Path:
         return absolute_path(settings, attachment)
 
-    printed = build_print_pdf(items, resolve)
+    printed = build_print_pdf(items, resolve, duplex=duplex)
     workbook = build_summary_workbook(batch, items, printed.notes_for, moment)
     directory = settings.packages_dir / package_dir_name(batch, moment)
     directory.mkdir(parents=True, exist_ok=True)
     target = _free_file(directory, package_file_name(batch, moment))
     members = {SUMMARY_NAME: workbook, PRINT_NAME: printed.pdf_bytes}
+    for group in category_print_groups(items):
+        members[group.name] = build_print_pdf(
+            list(group.items), resolve, duplex=duplex
+        ).pdf_bytes
     _write_zip(target, members, _file_entries(settings, items, ExportLayout(layout)))
     record = ExportRecord(
         batch_id=batch.id,

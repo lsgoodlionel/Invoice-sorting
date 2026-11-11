@@ -98,6 +98,30 @@ def test_rail_ticket():
     assert invoice.warnings == ()
 
 
+def test_rail_ticket_with_station_markers_on_following_line(tmp_path):
+    text = """电子发票（铁路电子客票）
+发票号码：26339119363000147798 开票日期：2026年11月11日
+安吉 C3029 上海南
+站      站
+2026年09月06日 21:20开 05车07B号 二等座
+票价：¥90.00
+1401091992****1026 李欣
+购买方名称：华东师范大学 统一社会信用代码：12100000425006133D
+中国铁路祝您旅途愉快
+"""
+
+    parsed = RailTicketParser().parse(tmp_path / "ticket.pdf", text)
+
+    assert parsed.item_summary == "安吉-上海南 C3029"
+    assert parsed.travel == {
+        "date": "2026-09-06",
+        "from": "安吉",
+        "to": "上海南",
+        "passenger": "李欣",
+        "train_or_flight": "C3029",
+    }
+
+
 def test_air_itinerary():
     invoice = parse_fixture("air_itinerary.pdf")
 

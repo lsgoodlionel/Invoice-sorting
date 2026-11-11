@@ -32,8 +32,13 @@ EXPORT_KEYS = {
 }
 
 
-def export(client, batch_id: int, layout: str = "by_expense") -> dict:
-    response = client.post(f"/api/batches/{batch_id}/export", json={"layout": layout})
+def export(
+    client, batch_id: int, layout: str = "by_expense", duplex: bool | None = None
+) -> dict:
+    body = {"layout": layout}
+    if duplex is not None:
+        body["duplex"] = duplex
+    response = client.post(f"/api/batches/{batch_id}/export", json=body)
     assert response.status_code == 200, response.text
     return response.json()["data"]
 
@@ -123,6 +128,41 @@ def test_export_by_kind_layout(client, eight_items):
     names = download(client, record).namelist()
     assert any(n.startswith("03_支撑材料/订单明细/") and n.endswith("_1.png") for n in names)
     assert any(n.startswith("03_支撑材料/支付记录/") for n in names)
+
+
+def test_export_adds_category_pdfs_and_applies_duplex_per_file(client):
+    categories = client.get("/api/categories").json()["data"][:2]
+    first, second = categories
+    expenses = [
+        make_expense(client, merchant="一类甲", category_id=first["id"]),
+        make_expense(client, merchant="一类乙", category_id=first["id"]),
+        make_expense(client, merchant="二类甲", category_id=second["id"]),
+        make_expense(client, merchant="未分类甲"),
+    ]
+    for expense in expenses:
+        upload(
+            client,
+            expense["id"],
+            [("订单.png", png_bytes()), ("支付.png", png_bytes())],
+            kind="order",
+        )
+    batch = make_batch(client, "双面分类打印")
+    add_items(client, batch["id"], [expense["id"] for expense in expenses], force=True)
+
+    archive = download(client, export(client, batch["id"], duplex=True))
+
+    category_names = [
+        name for name in archive.namelist() if name.startswith("02_按分类打印/")
+    ]
+    assert category_names == [
+        f"02_按分类打印/01_{first['name']}.pdf",
+        f"02_按分类打印/02_{second['name']}.pdf",
+        "02_按分类打印/03_未分类.pdf",
+    ]
+    assert len(PdfReader(io.BytesIO(archive.read("01_打印版_全部材料.pdf"))).pages) == 15
+    assert [
+        len(PdfReader(io.BytesIO(archive.read(name))).pages) for name in category_names
+    ] == [7, 3, 3]
 
 
 def test_export_by_kind_uses_category_then_date_order_for_every_member(client):

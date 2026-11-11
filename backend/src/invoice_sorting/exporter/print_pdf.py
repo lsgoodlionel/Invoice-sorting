@@ -88,14 +88,25 @@ def _append_attachment(writer: PdfWriter, attachment: Attachment, path: Path) ->
     return True
 
 
-def build_print_pdf(items: list[PackageItem], resolve: PathResolver) -> PrintResult:
-    writer = PdfWriter()
+def build_print_pdf(
+    items: list[PackageItem], resolve: PathResolver, *, duplex: bool = False
+) -> PrintResult:
     skipped: dict[int, list[str]] = {}
+    rendered: list[PdfWriter] = []
     for item in items:
+        record_writer = PdfWriter()
         for attachment in item.attachments:
-            if _append_attachment(writer, attachment, resolve(attachment)):
+            if _append_attachment(record_writer, attachment, resolve(attachment)):
                 continue
             skipped.setdefault(item.expense.id, []).append(attachment.original_name)
+        if record_writer.pages:
+            rendered.append(record_writer)
+    writer = PdfWriter()
+    for index, record_writer in enumerate(rendered):
+        for page in record_writer.pages:
+            writer.add_page(page)
+        if duplex and len(record_writer.pages) % 2 == 1 and index < len(rendered) - 1:
+            writer.add_blank_page(width=A4_WIDTH_PT, height=A4_HEIGHT_PT)
     if len(writer.pages) == 0:
         writer.add_blank_page(width=A4_WIDTH_PT, height=A4_HEIGHT_PT)
     buffer = io.BytesIO()

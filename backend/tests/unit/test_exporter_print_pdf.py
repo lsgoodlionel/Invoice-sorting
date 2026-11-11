@@ -8,10 +8,11 @@ from types import SimpleNamespace
 import pypdfium2 as pdfium
 import pytest
 from PIL import Image
-from pypdf import PdfReader
+from pypdf import PdfReader, PdfWriter
 
 from invoice_sorting.exporter.naming import (
     PackageItem,
+    category_print_groups,
     kind_rank,
     package_items,
     support_name,
@@ -35,6 +36,14 @@ def fake_attachment(att_id: int, mime: str, name: str, kind: str = "order"):
 def fake_item(attachments, seq: int = 1, expense_id: int = 7):
     expense = SimpleNamespace(id=expense_id, merchant="京东", amount_cents=96000)
     return PackageItem(seq=seq, expense=expense, attachments=tuple(attachments))
+
+
+def blank_pdf(path: Path, pages: int = 1) -> None:
+    writer = PdfWriter()
+    for _ in range(pages):
+        writer.add_blank_page(width=A4_WIDTH_PT, height=A4_HEIGHT_PT)
+    with path.open("wb") as handle:
+        writer.write(handle)
 
 
 def red_bbox(pdf_bytes: bytes) -> tuple[int, int]:
@@ -96,6 +105,49 @@ def test_empty_print_pdf_has_blank_page():
     assert len(PdfReader(io.BytesIO(result.pdf_bytes)).pages) == 1
 
 
+def test_duplex_pads_odd_records_except_last(tmp_path: Path):
+    files: dict[int, Path] = {}
+    items = []
+    for index in range(3):
+        path = tmp_path / f"{index}.pdf"
+        blank_pdf(path)
+        attachment = fake_attachment(index + 1, "application/pdf", path.name)
+        files[attachment.id] = path
+        items.append(fake_item([attachment], seq=index + 1, expense_id=index + 1))
+
+    result = build_print_pdf(items, lambda attachment: files[attachment.id], duplex=True)
+
+    assert len(PdfReader(io.BytesIO(result.pdf_bytes)).pages) == 5
+
+
+def test_duplex_uses_successful_records_for_last_page_decision(tmp_path: Path):
+    first = tmp_path / "first.pdf"
+    blank_pdf(first)
+    printable = fake_attachment(1, "application/pdf", first.name)
+    unsupported = fake_attachment(2, "application/xml", "trailing.xml")
+    items = [fake_item([printable], expense_id=1), fake_item([unsupported], seq=2, expense_id=2)]
+
+    result = build_print_pdf(items, lambda _attachment: first, duplex=True)
+
+    assert len(PdfReader(io.BytesIO(result.pdf_bytes)).pages) == 1
+    assert result.skipped[2] == ["trailing.xml"]
+
+
+def test_duplex_false_keeps_existing_page_count(tmp_path: Path):
+    files: dict[int, Path] = {}
+    items = []
+    for index in range(3):
+        path = tmp_path / f"{index}.pdf"
+        blank_pdf(path)
+        attachment = fake_attachment(index + 1, "application/pdf", path.name)
+        files[attachment.id] = path
+        items.append(fake_item([attachment], seq=index + 1, expense_id=index + 1))
+
+    result = build_print_pdf(items, lambda attachment: files[attachment.id], duplex=False)
+
+    assert len(PdfReader(io.BytesIO(result.pdf_bytes)).pages) == 3
+
+
 def test_naming_helpers():
     assert kind_rank("invoice") == 0
     assert kind_rank("unknown") == kind_rank("other")
@@ -136,4 +188,34 @@ def test_package_items_sort_by_category_then_date_and_put_uncategorized_last():
         (3, 4),
         (4, 5),
         (5, 1),
+    ]
+
+
+def test_category_print_groups_follow_package_order_and_use_safe_unique_names():
+    first = SimpleNamespace(id=10, name="差旅/交通", sort=1)
+    duplicate = SimpleNamespace(id=20, name="差旅:交通", sort=2)
+    expenses = [
+        SimpleNamespace(
+            id=3, spent_on=date(2026, 11, 3), category=first, attachments=[]
+        ),
+        SimpleNamespace(
+            id=4, spent_on=date(2026, 11, 4), category=first, attachments=[]
+        ),
+        SimpleNamespace(
+            id=2, spent_on=date(2026, 11, 2), category=duplicate, attachments=[]
+        ),
+        SimpleNamespace(id=1, spent_on=date(2026, 11, 1), category=None, attachments=[]),
+    ]
+
+    groups = category_print_groups(package_items(expenses))
+
+    assert [group.name for group in groups] == [
+        "02_按分类打印/01_差旅_交通.pdf",
+        "02_按分类打印/02_差旅_交通.pdf",
+        "02_按分类打印/03_未分类.pdf",
+    ]
+    assert [[item.expense.id for item in group.items] for group in groups] == [
+        [3, 4],
+        [2],
+        [1],
     ]

@@ -59,6 +59,7 @@ export function makeAttachment(overrides: Partial<Attachment> = {}): Attachment 
     invoice: null,
     evidence: null,
     file_key: '',
+    source: null,
     uploaded_by: null,
     ...overrides,
   };

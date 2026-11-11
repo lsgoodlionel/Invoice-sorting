@@ -26,6 +26,7 @@ REASON_ORDER_NO = "订单号一致"
 REASON_FILE_KEY = "文件名一致"
 REASON_AMOUNT_DATE = "金额与日期一致"
 REASON_FOREIGN = "境外订单与银行交易日期一致"
+REASON_FOREIGN_CNY = "境外订单与人民币付款日期及平台一致"
 REASON_CARD = "卡号末四位一致"
 REASON_HOTEL = "酒店发票与订单一致"
 REASON_TRANSPORT = "往返酒店所在地的交通凭证"
@@ -138,8 +139,9 @@ def _is_foreign_order(item: EvidenceItem) -> bool:
     return item.kind == AttachmentKind.ORDER and item.is_foreign_currency
 
 
-def _is_foreign_payment(item: EvidenceItem) -> bool:
-    return item.kind == AttachmentKind.PAYMENT and (item.is_foreign or item.is_foreign_currency)
+def _is_payment_candidate(item: EvidenceItem) -> bool:
+    """人民币入账也可能是外币订单的结算结果，平台与日期留给后续严格校验。"""
+    return item.kind == AttachmentKind.PAYMENT
 
 
 def _foreign_compatible(order: EvidenceItem, payment: EvidenceItem) -> bool:
@@ -167,8 +169,8 @@ def _narrow(order: EvidenceItem, candidates: list[int], items: Sequence[Evidence
 
 
 def foreign_links(items: Sequence[EvidenceItem]) -> list[Link]:
-    """L4：境外外币订单 ↔ 境外银行交易，双方候选都唯一才连接。"""
-    payments = [index for index, item in enumerate(items) if _is_foreign_payment(item)]
+    """L4：外币订单 ↔ 银行交易（含人民币入账），双方候选都唯一才连接。"""
+    payments = [index for index, item in enumerate(items) if _is_payment_candidate(item)]
     chosen: dict[int, int] = {}
     for index, order in enumerate(items):
         if not _is_foreign_order(order):
@@ -184,7 +186,12 @@ def foreign_links(items: Sequence[EvidenceItem]) -> list[Link]:
             continue
         order, payment = items[order_index], items[payment_index]
         same_card = bool(order.card_last4) and order.card_last4 == payment.card_last4
-        reasons = (REASON_FOREIGN, REASON_CARD) if same_card else (REASON_FOREIGN,)
+        reason = (
+            REASON_FOREIGN
+            if payment.is_foreign or payment.is_foreign_currency
+            else REASON_FOREIGN_CNY
+        )
+        reasons = (reason, REASON_CARD) if same_card else (reason,)
         links.append((order_index, payment_index, reasons))
     return links
 
