@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from pypdf import PdfReader
+from pypdf.errors import PdfReadError
 
 GMAIL_APPLE_MARKER = "your purchases from apple"
 RECEIPT_LINE = re.compile(r"(?im)^\s*receipt\s*$")
@@ -42,8 +43,12 @@ def _order_no(text: str) -> str:
 
 def split_apple_gmail_pdf(path: Path) -> list[CompositePart]:
     """返回安全、有序的 Apple 回执页范围；非目标格式返回空列表。"""
-    reader = PdfReader(path)
-    page_texts = [(page.extract_text() or "").replace("\xa0", " ") for page in reader.pages]
+    try:
+        reader = PdfReader(path)
+        page_texts = [(page.extract_text() or "").replace("\xa0", " ") for page in reader.pages]
+    except PdfReadError:
+        # 拆分器只是导入前的格式探测；损坏或加密 PDF 应继续走普通导入的容错路径。
+        return []
     joined = "\n".join(page_texts)
     if GMAIL_APPLE_MARKER not in joined.lower():
         return []
