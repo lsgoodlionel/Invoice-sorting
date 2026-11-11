@@ -29,6 +29,26 @@ describe('ExportSection', () => {
     expect(screen.getByText(/同类材料放在一起/)).toBeInTheDocument();
   });
 
+  test('exports with the duplex option', async () => {
+    const user = userEvent.setup();
+    const { calls } = mockFetch({ 'POST /api/batches/1/export': record });
+    renderWithProviders(
+      <ExportSection batch={makeBatch({ id: 1, item_count: 1, expenses: [makeExpense()] })} />,
+    );
+
+    const duplex = screen.getByRole('checkbox', { name: '适合双面打印' });
+    expect(duplex).not.toBeChecked();
+    await user.click(duplex);
+    await user.click(screen.getByRole('button', { name: '生成资料包' }));
+
+    await waitFor(() => {
+      expect(calls.find((call) => call.method === 'POST')?.body).toEqual({
+        layout: 'by_expense',
+        duplex: true,
+      });
+    });
+  });
+
   test('deletes an exported package after confirmation', async () => {
     const user = userEvent.setup();
     const { calls } = mockFetch({ 'DELETE /api/exports/8': null });

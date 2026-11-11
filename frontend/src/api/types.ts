@@ -21,6 +21,10 @@ export type ChecklistLevel = 'required' | 'suggested';
 export type ChecklistState = 'missing' | 'present' | 'not_needed';
 export type BatchStatus = 'draft' | 'sent' | 'partial' | 'received';
 export type ExportLayout = 'by_expense' | 'by_kind';
+export interface BatchExportOptions {
+  layout: ExportLayout;
+  duplex: boolean;
+}
 export type DateBasis = 'spent' | 'invoiced' | 'sent' | 'received';
 export type StatsGroupBy = 'category' | 'project' | 'merchant' | 'month';
 

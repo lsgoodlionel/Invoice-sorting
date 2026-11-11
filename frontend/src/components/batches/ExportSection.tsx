@@ -1,4 +1,4 @@
-import { ActionIcon, Anchor, Button, Group, Radio, Stack, Table, Text, Tooltip } from '@mantine/core';
+import { ActionIcon, Anchor, Button, Checkbox, Group, Radio, Stack, Table, Text, Tooltip } from '@mantine/core';
 import { modals } from '@mantine/modals';
 import { IconDownload, IconTrash } from '@tabler/icons-react';
 import dayjs from 'dayjs';
@@ -44,6 +44,7 @@ function ExportHistoryRow({ record }: { record: ExportRecord }) {
 
 export function ExportSection({ batch }: { batch: BatchDetail }) {
   const [layout, setLayout] = useState<ExportLayout>('by_expense');
+  const [duplex, setDuplex] = useState(false);
   const exportBatch = useExportBatch(batch.id);
   const isEmpty = batch.item_count === 0 || batch.expenses.length === 0;
   return (
@@ -55,14 +56,19 @@ export function ExportSection({ batch }: { batch: BatchDetail }) {
             <Radio value="by_kind" label={LAYOUT_LABELS.by_kind} />
           </Group>
         </Radio.Group>
+        <Checkbox
+          checked={duplex}
+          label="适合双面打印"
+          onChange={(event) => setDuplex(event.currentTarget.checked)}
+        />
         <Button variant={isEmpty ? 'default' : 'filled'} leftSection={<IconDownload size={16} />} disabled={isEmpty}
-          loading={exportBatch.isPending} onClick={() => exportBatch.mutate(layout)}>
+          loading={exportBatch.isPending} onClick={() => exportBatch.mutate({ layout, duplex })}>
           生成资料包
         </Button>
         {isEmpty && <Text size="sm" c="dimmed">先添加记录再打包</Text>}
       </Group>
       <Text size="xs" c="dimmed">
-        {LAYOUT_HINTS[layout]}。两种方式的汇总表、打印版 PDF 与发票原件（文件名含序号、分类、金额、商家）相同。
+        {LAYOUT_HINTS[layout]}。资料包同时包含一份全部材料打印版和按分类拆分的打印版；启用双面打印后，除最后一条外，奇数页记录会补空白页，确保下一条从正面开始。
       </Text>
       {batch.exports.length > 0 && (
         <Table className="ledger-table">
