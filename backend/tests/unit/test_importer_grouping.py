@@ -140,6 +140,24 @@ def test_v02_foreign_order_links_unique_bank_transaction():
     assert groups[0].link_reasons == ("境外订单与银行交易日期一致",)
 
 
+def test_foreign_order_links_unique_cny_bank_transaction():
+    groups = group_items(
+        [
+            apple_order(1, amount_cents=2000, currency="USD"),
+            bank(
+                2,
+                amount_cents=14426,
+                currency="CNY",
+                cny_cents=14426,
+                is_foreign=False,
+            ),
+        ]
+    )
+
+    assert ids(groups) == [[1, 2]]
+    assert groups[0].link_reasons == ("境外订单与人民币付款日期及平台一致",)
+
+
 def test_foreign_link_uses_amount_then_card_to_disambiguate():
     groups = group_items(
         [
@@ -156,10 +174,18 @@ def test_foreign_link_uses_amount_then_card_to_disambiguate():
 
 def test_foreign_link_skips_ambiguous_and_incompatible():
     ambiguous = group_items([apple_order(1), apple_order(2), bank(3)])
+    ambiguous_cny = group_items(
+        [
+            apple_order(1),
+            bank(2, amount_cents=14426, currency="CNY", is_foreign=False),
+            bank(3, amount_cents=14426, currency="CNY", is_foreign=False),
+        ]
+    )
     incompatible = group_items([apple_order(1), bank(2, merchant="OPENAI *CHATGPT")])
     too_far = group_items([apple_order(1), bank(2, occurred_on=date(2026, 7, 5))])
 
     assert ids(ambiguous) == [[1], [2], [3]]
+    assert ids(ambiguous_cny) == [[1], [2], [3]]
     assert ids(incompatible) == [[1], [2]]
     assert ids(too_far) == [[1], [2]]
 
