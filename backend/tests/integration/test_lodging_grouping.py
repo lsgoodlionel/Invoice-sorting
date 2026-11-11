@@ -3,6 +3,7 @@
 from datetime import date
 
 from invoice_sorting.db.models import Category, Expense
+from invoice_sorting.expenses.service import create_expense, refresh_expense
 from invoice_sorting.importer.auto_confirm import auto_confirm_entries
 from invoice_sorting.importer.groups import build_groups
 from invoice_sorting.importer.items import item_from_attachment
@@ -145,6 +146,28 @@ def test_return_ticket_scores_by_date_and_city(session, settings, tmp_path):
     assert match is not None and match.expense is expense
     assert "往返 苏州 的交通凭证（入住 08-15、离店 08-16）" in match.reasons
     assert not any(reason.startswith("已有") for reason in match.reasons)
+
+
+def test_ticket_with_two_equal_lodging_candidates_is_not_auto_attached(
+    session, settings, tmp_path
+):
+    first = lodging_expense(session, settings, tmp_path)
+    second = create_expense(
+        session,
+        settings,
+        spent_on=lf.AUG_15,
+        amount_cents=lf.ROOM_CENTS,
+        merchant=lf.HOTEL,
+    )
+    lf.hotel_order(session, settings, tmp_path, expense=second)
+    lf.hotel_invoice(session, settings, tmp_path, expense=second)
+    refresh_expense(session, settings, second)
+    ticket = lf.train_invoice(session, settings, tmp_path, returning=True)
+
+    match, candidates = find_candidates(session, [item_from_attachment(ticket)])
+
+    assert match is None
+    assert {candidate.expense.id for candidate in candidates} == {first.id, second.id}
 
 
 def test_ticket_for_other_city_or_date_is_not_merged(session, settings, tmp_path):
