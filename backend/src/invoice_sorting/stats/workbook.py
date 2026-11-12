@@ -20,11 +20,27 @@ TOTAL_LABELS = (
     ("reimbursed_cents", "已报销（到账金额）"),
     ("void_cents", "个人承担/作废"),
 )
-GROUP_LABELS = {"category": "分类", "project": "经费项目", "merchant": "商家", "month": "月份"}
+GROUP_LABELS = {
+    "category": "分类",
+    "project": "经费项目",
+    "merchant": "商家",
+    "month": "月份",
+    "travel_scope": "市内/市外",
+}
 DETAIL_HEADERS = (
-    "ID", "口径日期", "支出日期", "商家", "摘要", "分类", "经费项目", "状态", "金额", "到账金额"
-)  # fmt: skip
-DETAIL_AMOUNT_COLUMNS = (9, 10)
+    "ID",
+    "口径日期",
+    "支出日期",
+    "商家",
+    "摘要",
+    "分类",
+    "经费项目",
+    "市内/市外",
+    "状态",
+    "金额",
+    "到账金额",
+)
+DETAIL_AMOUNT_COLUMNS = (10, 11)
 COLUMN_WIDTH = 16
 
 
@@ -77,6 +93,7 @@ def _write_details(sheet: Worksheet, entries: list[StatsEntry]) -> None:
                 expense.summary,
                 expense.category.name if expense.category else "",
                 expense.project.name if expense.project else "",
+                {"local": "市内", "nonlocal": "市外"}.get(expense.travel_scope, "未识别"),
                 EXPENSE_STATUS_LABELS.get(ExpenseStatus(expense.status), expense.status),
                 cents_to_decimal(expense.amount_cents),
                 cents_to_decimal(expense.reimbursed_cents or 0),

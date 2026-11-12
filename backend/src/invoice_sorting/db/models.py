@@ -140,6 +140,8 @@ class Expense(Base):
     invoice_exempt: Mapped[bool] = mapped_column(Boolean, default=False)  # 免发票（境外消费等）
     currency: Mapped[str] = mapped_column(String(10), default="CNY")  # 原币种
     original_amount_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 原币金额
+    travel_scope: Mapped[str] = mapped_column(String(20), default="")  # local / nonlocal / 未识别
+    travel_scope_manual: Mapped[bool] = mapped_column(Boolean, default=False)
     deleted: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)

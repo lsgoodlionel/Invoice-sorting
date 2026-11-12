@@ -40,6 +40,12 @@ export function makeExpense(overrides: Partial<ExpenseSummary> = {}): ExpenseSum
     currency: 'CNY',
     original_amount_cents: null,
     created_by: null,
+    travel_scope: '',
+    travel_scope_label: '未识别',
+    travel_scope_manual: false,
+    stay_check_in: null,
+    stay_check_out: null,
+    travel_dates_missing: false,
     ...overrides,
   };
 }
@@ -175,6 +181,7 @@ export function makeGroup(overrides: Partial<ImportGroup> = {}): ImportGroup {
       category_id: 1,
       is_online: false,
       invoice_exempt: false,
+      travel_scope: '',
     },
     match: null,
     candidates: [],

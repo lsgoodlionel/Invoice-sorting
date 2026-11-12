@@ -15,6 +15,7 @@ describe('statsCellLink', () => {
   test('project, merchant and month groups', () => {
     expect(statsCellLink({ ...base, groupBy: 'project', row: row('4'), status: null })).toContain('project_id=4');
     expect(statsCellLink({ ...base, groupBy: 'merchant', row: row('m', '腾讯云'), status: null })).toContain(`q=${encodeURIComponent('腾讯云')}`);
+    expect(statsCellLink({ ...base, groupBy: 'travel_scope', row: row('nonlocal', '市外'), status: null })).toContain('travel_scope=nonlocal');
     const month = new URL(statsCellLink({ ...base, groupBy: 'month', row: row('2026-02'), status: null }), 'http://x');
     expect(month.searchParams.get('start')).toBe('2026-02-01');
     expect(month.searchParams.get('end')).toBe('2026-02-28');

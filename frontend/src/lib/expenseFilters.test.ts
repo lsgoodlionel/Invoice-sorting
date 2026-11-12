@@ -6,7 +6,7 @@ const NOW = new Date('2026-09-17T02:00:00Z');
 describe('expense filters', () => {
   test('decodes URL params with validation', () => {
     const filters = decodeExpenseFilters(
-      new URLSearchParams('period=this_month&date_basis=sent&category_id=3&project_id=abc&status=spent,bogus&q=京东&batch_id=7&unbatched=true&missing=true'),
+      new URLSearchParams('period=this_month&date_basis=sent&category_id=3&project_id=abc&status=spent,bogus&q=京东&batch_id=7&unbatched=true&missing=true&travel_scope=nonlocal'),
     );
     expect(filters).toEqual({
       period: { preset: 'this_month' },
@@ -18,6 +18,7 @@ describe('expense filters', () => {
       batchId: 7,
       unbatched: true,
       missingOnly: true,
+      travelScope: 'nonlocal',
     });
   });
 
@@ -36,7 +37,7 @@ describe('expense filters', () => {
   });
 
   test('builds API query', () => {
-    const query = filtersToQuery(decodeExpenseFilters(new URLSearchParams('period=this_quarter&status=spent&q=%20x%20&category_id=2&project_id=4&batch_id=9&unbatched=true&missing=true')), NOW);
+    const query = filtersToQuery(decodeExpenseFilters(new URLSearchParams('period=this_quarter&status=spent&q=%20x%20&category_id=2&project_id=4&batch_id=9&unbatched=true&missing=true&travel_scope=local')), NOW);
     expect(query).toEqual({
       start: '2026-07-01',
       end: '2026-09-30',
@@ -48,6 +49,7 @@ describe('expense filters', () => {
       batch_id: 9,
       unbatched: true,
       missing: true,
+      travel_scope: 'local',
       page: 1,
       page_size: 200,
     });

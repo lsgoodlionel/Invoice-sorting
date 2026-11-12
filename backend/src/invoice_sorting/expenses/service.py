@@ -23,6 +23,8 @@ from invoice_sorting.db.models import (
     now,
 )
 from invoice_sorting.expenses.status import derive_status
+from invoice_sorting.importer.travel_scope import infer_expense_travel_scope
+from invoice_sorting.settings.service import region_policy
 
 EDITABLE_FIELDS = frozenset(
     {
@@ -38,6 +40,7 @@ EDITABLE_FIELDS = frozenset(
         "invoice_exempt",
         "currency",
         "original_amount_cents",
+        "travel_scope",
     }
 )
 CNY = "CNY"
@@ -142,7 +145,9 @@ def _normalize_currency(expense: Expense) -> None:
 
 def create_expense(session: Session, settings: Settings, **fields: Any) -> Expense:
     _validate_fields(session, fields)
+    manual_scope = bool(fields.get("travel_scope"))
     expense = Expense(status=str(ExpenseStatus.SPENT), status_manual=False, **fields)
+    expense.travel_scope_manual = manual_scope
     _normalize_currency(expense)
     session.add(expense)
     session.flush()
@@ -157,6 +162,8 @@ def update_expense(
 ) -> Expense:
     _validate_fields(session, fields)
     category_changed = fields.get("category_id") not in (None, expense.category_id)
+    if "travel_scope" in fields:
+        expense.travel_scope_manual = bool(fields["travel_scope"])
     for name, value in fields.items():
         setattr(expense, name, value)
     _normalize_currency(expense)
@@ -210,6 +217,10 @@ def refresh_expense(
     """重算清单 → （可选）取消手动 → 自动推导状态 → 同步文件夹名。"""
     session.flush()
     session.refresh(expense, attribute_names=["attachments", "batch", "category", "project"])
+    if not expense.travel_scope_manual:
+        expense.travel_scope = infer_expense_travel_scope(
+            expense, region_policy(session).local_region
+        )
     compute_checklist(session, expense)
     if clear_manual:
         expense.status_manual = False

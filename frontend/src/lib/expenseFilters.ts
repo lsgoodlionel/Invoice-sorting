@@ -1,5 +1,5 @@
 // 清单页筛选条件 ↔ URL 查询参数 ↔ 接口查询。
-import type { DateBasis, ExpenseQuery, ExpenseStatus } from '../api/types';
+import type { DateBasis, ExpenseQuery, ExpenseStatus, TravelScope } from '../api/types';
 import { decodePeriod, encodePeriod, resolvePeriod, type Period } from './period';
 import { isDateBasis, parseStatusList } from './status';
 
@@ -13,6 +13,7 @@ export interface ExpenseFilters {
   batchId: number | null;
   unbatched: boolean;
   missingOnly: boolean;
+  travelScope: TravelScope;
 }
 
 export const DEFAULT_PAGE_SIZE = 200;
@@ -35,6 +36,9 @@ export function decodeExpenseFilters(params: URLSearchParams): ExpenseFilters {
     batchId: parseId(params.get('batch_id')),
     unbatched: params.get('unbatched') === 'true',
     missingOnly: params.get('missing') === 'true',
+    travelScope: params.get('travel_scope') === 'local' || params.get('travel_scope') === 'nonlocal'
+      ? params.get('travel_scope') as TravelScope
+      : '',
   };
 }
 
@@ -53,6 +57,7 @@ export function encodeExpenseFilters(filters: ExpenseFilters): URLSearchParams {
   setOrDelete(params, 'batch_id', filters.batchId === null ? null : String(filters.batchId));
   setOrDelete(params, 'unbatched', filters.unbatched ? 'true' : null);
   setOrDelete(params, 'missing', filters.missingOnly ? 'true' : null);
+  setOrDelete(params, 'travel_scope', filters.travelScope || null);
   return params;
 }
 
@@ -68,6 +73,7 @@ export function filtersToQuery(filters: ExpenseFilters, now: Date = new Date()):
     ...(filters.batchId !== null ? { batch_id: filters.batchId } : {}),
     ...(filters.unbatched ? { unbatched: true } : {}),
     ...(filters.missingOnly ? { missing: true } : {}),
+    ...(filters.travelScope ? { travel_scope: filters.travelScope } : {}),
     page: 1,
     page_size: DEFAULT_PAGE_SIZE,
   };
@@ -85,6 +91,7 @@ export function expensesLink(partial: Partial<ExpenseFilters>): string {
     batchId: null,
     unbatched: false,
     missingOnly: false,
+    travelScope: '',
   };
   return `/expenses?${encodeExpenseFilters({ ...base, ...partial }).toString()}`;
 }

@@ -30,6 +30,8 @@ function groupFilter(groupBy: StatsGroupBy, row: StatsRow): Partial<ExpenseFilte
       const bounds = monthBounds(row.key);
       return bounds ? { period: { preset: 'custom', ...bounds } } : {};
     }
+    case 'travel_scope':
+      return row.key === 'local' || row.key === 'nonlocal' ? { travelScope: row.key } : {};
     default:
       return {};
   }

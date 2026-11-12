@@ -35,7 +35,7 @@ const session: ImportSession = makeSession({
     makeGroup({
       group_id: 'g2',
       attachments: [foreignOrder, bankTx],
-      summary: { spent_on: '2026-06-28', amount_cents: 14426, currency: 'USD', original_amount_cents: 2000, merchant: 'Apple', summary: 'Claude Pro', category_id: 2, is_online: true, invoice_exempt: true },
+      summary: { spent_on: '2026-06-28', amount_cents: 14426, currency: 'USD', original_amount_cents: 2000, merchant: 'Apple', summary: 'Claude Pro', category_id: 2, is_online: true, invoice_exempt: true, travel_scope: '' },
       match,
       candidates: [makeCandidate({ expense_id: 13, merchant: 'ChatGPT', score: 60 })],
       suggested_action: 'attach',

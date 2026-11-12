@@ -16,7 +16,8 @@ from invoice_sorting.importer.lodging import (
     transport_fits,
     with_fallback_day,
 )
-from invoice_sorting.importer.lodging_summary import transport_count
+from invoice_sorting.importer.lodging_summary import transport_count, travel_package_total
+from invoice_sorting.importer.travel_scope import infer_travel_scope
 from tests.evidence_factory import item
 from tests.invoice_factory import parsed_invoice
 
@@ -88,6 +89,8 @@ def test_stay_from_order_and_from_invoice_seller_city():
     assert no_city.stay == Stay(AUG_15, AUG_15, "")
     assert train(4).stay is None
     assert train(4, day="bad").travel_date == date(2026, 8, 20)
+    issued_only = hotel_invoice(date_is_issued=True)
+    assert issued_only.stay == Stay(None, None, "苏州")
 
 
 def test_travel_details_from_parsed_invoice_and_stored_details():
@@ -162,6 +165,15 @@ def test_transport_other_city_or_out_of_window_not_joined():
     assert ids(groups) == [[1, 4], [2], [3]]
 
 
+def test_transport_direction_must_match_stay_boundary():
+    stay = Stay(AUG_15, date(2026, 8, 18), "苏州")
+    late_outbound = train(1, day="2026-08-18")
+    early_return = train(2, day="2026-08-15", origin="苏州园区", to="上海虹桥")
+
+    assert not transport_fits(late_outbound, stay)
+    assert not transport_fits(early_return, stay)
+
+
 def test_two_lodging_invoices_never_share_a_group():
     groups = group_items(
         [
@@ -213,3 +225,36 @@ def test_transport_count_merges_same_trip():
     back = train(6, day="2026-08-16", details={"number": "G2"})
     no_details = item(7, "invoice", tax_category="旅客运输服务")
     assert transport_count([train(3), screenshot, back, no_details, hotel_order()]) == 3
+
+
+def test_travel_package_total_includes_non_invoice_transport_without_double_counting():
+    outbound_invoice = train(3, cny_cents=10000)
+    outbound_order = train(4, kind="transport", cny_cents=10000)
+    returning = train(
+        5,
+        kind="transport",
+        day="2026-08-16",
+        origin="苏州园区",
+        to="上海虹桥",
+        cny_cents=12000,
+        details={"number": "G2"},
+    )
+
+    assert travel_package_total(
+        [hotel_order(), hotel_invoice(), outbound_invoice, outbound_order, returning]
+    ) == 72000
+
+
+def test_travel_scope_uses_configured_local_region():
+    local_ride = item(
+        10,
+        "transport",
+        recognizer="ride_itinerary",
+        details={"city": "上海"},
+    )
+    cross_city = train(11)
+
+    assert infer_travel_scope([local_ride], "上海") == "local"
+    assert infer_travel_scope([hotel_order()], "上海") == "nonlocal"
+    assert infer_travel_scope([cross_city], "上海") == "nonlocal"
+    assert infer_travel_scope([item(12, "transport")], "上海") == ""

@@ -27,6 +27,7 @@ class ExpenseFilter:
     unbatched: bool = False
     missing: bool = False  # 仅含必需缺项的记录
     include_deleted: bool = False
+    travel_scope: str | None = None
 
 
 def invoice_issued_on_column() -> ColumnElement[date]:
@@ -100,6 +101,8 @@ def _conditions(filters: ExpenseFilter) -> list[ColumnElement[bool]]:
         conditions.append(Expense.batch_id.is_(None))
     if filters.missing:
         conditions.append(_has_required_missing())
+    if filters.travel_scope:
+        conditions.append(Expense.travel_scope == filters.travel_scope)
     return conditions
 
 

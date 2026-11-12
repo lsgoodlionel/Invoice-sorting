@@ -12,7 +12,7 @@ import { InvoiceMeta } from './InvoiceMeta';
 import { RouteHint } from './RouteHint';
 import { StatusSection } from './StatusSection';
 import { TimelineSection } from './TimelineSection';
-import { AmountComposition, LodgingBanner } from './TravelInfo';
+import { AmountComposition, LodgingBanner, TravelDateNotice } from './TravelInfo';
 
 interface ExpenseDrawerProps {
   expenseId: number | null;
@@ -51,6 +51,7 @@ function DrawerBody({ expense, onClose }: { expense: ExpenseDetail; onClose: () 
   return (
     <Stack gap="lg" pb="xl">
       <LodgingBanner attachments={expense.attachments} />
+      <TravelDateNotice expense={expense} />
       <StatusSection expense={expense} />
       <ExpenseFields expense={expense} />
       <InvoiceMeta expense={expense} />

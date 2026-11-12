@@ -24,6 +24,23 @@ function MerchantBadges({ expense }: { expense: ExpenseSummary }) {
       {expense.invoice_exempt && (
         <Badge size="xs" radius="xs" color="grape" variant="light" title="境外消费等无法取得发票" style={{ flexShrink: 0 }}>免发票</Badge>
       )}
+      {expense.travel_scope && (
+        <Badge
+          size="xs"
+          radius="xs"
+          color={expense.travel_scope === 'local' ? 'blue' : 'teal'}
+          variant="light"
+          title={expense.travel_scope_manual ? '手工设置' : '根据本地地区和行程自动识别'}
+          style={{ flexShrink: 0 }}
+        >
+          {expense.travel_scope_label}
+        </Badge>
+      )}
+      {expense.travel_dates_missing && (
+        <Badge size="xs" radius="xs" color="orange" variant="outline" title="补充酒店订单或支付水单后可自动关联往返交通">
+          待补住宿时间
+        </Badge>
+      )}
     </>
   );
 }

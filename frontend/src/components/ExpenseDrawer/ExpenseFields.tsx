@@ -1,4 +1,4 @@
-import { Autocomplete, SimpleGrid, Switch, Textarea, TextInput } from '@mantine/core';
+import { Autocomplete, Select, SimpleGrid, Switch, Textarea, TextInput } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
 import { useEffect, useState } from 'react';
 import { useUpdateExpense } from '../../api/hooks/expenses';
@@ -51,6 +51,17 @@ export function ExpenseFields({ expense }: { expense: ExpenseDetail }) {
       <TextInput label="摘要" {...textProps('summary')} />
       <CategorySelect label="分类" value={expense.category_id} onChange={(id) => id !== expense.category_id && save({ category_id: id })} clearable />
       <ProjectSelect label="经费项目" value={expense.project_id} onChange={(id) => id !== expense.project_id && save({ project_id: id })} clearable />
+      <Select
+        label="市内/市外"
+        description={expense.travel_scope_manual ? '已手工设置' : '根据设置中的本地地区自动识别'}
+        data={[
+          { value: '', label: '自动识别' },
+          { value: 'local', label: '市内' },
+          { value: 'nonlocal', label: '市外' },
+        ]}
+        value={expense.travel_scope_manual ? expense.travel_scope : ''}
+        onChange={(value) => save({ travel_scope: value === 'local' || value === 'nonlocal' ? value : '' })}
+      />
       <Autocomplete
         label="付款方式"
         data={PAY_METHODS}

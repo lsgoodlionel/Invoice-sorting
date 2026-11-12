@@ -21,6 +21,7 @@ NONE_KEY = "none"
 NO_CATEGORY = "未分类"
 NO_PROJECT = "无项目"
 NO_MERCHANT = "未填商家"
+NO_TRAVEL_SCOPE = "未识别"
 MAX_MONTHS = 240
 PENDING_STATUSES = frozenset({ExpenseStatus.SPENT, ExpenseStatus.INVOICED, ExpenseStatus.COMPLETE})
 DATE_BASIS_LABELS: dict[DateBasis, str] = {
@@ -36,6 +37,7 @@ class StatsGroupBy(StrEnum):
     PROJECT = "project"
     MERCHANT = "merchant"
     MONTH = "month"
+    TRAVEL_SCOPE = "travel_scope"
 
 
 @dataclass(frozen=True)
@@ -114,6 +116,10 @@ def _group_key(entry: StatsEntry, group_by: StatsGroupBy) -> tuple[str, str]:
     if group_by == StatsGroupBy.MERCHANT:
         merchant = (expense.merchant or "").strip()
         return (merchant, merchant) if merchant else (NONE_KEY, NO_MERCHANT)
+    if group_by == StatsGroupBy.TRAVEL_SCOPE:
+        labels = {"local": "市内", "nonlocal": "市外"}
+        scope = expense.travel_scope or NONE_KEY
+        return scope, labels.get(scope, NO_TRAVEL_SCOPE)
     month = f"{entry.basis_date:%Y-%m}"
     return month, month
 

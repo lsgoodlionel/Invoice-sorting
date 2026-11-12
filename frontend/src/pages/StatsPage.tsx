@@ -17,6 +17,7 @@ const GROUP_OPTIONS: { value: StatsGroupBy; label: string }[] = [
   { value: 'project', label: '项目' },
   { value: 'merchant', label: '商家' },
   { value: 'month', label: '月份' },
+  { value: 'travel_scope', label: '市内/市外' },
 ];
 
 const isGroupBy = (value: string | null): value is StatsGroupBy => GROUP_OPTIONS.some((o) => o.value === value);

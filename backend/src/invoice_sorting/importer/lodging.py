@@ -94,14 +94,23 @@ def with_fallback_day(stay: Stay, fallback: date | None) -> Stay:
 
 
 def transport_fits(item: EvidenceItem, stay: Stay | None) -> bool:
-    """交通日期在 [入住−1, 离店+1] 内，且起点或终点在酒店所在城市。"""
+    """去程到达日贴近入住、返程出发日贴近离店；市内交通允许落在住宿区间。"""
     if stay is None or not stay.city or stay.check_in is None or not item.is_transport:
         return False
     day = item.travel_date
     check_out = stay.check_out or stay.check_in
     if day is None or not stay.check_in - STAY_MARGIN <= day <= check_out + STAY_MARGIN:
         return False
-    return any(place_in_city(place, stay.city) for place in item.route)
+    origin, destination = item.route
+    leaves_city = place_in_city(origin, stay.city)
+    reaches_city = place_in_city(destination, stay.city)
+    if leaves_city and reaches_city:
+        return True
+    if reaches_city:
+        return day <= stay.check_in + STAY_MARGIN
+    if leaves_city:
+        return day >= check_out - STAY_MARGIN
+    return False
 
 
 def invoices_compatible(items: Sequence[EvidenceItem]) -> bool:

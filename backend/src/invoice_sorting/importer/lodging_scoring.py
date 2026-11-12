@@ -41,7 +41,15 @@ def lodging_score(items: Sequence[EvidenceItem], expense: Expense) -> LodgingSco
     stay = merge_stays(existing)
     if stay is None:
         return LodgingScore()
-    stay = with_fallback_day(stay, expense.spent_on)
+    fallback = next(
+        (
+            item.association_date
+            for item in existing
+            if not item.is_invoice and item.association_date is not None
+        ),
+        None,
+    )
+    stay = with_fallback_day(stay, fallback)
     parts: list[tuple[int, str]] = []
     joins = any(transport_fits(item, stay) for item in items)
     if joins:

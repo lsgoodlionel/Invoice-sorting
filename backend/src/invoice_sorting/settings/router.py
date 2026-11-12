@@ -10,7 +10,7 @@ from fastapi import APIRouter
 from invoice_sorting.auth.deps import ADMIN_ONLY
 from invoice_sorting.common.errors import ok
 from invoice_sorting.config import Settings
-from invoice_sorting.expenses.recompute import refresh_open_expenses
+from invoice_sorting.expenses.recompute import refresh_auto_travel_scopes, refresh_open_expenses
 from invoice_sorting.settings import catalog, rules
 from invoice_sorting.settings.deps import ConfigDep, SessionDep
 from invoice_sorting.settings.schemas import AppSettingsUpdate, present_values
@@ -42,5 +42,7 @@ def write_settings(
     values = update_app_settings(session, **present_values(body))
     if any(before[key] != values[key] for key in REGION_KEYS):
         refresh_open_expenses(session, config)
+    if before["local_region"] != values["local_region"]:
+        refresh_auto_travel_scopes(session, values["local_region"])
     session.commit()
     return ok(_with_paths(values, config))

@@ -19,6 +19,7 @@ from invoice_sorting.evidence.recognizers.common import (
     feature_score,
     money_fields,
 )
+from invoice_sorting.evidence.recognizers.travel_text import compact_details, first_labeled
 
 NAME = "ride_itinerary"
 PLATFORMS: tuple[tuple[str, str], ...] = (
@@ -84,5 +85,6 @@ def recognize(doc: EvidenceText) -> RecognizedEvidence | None:
         occurred_on=_occurred_on(doc),
         merchant=platform_name(doc.text),
         item_name=item_name,
+        details=compact_details({"city": first_labeled(doc, (r"用车城市|行程城市|城市",))}),
         **money_fields(money),
     )

@@ -58,27 +58,77 @@ export function invoicesTotalCents(attachments: readonly Attachment[]): number |
 export interface AmountCompositionInfo {
   /** "¥1,025.00 = 住宿 ¥720.00 + 交通 2 张 ¥305.00" */
   text: string;
-  invoiceTotalCents: number;
+  documentTotalCents: number;
   isMismatch: boolean;
 }
 
-function bucketText(label: string, invoices: readonly InvoiceData[], alwaysCount: boolean): string {
-  if (invoices.length === 0) return '';
-  const count = alwaysCount || invoices.length > 1 ? ` ${invoices.length} 张` : '';
-  return `${label}${count} ${formatCents(sumTotals(invoices))}`;
+interface AmountEntry {
+  key: string;
+  cents: number;
+  invoice: boolean;
 }
 
-/** 含交通票发票的记录金额构成；没有交通票发票时为 null。 */
+function travelKey(attachment: Attachment): string {
+  const details = attachment.invoice?.details ?? attachment.evidence?.details ?? {};
+  const route = [details.date, details.vehicle, details.number, details.from, details.to].map((item) => item ?? '').join('|');
+  return route.replaceAll('|', '') ? route : `attachment:${attachment.id}`;
+}
+
+function isTransportEvidence(attachment: Attachment): boolean {
+  const evidence = attachment.evidence;
+  if (!evidence) return false;
+  return attachment.kind === 'transport'
+    || evidence.recognizer === 'transport_booking'
+    || evidence.recognizer === 'ride_itinerary'
+    || Boolean(evidence.details?.vehicle);
+}
+
+function transportEntries(attachments: readonly Attachment[]): AmountEntry[] {
+  const grouped = new Map<string, AmountEntry>();
+  attachments.forEach((attachment) => {
+    const invoice = attachment.kind === 'invoice' && classifyInvoice(attachment.invoice) === 'transport';
+    const evidence = isTransportEvidence(attachment);
+    const cents = invoice ? attachment.invoice?.total_cents : attachment.evidence?.cny_cents;
+    if ((!invoice && !evidence) || cents === null || cents === undefined) return;
+    const key = travelKey(attachment);
+    const current = grouped.get(key);
+    if (!current || (invoice && !current.invoice)) grouped.set(key, { key, cents, invoice });
+  });
+  return [...grouped.values()];
+}
+
+function lodgingTotal(attachments: readonly Attachment[], invoices: readonly InvoiceData[]): number {
+  const lodgingInvoices = invoices.filter((invoice) => classifyInvoice(invoice) === 'lodging');
+  if (lodgingInvoices.length) return sumTotals(lodgingInvoices);
+  const order = attachments.find((item) => item.evidence?.recognizer === 'hotel_booking' && item.evidence.cny_cents !== null);
+  return order?.evidence?.cny_cents ?? 0;
+}
+
+function part(label: string, count: number, cents: number, alwaysCount = false): string {
+  if (count === 0) return '';
+  const countText = alwaysCount || count > 1 ? ` ${count} 张` : '';
+  return `${label}${countText} ${formatCents(cents)}`;
+}
+
+/** 住宿服务与交通凭证的累计净额；同一行程的发票和订单/行程单只计一次。 */
 export function amountComposition(amountCents: number, attachments: readonly Attachment[]): AmountCompositionInfo | null {
   const invoices = invoicesOf(attachments);
-  const byClass = (target: InvoiceClass) => invoices.filter((invoice) => classifyInvoice(invoice) === target);
-  const transport = byClass('transport');
+  const transport = transportEntries(attachments);
   if (transport.length === 0) return null;
-  const parts = [bucketText('住宿', byClass('lodging'), false), bucketText('交通', transport, true), bucketText('其他', byClass('other'), false)];
-  const invoiceTotalCents = sumTotals(invoices);
+  const lodgingInvoices = invoices.filter((invoice) => classifyInvoice(invoice) === 'lodging');
+  const other = invoices.filter((invoice) => classifyInvoice(invoice) === 'other');
+  const lodgingCents = lodgingTotal(attachments, invoices);
+  const transportCents = transport.reduce((sum, entry) => sum + entry.cents, 0);
+  const otherCents = sumTotals(other);
+  const parts = [
+    part('住宿', lodgingCents > 0 ? Math.max(lodgingInvoices.length, 1) : 0, lodgingCents),
+    part('交通', transport.length, transportCents, true),
+    part('其他', other.length, otherCents),
+  ];
+  const documentTotalCents = lodgingCents + transportCents + otherCents;
   return {
     text: `${formatCents(amountCents)} = ${parts.filter(Boolean).join(' + ')}`,
-    invoiceTotalCents,
-    isMismatch: invoiceTotalCents !== amountCents,
+    documentTotalCents,
+    isMismatch: documentTotalCents !== amountCents,
   };
 }

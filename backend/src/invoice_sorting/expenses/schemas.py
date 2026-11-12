@@ -12,7 +12,7 @@ from pydantic import (
     model_validator,
 )
 
-from invoice_sorting.common.constants import ExpenseStatus
+from invoice_sorting.common.constants import ExpenseStatus, TravelScope
 
 MERCHANT_MAX = 200
 SUMMARY_MAX = 200
@@ -36,7 +36,10 @@ NON_NULLABLE_FIELDS = (
     "is_online",
     "invoice_exempt",
     "currency",
+    "travel_scope",
 )
+
+TravelScopeValue = TravelScope | Annotated[str, StringConstraints(pattern=r"^$")]
 
 
 class ExpenseCreate(BaseModel):
@@ -54,6 +57,7 @@ class ExpenseCreate(BaseModel):
     invoice_exempt: bool = False
     currency: Currency = DEFAULT_CURRENCY
     original_amount_cents: Cents | None = None
+    travel_scope: TravelScopeValue = ""
 
 
 class ExpenseUpdate(BaseModel):
@@ -71,6 +75,7 @@ class ExpenseUpdate(BaseModel):
     invoice_exempt: bool | None = None
     currency: Currency | None = None
     original_amount_cents: Cents | None = None
+    travel_scope: TravelScopeValue | None = None
 
     @model_validator(mode="after")
     def _reject_null_required(self) -> "ExpenseUpdate":

@@ -64,15 +64,33 @@ def test_confirmed_lodging_group_has_complete_checklist(session, settings, tmp_p
     assert expense.status == "complete"
 
 
-def test_hotel_invoice_without_order_uses_seller_and_invoice_date(session, settings, tmp_path):
+def test_hotel_invoice_without_order_does_not_use_issued_date_for_ticket_link(
+    session, settings, tmp_path
+):
     invoice = lf.hotel_invoice(session, settings, tmp_path)
     train = lf.train_invoice(session, settings, tmp_path, returning=True)
 
-    group = build_groups(session, entries(invoice, train))[0]
+    groups = build_groups(session, entries(invoice, train))
+    group = groups[0]
 
+    assert len(groups) == 2
     assert group.summary.merchant == lf.HOTEL_SELLER
-    assert group.summary.spent_on == lf.AUG_16
-    assert group.summary.summary == f"{lf.HOTEL_SELLER} + 交通 1 张"
+    assert group.summary.spent_on == lf.AUG_16  # 仅用于建账兜底，不参与交通关联
+    assert group.summary.summary == lf.HOTEL_SELLER
+    assert group.warnings == ("未识别到住宿时间，请补充酒店订单或支付水单",)
+
+
+def test_hotel_invoice_without_stay_date_is_created_with_completion_warning(
+    session, settings, tmp_path
+):
+    invoice = lf.hotel_invoice(session, settings, tmp_path)
+
+    result = auto_confirm_entries(session, settings, entries(invoice))
+
+    assert len(result.created) == 1 and result.attached == []
+    expense = session.get(Expense, result.created[0])
+    assert expense.spent_on == lf.AUG_16
+    assert item_from_attachment(invoice).association_date is None
 
 
 def test_nights_from_dates_and_category_fallback_when_travel_archived(session, settings, tmp_path):
@@ -214,6 +232,70 @@ def test_inbox_auto_confirm_merges_ticket_amount(session, settings, tmp_path):
     assert result.attached == [expense.id]
     assert expense.amount_cents == lf.ROOM_CENTS + lf.OUTBOUND_CENTS
     assert "并入交通票 ¥100.00，金额更新为 ¥600.00" in lf.timeline_notes(expense)
+
+
+def test_later_transport_itineraries_accumulate_into_expense_and_stats(
+    client, session, settings, tmp_path
+):
+    expense = lodging_expense(session, settings, tmp_path)
+    outbound = lf.evidence(
+        session,
+        settings,
+        tmp_path,
+        "去程机票.png",
+        "transport",
+        doc_type="itinerary",
+        recognizer="transport_booking",
+        amount_cents=10000,
+        cny_cents=10000,
+        occurred_on=lf.AUG_15,
+        details={
+            "date": "2026-08-15",
+            "from": "上海虹桥",
+            "to": "苏州园区",
+            "vehicle": "flight",
+            "number": "MU1001",
+        },
+    )
+    returning = lf.evidence(
+        session,
+        settings,
+        tmp_path,
+        "返程机票.png",
+        "transport",
+        doc_type="itinerary",
+        recognizer="transport_booking",
+        amount_cents=12000,
+        cny_cents=12000,
+        occurred_on=lf.AUG_16,
+        details={
+            "date": "2026-08-16",
+            "from": "苏州园区",
+            "to": "上海虹桥",
+            "vehicle": "flight",
+            "number": "MU1002",
+        },
+    )
+    session.commit()
+
+    assert create_via_api(client, outbound)["attached"] == [expense.id]
+    assert create_via_api(client, returning)["attached"] == [expense.id]
+
+    detail = client.get(f"/api/expenses/{expense.id}").json()["data"]
+    assert detail["amount_cents"] == 72000
+    assert detail["travel_scope"] == "nonlocal"
+    stats = client.get(
+        "/api/stats",
+        params={
+            "start": "2026-08-01",
+            "end": "2026-08-31",
+            "group_by": "travel_scope",
+        },
+    ).json()["data"]
+    assert stats["totals"]["spent_cents"] == 72000
+    assert [(row["key"], row["total_cents"]) for row in stats["rows"]] == [
+        ("nonlocal", 72000)
+    ]
 
 
 def test_manual_amount_is_kept_when_ticket_attached(session, settings, tmp_path):

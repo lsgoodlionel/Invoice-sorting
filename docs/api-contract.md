@@ -177,6 +177,8 @@ type ExpenseSummary = {               // 列表行
   region_name: string; is_nonlocal: boolean;   // 取该记录发票的开票地区；多张发票任一外地即为外地
   invoice_exempt: boolean;            // 免发票（境外消费等）
   currency: string; original_amount_cents: number | null    // 原币（CNY 时 original 为 null）
+  travel_scope: "" | "local" | "nonlocal"; travel_scope_label: string; travel_scope_manual: boolean;
+  stay_check_in: string | null; stay_check_out: string | null; travel_dates_missing: boolean;
 }
 
 type ExpenseDetail = ExpenseSummary & {
@@ -205,8 +207,8 @@ type ExportRecord = { id: number; layout: ExportLayout; file_name: string; url: 
 
 | 方法 | 路径 | 请求 | 返回 data |
 | --- | --- | --- | --- |
-| GET | `/api/expenses` | query: `start`,`end`(含),`date_basis`(默认 spent),`category_id`,`project_id`,`status`(可多个，逗号分隔),`q`(商家/摘要/发票号),`batch_id`,`unbatched`(bool),`missing`(bool，仅含必需缺项),`page`(1),`page_size`(默认 50, 最大 500) | `{ items: ExpenseSummary[], total: number, total_cents: number, status_counts: { [status]: { count, amount_cents } } }` |
-| POST | `/api/expenses` | `{ spent_on, amount_cents, merchant, summary?, category_id?, project_id?, pay_method?, is_online?, note?, invoice_exempt?(默认 false), currency?(3 位 ISO 大写，小写自动转大写，默认 "CNY"), original_amount_cents? }`；币种为 CNY 时 original_amount_cents 自动置空 | `ExpenseDetail` |
+| GET | `/api/expenses` | query: `start`,`end`(含),`date_basis`(默认 spent),`category_id`,`project_id`,`travel_scope`(`local`/`nonlocal`),`status`(可多个，逗号分隔),`q`(商家/摘要/发票号),`batch_id`,`unbatched`(bool),`missing`(bool，仅含必需缺项),`page`(1),`page_size`(默认 50, 最大 500) | `{ items: ExpenseSummary[], total: number, total_cents: number, status_counts: { [status]: { count, amount_cents } } }` |
+| POST | `/api/expenses` | `{ spent_on, amount_cents, merchant, summary?, category_id?, project_id?, pay_method?, is_online?, note?, invoice_exempt?(默认 false), currency?(3 位 ISO 大写，小写自动转大写，默认 "CNY"), original_amount_cents?, travel_scope?(""/"local"/"nonlocal") }`；币种为 CNY 时 original_amount_cents 自动置空 | `ExpenseDetail` |
 | GET | `/api/expenses/{id}` | — | `ExpenseDetail` |
 | PATCH | `/api/expenses/{id}` | 上述任意字段 | `ExpenseDetail`（自动重算清单、状态、文件夹名） |
 | DELETE | `/api/expenses/{id}` | — | `null`（软删除：移出草稿批次，文件移到回收站并删除附件记录；所在批次已外发时 409） |
@@ -265,7 +267,7 @@ type GroupSummary = {                 // 建议用于新建记录的字段
   spent_on: string | null; amount_cents: number | null;   // 人民币
   currency: string; original_amount_cents: number | null; // 原币（CNY 时 original 为 null）
   merchant: string; summary: string; category_id: number | null;
-  is_online: boolean; invoice_exempt: boolean
+  is_online: boolean; invoice_exempt: boolean; travel_scope: "" | "local" | "nonlocal"
 }
 
 type ImportGroup = {
@@ -285,9 +287,9 @@ type ImportGroup = {
 // summary 来源：金额与日期取 发票 > 人民币支付记录 > 订单/收据；商家与摘要取 发票 > 订单/收据 > 支付记录；
 // 原币取外币订单/收据（其次外币支付记录）；分类先按文件名首段分类词（办公→办公用品、软件→软件服务、
 // 打车/出行/交通/差旅/出差/住宿/酒店→差旅交通、线缆/数码/数据→易耗品、图书→图书、设备→设备，或同名分类），否则走分类建议。
-// 住宿组（含酒店订单或住宿发票，差旅住宿凭证设计第 3 节）另行汇总：金额 = 组内全部发票价税合计之和（订单不计；
-// 只有订单时取订单金额，invoice_exempt=false）；商家 = 酒店名（订单 details.hotel，否则住宿发票销售方）；
-// 摘要 = “酒店名 N晚 + 交通 K 张”；分类 = 差旅交通；日期 = 入住日期（无订单时取住宿发票开票日期）。
+// 住宿组另行汇总：金额 = 住宿服务 + 去返程/市内交通凭证净额（同一行程订单与发票只计一次）；
+// 商家 = 酒店名；摘要 = “酒店名 N晚 + 交通 K 张”；分类 = 差旅交通；日期优先入住日期。
+// 缺少住宿时间仍可用开票日期兜底建账，但 stay_check_in/out 为空并警告，开票日期不参与交通关联。
 // suggested_action：含“可能重复”提示 → skip；有强匹配 → attach；含发票或有金额和日期 → create；否则 skip。
 // link_reasons 取值：订单号一致、文件名一致、金额与日期一致、境外订单与银行交易日期一致、
 // 境外订单与人民币付款日期及平台一致、卡号末四位一致、
@@ -363,7 +365,7 @@ type ConfirmGroup = {
 
 ### 统计（stats 模块）
 
-`GET /api/stats?start=&end=&date_basis=spent&group_by=category|project|merchant|month`
+`GET /api/stats?start=&end=&date_basis=spent&group_by=category|project|merchant|month|travel_scope`
 
 ```ts
 type Stats = {
@@ -376,10 +378,10 @@ type Stats = {
 }
 ```
 
-- rows.key：category/project 为 id 字符串，merchant 为商家名，month 为 `YYYY-MM`，空值为 `none`。区间超过 240 个月返回 400。
+- rows.key：category/project 为 id 字符串，merchant 为商家名，month 为 `YYYY-MM`，travel_scope 为 `local`/`nonlocal`，空值为 `none`。区间超过 240 个月返回 400。
 - data_start 仅影响 `months` 的起点，totals/rows 与导出（`/api/stats/export`）不受影响。
 
-`GET /api/stats/export?...同上` → XLSX 文件流。
+`GET /api/stats/export?...同上` → XLSX 文件流；明细包含“市内/市外”列，金额为住宿与交通累计净额。
 `GET /api/dashboard` → `{ missing: ExpenseSummary[] (有必需缺项，最多 20), overdue: Batch[] (已外发超过 overdue_days 未到账), spent_without_invoice: ExpenseSummary[] (已支出超过 14 天仍无发票), unassigned_count: number, month_totals: Stats["totals"] }`
 
 ### 设置（settings 模块）
