@@ -1,6 +1,6 @@
 import { Group, Paper, Text } from '@mantine/core';
 import { IconBed } from '@tabler/icons-react';
-import type { Attachment } from '../../api/types';
+import type { Attachment, ExpenseDetail } from '../../api/types';
 import { formatCents } from '../../lib/money';
 import { lodgingInfoText } from '../../lib/travelDetails';
 import { amountComposition } from '../../lib/travelInvoice';
@@ -19,6 +19,17 @@ export function LodgingBanner({ attachments }: { attachments: readonly Attachmen
   );
 }
 
+/** 住宿发票可先建账；缺少实际入住/离店日期时明确提示补单。 */
+export function TravelDateNotice({ expense }: { expense: ExpenseDetail }) {
+  if (!expense.travel_dates_missing) return null;
+  return (
+    <Paper px="sm" py={8} withBorder style={{ borderColor: 'var(--mantine-color-orange-4)' }}>
+      <Text size="sm" c="orange.8" fw={600}>住宿时间待完善</Text>
+      <Text size="xs" c="dimmed">请补充酒店订单或支付水单；开票日期不会用于往返交通自动关联。</Text>
+    </Paper>
+  );
+}
+
 interface AmountCompositionProps {
   amountCents: number;
   attachments: readonly Attachment[];
@@ -32,7 +43,7 @@ export function AmountComposition({ amountCents, attachments }: AmountCompositio
     <Group gap={6} justify="flex-end" wrap="wrap" data-testid="amount-composition">
       <Text size="xs" c="dimmed" className="num">{info.text}</Text>
       {info.isMismatch && (
-        <Text size="xs" c="orange.8" fw={600} className="num">与发票合计 {formatCents(info.invoiceTotalCents)} 不一致</Text>
+        <Text size="xs" c="orange.8" fw={600} className="num">与凭证净额 {formatCents(info.documentTotalCents)} 不一致</Text>
       )}
     </Group>
   );

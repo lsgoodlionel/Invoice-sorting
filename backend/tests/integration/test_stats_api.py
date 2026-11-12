@@ -119,6 +119,23 @@ def test_group_by_project_and_merchant(client):
     assert [(r["key"], r["total_cents"]) for r in by_merchant] == [("甲", 450), ("乙", 200)]
 
 
+def test_group_and_filter_by_travel_scope(client):
+    local = make_expense(client, cents=300, merchant="市内打车")
+    nonlocal_expense = make_expense(client, cents=700, merchant="外地住宿")
+    client.patch(f"/api/expenses/{local['id']}", json={"travel_scope": "local"})
+    client.patch(
+        f"/api/expenses/{nonlocal_expense['id']}", json={"travel_scope": "nonlocal"}
+    )
+
+    rows = stats(client, **Q3, group_by="travel_scope")["rows"]
+    assert [(row["key"], row["label"], row["total_cents"]) for row in rows] == [
+        ("nonlocal", "市外", 700),
+        ("local", "市内", 300),
+    ]
+    filtered = listing(client, **Q3, travel_scope="local")
+    assert filtered["total"] == 1 and filtered["total_cents"] == 300
+
+
 def test_stats_validation(client):
     assert client.get("/api/stats", params={"start": "2026-09-01"}).status_code == 422
     reversed_range = client.get("/api/stats", params={"start": "2026-09-02", "end": "2026-09-01"})
@@ -146,7 +163,7 @@ def test_stats_export_xlsx(client, lifecycle):
     details = list(workbook["明细"].iter_rows(values_only=True))
     assert len(details) == 3
     assert details[1][1:4] == ("2026-09-20", "2026-09-20", "滴滴")
-    assert details[1][7:] == ("已报销", 500, 500)
+    assert details[1][7:] == ("未识别", "已报销", 500, 500)
 
 
 def test_data_start_is_earliest_basis_date_in_range(client, lifecycle):

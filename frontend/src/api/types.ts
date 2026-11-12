@@ -26,7 +26,8 @@ export interface BatchExportOptions {
   duplex: boolean;
 }
 export type DateBasis = 'spent' | 'invoiced' | 'sent' | 'received';
-export type StatsGroupBy = 'category' | 'project' | 'merchant' | 'month';
+export type TravelScope = '' | 'local' | 'nonlocal';
+export type StatsGroupBy = 'category' | 'project' | 'merchant' | 'month' | 'travel_scope';
 
 // —— 用户与操作人 ——
 export type UserRole = 'admin' | 'member';
@@ -222,6 +223,12 @@ export interface ExpenseSummary {
   /** 原币金额（分）；CNY 时为 null */
   original_amount_cents: number | null;
   created_by: UserRef | null;
+  travel_scope: TravelScope;
+  travel_scope_label: string;
+  travel_scope_manual: boolean;
+  stay_check_in: string | null;
+  stay_check_out: string | null;
+  travel_dates_missing: boolean;
 }
 
 export interface ExpenseDetail extends ExpenseSummary {
@@ -266,6 +273,7 @@ export interface ExpenseQuery {
   batch_id?: number;
   unbatched?: boolean;
   missing?: boolean;
+  travel_scope?: Exclude<TravelScope, ''>;
   page?: number;
   page_size?: number;
 }
@@ -280,6 +288,7 @@ export interface ExpenseCreate {
   pay_method?: string;
   is_online?: boolean;
   note?: string;
+  travel_scope?: TravelScope;
 }
 
 export interface ExpensePatch extends Partial<ExpenseCreate> {
@@ -387,6 +396,7 @@ export interface GroupSummary {
   category_id: number | null;
   is_online: boolean;
   invoice_exempt: boolean;
+  travel_scope: TravelScope;
 }
 
 /** 一组同一笔支出的凭证。 */

@@ -12,8 +12,15 @@ from invoice_sorting.attachments.serializers import (
 )
 from invoice_sorting.checklist.regions import DEFAULT_POLICY, RegionPolicy, is_nonlocal, region_name
 from invoice_sorting.checklist.service import required_missing_count
-from invoice_sorting.common.constants import AttachmentKind, ExpenseStatus
+from invoice_sorting.common.constants import (
+    TRAVEL_SCOPE_LABELS,
+    AttachmentKind,
+    ExpenseStatus,
+    TravelScope,
+)
 from invoice_sorting.db.models import ChecklistItem, Expense, StatusEvent
+from invoice_sorting.importer.items import item_from_attachment
+from invoice_sorting.importer.lodging import merge_stays
 from invoice_sorting.settings.service import buyer_identity, region_policy
 from invoice_sorting.users.refs import user_ref
 
@@ -39,6 +46,17 @@ def first_invoice_no(expense: Expense) -> str | None:
 def _policy_for(expense: Expense) -> RegionPolicy:
     session = object_session(expense)
     return region_policy(session) if session is not None else DEFAULT_POLICY
+
+
+def _stay_fields(expense: Expense) -> dict[str, Any]:
+    items = [item_from_attachment(attachment) for attachment in expense.attachments]
+    stay = merge_stays(items)
+    is_lodging = any(item.is_hotel_order or item.is_lodging_invoice for item in items)
+    return {
+        "stay_check_in": iso_date(stay.check_in) if stay and stay.check_in else None,
+        "stay_check_out": iso_date(stay.check_out) if stay and stay.check_out else None,
+        "travel_dates_missing": bool(is_lodging and (stay is None or stay.check_in is None)),
+    }
 
 
 def serialize_expense_summary(
@@ -72,6 +90,12 @@ def serialize_expense_summary(
         "currency": expense.currency or "CNY",
         "original_amount_cents": expense.original_amount_cents,
         "created_by": user_ref(expense.created_by),
+        "travel_scope": expense.travel_scope or "",
+        "travel_scope_label": TRAVEL_SCOPE_LABELS.get(
+            TravelScope(expense.travel_scope) if expense.travel_scope else None, "未识别"
+        ),
+        "travel_scope_manual": bool(expense.travel_scope_manual),
+        **_stay_fields(expense),
     }
 
 

@@ -13,4 +13,18 @@ describe('ExpenseTable creator', () => {
     expect(within(screen.getByTestId('expense-row-1')).getByText('创建：张三')).toBeInTheDocument();
     expect(within(screen.getByTestId('expense-row-2')).queryByText(/创建：/)).not.toBeInTheDocument();
   });
+
+  test('shows the recognized travel scope', () => {
+    renderWithProviders(
+      <ExpenseTable
+        items={[makeExpense({ travel_scope: 'nonlocal', travel_scope_label: '市外' })]}
+        selectedIds={[]}
+        onToggle={vi.fn()}
+        onToggleAll={vi.fn()}
+        onOpen={vi.fn()}
+        onDropFiles={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('市外')).toBeInTheDocument();
+  });
 });

@@ -12,6 +12,7 @@ from invoice_sorting.common.constants import AttachmentKind
 from invoice_sorting.common.money import cents_to_yuan
 from invoice_sorting.db.models import Attachment, Expense, InvoiceData, StatusEvent, now
 from invoice_sorting.importer.items import item_from_attachment
+from invoice_sorting.importer.lodging_summary import travel_package_total
 
 MERGED_NOTE = "并入{label} ¥{added}，金额更新为 ¥{total}"
 NOT_ADJUSTED_NOTE = "并入{label} ¥{added}，金额未自动调整（已手动修改过）"
@@ -30,9 +31,17 @@ def invoice_total(session: Session, expense: Expense) -> int:
     return int(session.scalar(query) or 0)
 
 
+def expense_document_total(session: Session, expense: Expense) -> int:
+    """普通记录取发票合计；住宿差旅取住宿 + 去返程/市内交通凭证净额。"""
+    session.flush()
+    session.refresh(expense, attribute_names=["attachments"])
+    items = [item_from_attachment(attachment) for attachment in expense.attachments]
+    package = travel_package_total(items)
+    return package if package is not None else invoice_total(session, expense)
+
+
 def _label(expense: Expense) -> str:
-    invoices = [a for a in expense.attachments if a.kind == AttachmentKind.INVOICE]
-    is_transport = any(item_from_attachment(a).is_transport for a in invoices)
+    is_transport = any(item_from_attachment(a).is_transport for a in expense.attachments)
     return TRANSPORT_LABEL if is_transport else INVOICE_LABEL
 
 
@@ -45,7 +54,7 @@ def _note(session: Session, expense: Expense, text: str) -> None:
 
 def merge_invoice_amounts(session: Session, expense: Expense, previous_invoice_total: int) -> bool:
     """挂附件之后调用；返回金额是否被更新。调用方随后负责 refresh_expense。"""
-    total = invoice_total(session, expense)
+    total = expense_document_total(session, expense)
     added = total - previous_invoice_total
     if previous_invoice_total <= 0 or added == 0 or expense.amount_cents == total:
         return False

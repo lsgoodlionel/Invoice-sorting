@@ -20,7 +20,7 @@ from invoice_sorting.common.constants import AttachmentKind
 from invoice_sorting.common.errors import AppError
 from invoice_sorting.config import Settings
 from invoice_sorting.db.models import Attachment, Expense
-from invoice_sorting.expenses.amounts import invoice_total, merge_invoice_amounts
+from invoice_sorting.expenses.amounts import expense_document_total, merge_invoice_amounts
 from invoice_sorting.expenses.service import (
     create_expense,
     get_expense_or_404,
@@ -198,7 +198,7 @@ def _create(ctx: ConfirmContext, attachments: list[Attachment], group: ConfirmGr
 def _attach(ctx: ConfirmContext, attachments: list[Attachment], group: ConfirmGroup) -> None:
     _require(group.expense_id is not None, "挂到已有记录时需要选择记录")
     expense = get_expense_or_404(ctx.session, group.expense_id)
-    previous_total = invoice_total(ctx.session, expense)
+    previous_total = expense_document_total(ctx.session, expense)
     folder_before = fill_attach_target(ctx.session, ctx.settings, ctx.journal, expense, group)
     _finish(ctx, expense, attachments, folder_before, previous_total)
     ctx.result.attached.append(expense.id)

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { makeAttachment, makeEvidence, makeInvoice, makeLodgingInvoice, makeTransportInvoice } from '../test/fixtures';
+import { TRAIN_DETAILS, makeAttachment, makeEvidence, makeInvoice, makeLodgingInvoice, makeTransportInvoice } from '../test/fixtures';
 import {
   amountComposition,
   classifyInvoice,
@@ -58,7 +58,7 @@ describe('invoiceMixProblem', () => {
 describe('amount composition', () => {
   const lodging = makeAttachment({ id: 1, invoice: makeLodgingInvoice() });
   const train1 = makeAttachment({ id: 2, invoice: makeTransportInvoice({ total_cents: 15250 }) });
-  const train2 = makeAttachment({ id: 3, invoice: makeTransportInvoice({ total_cents: 15250 }) });
+  const train2 = makeAttachment({ id: 3, invoice: makeTransportInvoice({ total_cents: 15250, details: { ...TRAIN_DETAILS, date: '2026-08-16', number: 'G7124', from: '苏州园区', to: '上海虹桥' } }) });
   const order = makeAttachment({ id: 4, kind: 'order', evidence: makeEvidence() });
 
   test('invoicesTotalCents sums invoice attachments and skips missing totals', () => {
@@ -70,13 +70,13 @@ describe('amount composition', () => {
   test('lodging + transport text, matching the amount', () => {
     expect(amountComposition(102500, [lodging, train1, train2, order])).toEqual({
       text: '¥1,025.00 = 住宿 ¥720.00 + 交通 2 张 ¥305.00',
-      invoiceTotalCents: 102500,
+      documentTotalCents: 102500,
       isMismatch: false,
     });
   });
 
   test('flags mismatch against invoice total', () => {
-    expect(amountComposition(100000, [lodging, train1, train2])).toMatchObject({ isMismatch: true, invoiceTotalCents: 102500 });
+    expect(amountComposition(100000, [lodging, train1, train2])).toMatchObject({ isMismatch: true, documentTotalCents: 102500 });
   });
 
   test('other invoices are listed and null without transport invoices', () => {
@@ -86,8 +86,17 @@ describe('amount composition', () => {
     expect(amountComposition(15250, [train1])?.text).toBe('¥152.50 = 交通 1 张 ¥152.50');
   });
 
-  test('attachments whose kind is not invoice are ignored', () => {
-    const relabeled = makeAttachment({ id: 6, kind: 'transport', invoice: makeTransportInvoice() });
-    expect(amountComposition(72000, [lodging, relabeled])).toBeNull();
+  test('transport itinerary amount is included and a duplicate invoice wins', () => {
+    const itinerary = makeAttachment({
+      id: 6,
+      kind: 'transport',
+      invoice: null,
+      evidence: makeEvidence({
+        recognizer: 'transport_booking', currency: 'CNY', amount_cents: 15250, cny_cents: 15250,
+        details: { ...TRAIN_DETAILS },
+      }),
+    });
+    expect(amountComposition(87250, [lodging, itinerary])?.text).toBe('¥872.50 = 住宿 ¥720.00 + 交通 1 张 ¥152.50');
+    expect(amountComposition(87250, [lodging, itinerary, train1])?.documentTotalCents).toBe(87250);
   });
 });

@@ -17,6 +17,7 @@ MIN_FILE_KEY_CHARS = 4
 ORDER_NO_NOISE = re.compile(r"[\s\-_:：#]+")
 ORDER_LIKE_KINDS = frozenset({AttachmentKind.INVOICE, AttachmentKind.ORDER})
 HOTEL_BOOKING_RECOGNIZER = "hotel_booking"
+RIDE_ITINERARY_RECOGNIZER = "ride_itinerary"
 DOC_ITINERARY = "itinerary"
 TRANSPORT_WORDS = ("旅客运输", "客运", "铁路", "航空", "机票", "船票", "汽车票")
 ROUTE_KEYS = ("date", "from", "to")
@@ -83,6 +84,8 @@ class EvidenceItem:
             f"{self.tax_category} {self.item_name}", TRANSPORT_WORDS
         ):
             return True
+        if self.recognizer == RIDE_ITINERARY_RECOGNIZER:
+            return True
         return self.doc_type == DOC_ITINERARY and all(self.detail(key) for key in ROUTE_KEYS)
 
     @property
@@ -102,7 +105,11 @@ class EvidenceItem:
             check_in = parse_day(self.detail("check_in"))
             return Stay(check_in, parse_day(self.detail("check_out")) or check_in, city)
         if self.is_lodging_invoice:
-            return Stay(self.occurred_on, self.occurred_on, find_city(self.merchant))
+            # 普通住宿发票只有开票日时不能冒充入住日；后续由酒店订单或付款/记录日期补齐。
+            check_in = parse_day(self.detail("check_in")) or self.association_date
+            check_out = parse_day(self.detail("check_out")) or check_in
+            city = normalize_city(self.detail("city")) or find_city(self.merchant)
+            return Stay(check_in, check_out, city)
         return None
 
     @property

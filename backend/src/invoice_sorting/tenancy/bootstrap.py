@@ -16,6 +16,8 @@ from invoice_sorting.db.seed import (
     sync_default_rules,
 )
 from invoice_sorting.db.session import create_db_engine, init_db, make_session_factory
+from invoice_sorting.importer.travel_scope import backfill_travel_scopes
+from invoice_sorting.settings.service import region_policy
 
 
 def open_business_db(settings: Settings) -> tuple[Engine, sessionmaker[Session]]:
@@ -39,5 +41,6 @@ def _seed(session: Session, settings: Settings) -> None:
     sync_default_rules(session)
     reset_polluted_memory(session)
     backfill_file_keys(session)
+    backfill_travel_scopes(session, region_policy(session).local_region)
     # SaaS 租户的成员由控制面开通，业务库不预置 admin 镜像
     migrate_users(session, create_admin=not settings.is_saas)

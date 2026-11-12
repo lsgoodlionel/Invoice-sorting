@@ -39,6 +39,7 @@ def serialize_summary(summary: GroupSummary) -> dict[str, Any]:
         "category_id": summary.category_id,
         "is_online": summary.is_online,
         "invoice_exempt": summary.invoice_exempt,
+        "travel_scope": summary.travel_scope,
     }
 
 

@@ -152,6 +152,7 @@ def test_v02_foreign_order_and_bank_transaction_become_exempt_expense(
         "category_id": category_id(session, "软件服务"),
         "is_online": True,
         "invoice_exempt": True,
+        "travel_scope": "",
     }
 
     result = confirm(client, data, payload(group, category_id=None))

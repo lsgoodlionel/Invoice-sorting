@@ -23,6 +23,8 @@ from invoice_sorting.importer.classify import suggest_category
 from invoice_sorting.importer.items import CNY, ORDER_LIKE_KINDS, EvidenceItem
 from invoice_sorting.importer.lodging_summary import LodgingSummary, lodging_summary
 from invoice_sorting.importer.suggestions import ONLINE_PLATFORM_KEYWORDS
+from invoice_sorting.importer.travel_scope import infer_travel_scope
+from invoice_sorting.settings.service import region_policy
 
 # 文件名首段分类词 → 默认分类名（找不到同名未归档分类时走分类建议逻辑）
 CATEGORY_WORDS: dict[str, str] = {
@@ -55,6 +57,7 @@ class GroupSummary:
     category_id: int | None
     is_online: bool
     invoice_exempt: bool
+    travel_scope: str = ""
 
 
 def _by_kind(items: Iterable[EvidenceItem], kind: AttachmentKind) -> list[EvidenceItem]:
@@ -132,6 +135,7 @@ def _from_lodging(
         category_id=category_id,
         is_online=_is_online(items, lodging.merchant),
         invoice_exempt=False,
+        travel_scope=infer_travel_scope(items, region_policy(session).local_region),
     )
 
 
@@ -153,4 +157,5 @@ def build_summary(session: Session, items: tuple[EvidenceItem, ...]) -> GroupSum
         category_id=suggest_group_category(session, items, merchant, summary),
         is_online=_is_online(items, merchant),
         invoice_exempt=is_exempt(items),
+        travel_scope=infer_travel_scope(items, region_policy(session).local_region),
     )

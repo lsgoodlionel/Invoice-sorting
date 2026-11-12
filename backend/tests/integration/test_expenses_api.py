@@ -46,6 +46,8 @@ DETAIL_KEYS = {
     "folder_path", "route_hint", "attachments", "checklist", "timeline", "created_at",
     "updated_at", "region_name", "is_nonlocal", "invoice_exempt", "currency",
     "original_amount_cents", "created_by",
+    "travel_scope", "travel_scope_label", "travel_scope_manual",
+    "stay_check_in", "stay_check_out", "travel_dates_missing",
 }  # fmt: skip
 
 
@@ -53,6 +55,8 @@ def test_create_returns_detail_shape(client):
     detail = create(client, category_id=category_id(client, "易耗品"), summary="鼠标×2")
     assert set(detail) == DETAIL_KEYS
     assert detail["region_name"] == "" and detail["is_nonlocal"] is False
+    assert detail["travel_scope"] == "" and detail["travel_scope_label"] == "未识别"
+    assert detail["stay_check_in"] is None and detail["travel_dates_missing"] is False
     assert detail["status"] == "spent"
     assert detail["status_label"] == "已支出"
     assert detail["category_name"] == "易耗品"
@@ -200,6 +204,21 @@ def test_patch_can_clear_nullable_fields_and_rejects_null_required(client):
     assert cleared.json()["data"]["category_id"] is None
     bad = client.patch(f"/api/expenses/{expense['id']}", json={"amount_cents": None})
     assert bad.status_code == 422
+
+
+def test_travel_scope_can_be_set_manually_or_returned_to_auto(client):
+    expense = create(client, travel_scope="local")
+    assert expense["travel_scope_label"] == "市内"
+    assert expense["travel_scope_manual"] is True
+
+    automatic = client.patch(
+        f"/api/expenses/{expense['id']}", json={"travel_scope": ""}
+    ).json()["data"]
+    assert automatic["travel_scope"] == ""
+    assert automatic["travel_scope_manual"] is False
+    assert client.patch(
+        f"/api/expenses/{expense['id']}", json={"travel_scope": "outside"}
+    ).status_code == 422
 
 
 def test_status_endpoint_void_requires_note_and_can_restore(client):

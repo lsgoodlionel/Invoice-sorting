@@ -112,3 +112,20 @@ class DateBasis(StrEnum):
     INVOICED = "invoiced"
     SENT = "sent"
     RECEIVED = "received"
+
+
+class TravelScope(StrEnum):
+    """差旅发生范围。空字符串留给“尚未识别/自动识别”。"""
+
+    LOCAL = "local"
+    NONLOCAL = "nonlocal"
+
+    @property
+    def label(self) -> str:
+        return TRAVEL_SCOPE_LABELS[self]
+
+
+TRAVEL_SCOPE_LABELS: dict[TravelScope, str] = {
+    TravelScope.LOCAL: "市内",
+    TravelScope.NONLOCAL: "市外",
+}

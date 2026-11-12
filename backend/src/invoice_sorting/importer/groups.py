@@ -11,11 +11,13 @@ from invoice_sorting.importer.duplicates import duplicate_warnings, has_duplicat
 from invoice_sorting.importer.group_summary import GroupSummary, build_summary
 from invoice_sorting.importer.grouping import ItemGroup, group_items
 from invoice_sorting.importer.items import EvidenceItem
+from invoice_sorting.importer.lodging import merge_stays
 from invoice_sorting.importer.matching import MatchCandidate, find_candidates
 
 ACTION_CREATE = "create"
 ACTION_ATTACH = "attach"
 ACTION_SKIP = "skip"
+MISSING_STAY_DATES_WARNING = "未识别到住宿时间，请补充酒店订单或支付水单"
 
 
 @dataclass(frozen=True)
@@ -60,6 +62,13 @@ def build_group(
     match, candidates = find_candidates(session, items)
     warnings = [warning for item in items for warning in extra.get(item.attachment_id, ())]
     warnings.extend(duplicate_warnings(session, items))
+    stay = merge_stays(items)
+    if (
+        any(item.is_lodging_invoice for item in items)
+        and stay is not None
+        and stay.check_in is None
+    ):
+        warnings.append(MISSING_STAY_DATES_WARNING)
     unique_warnings = tuple(dict.fromkeys(warnings))
     has_invoice = any(item.is_invoice for item in items)
     return ImportGroup(

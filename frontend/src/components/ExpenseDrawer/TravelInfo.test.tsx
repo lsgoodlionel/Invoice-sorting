@@ -1,13 +1,20 @@
 import { screen } from '@testing-library/react';
 import { describe, expect, test } from 'vitest';
-import { makeAttachment, makeHotelEvidence, makeInvoice, makeLodgingInvoice, makeTransportInvoice } from '../../test/fixtures';
+import { TRAIN_DETAILS, makeAttachment, makeHotelEvidence, makeInvoice, makeLodgingInvoice, makeTransportInvoice } from '../../test/fixtures';
+import { makeDetail } from '../../test/fixtures';
 import { renderWithProviders } from '../../test/render';
-import { AmountComposition, LodgingBanner } from './TravelInfo';
+import { AmountComposition, LodgingBanner, TravelDateNotice } from './TravelInfo';
 
 const lodging = makeAttachment({ id: 1, invoice: makeLodgingInvoice() });
 const order = makeAttachment({ id: 2, kind: 'order', evidence: makeHotelEvidence() });
 const train1 = makeAttachment({ id: 3, invoice: makeTransportInvoice({ total_cents: 15250 }) });
-const train2 = makeAttachment({ id: 4, invoice: makeTransportInvoice({ total_cents: 15250 }) });
+const train2 = makeAttachment({
+  id: 4,
+  invoice: makeTransportInvoice({
+    total_cents: 15250,
+    details: { ...TRAIN_DETAILS, date: '2026-08-16', number: 'G7124', from: '苏州园区', to: '上海虹桥' },
+  }),
+});
 
 describe('LodgingBanner', () => {
   test('shows lodging info from the hotel order', () => {
@@ -21,16 +28,24 @@ describe('LodgingBanner', () => {
   });
 });
 
+describe('TravelDateNotice', () => {
+  test('prompts for an order or statement when lodging dates are missing', () => {
+    renderWithProviders(<TravelDateNotice expense={makeDetail({ travel_dates_missing: true })} />);
+    expect(screen.getByText('住宿时间待完善')).toBeInTheDocument();
+    expect(screen.getByText(/开票日期不会用于往返交通自动关联/)).toBeInTheDocument();
+  });
+});
+
 describe('AmountComposition', () => {
   test('shows lodging and transport breakdown', () => {
     renderWithProviders(<AmountComposition amountCents={102500} attachments={[lodging, order, train1, train2]} />);
     expect(screen.getByTestId('amount-composition')).toHaveTextContent('¥1,025.00 = 住宿 ¥720.00 + 交通 2 张 ¥305.00');
-    expect(screen.queryByText(/与发票合计不一致/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/与凭证净额.*不一致/)).not.toBeInTheDocument();
   });
 
   test('warns when the amount differs from invoice total', () => {
     renderWithProviders(<AmountComposition amountCents={100000} attachments={[lodging, train1, train2]} />);
-    expect(screen.getByText('与发票合计 ¥1,025.00 不一致')).toBeInTheDocument();
+    expect(screen.getByText('与凭证净额 ¥1,025.00 不一致')).toBeInTheDocument();
   });
 
   test('renders nothing without transport invoices', () => {

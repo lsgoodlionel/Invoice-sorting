@@ -1,4 +1,4 @@
-import { Button, Group, Stack, TextInput } from '@mantine/core';
+import { Button, Group, Select, Stack, TextInput } from '@mantine/core';
 import { useDebouncedCallback } from '@mantine/hooks';
 import { IconSearch, IconX } from '@tabler/icons-react';
 import { forwardRef, useEffect, useState } from 'react';
@@ -40,6 +40,15 @@ export const ExpenseFilterBar = forwardRef<HTMLInputElement, ExpenseFilterBarPro
         <PeriodPresetBar value={filters.period.preset} onSelect={(period) => onChange({ period })} />
         <CategorySelect w={130} placeholder="全部分类" clearable value={filters.categoryId} onChange={(categoryId) => onChange({ categoryId })} />
         <ProjectSelect w={150} placeholder="全部项目" creatable={false} clearable value={filters.projectId} onChange={(projectId) => onChange({ projectId })} />
+        <Select
+          w={125}
+          aria-label="市内市外"
+          placeholder="市内/市外"
+          clearable
+          data={[{ value: 'local', label: '市内' }, { value: 'nonlocal', label: '市外' }]}
+          value={filters.travelScope || null}
+          onChange={(value) => onChange({ travelScope: value === 'local' || value === 'nonlocal' ? value : '' })}
+        />
         <TextInput
           ref={searchRef}
           w={220}

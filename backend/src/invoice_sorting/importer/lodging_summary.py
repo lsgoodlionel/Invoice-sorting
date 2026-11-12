@@ -28,12 +28,51 @@ def invoice_total(items: Sequence[EvidenceItem]) -> int | None:
     return sum(amounts) if amounts else None
 
 
-def _amount(items: Sequence[EvidenceItem]) -> int | None:
-    """有发票取发票合计（订单不计）；只有订单时取订单人民币金额。"""
-    total = invoice_total(items)
-    if total is not None:
-        return total
-    return next((i.cny_cents for i in items if i.is_hotel_order and i.cny_cents is not None), None)
+def _transport_key(item: EvidenceItem) -> tuple | int:
+    number = item.detail("number")
+    route = tuple(part.strip() for part in item.route)
+    if number or any(route):
+        return (item.travel_date, item.detail("vehicle"), number, route)
+    if item.order_key:
+        return ("order", item.order_key)
+    return item.attachment_id
+
+
+def transport_total(items: Sequence[EvidenceItem]) -> int:
+    """同一段行程的发票、订单、行程单只计一次，优先采用发票金额。"""
+    grouped: dict[tuple | int, list[EvidenceItem]] = {}
+    for item in items:
+        if item.is_transport and item.cny_cents is not None:
+            grouped.setdefault(_transport_key(item), []).append(item)
+    total = 0
+    for matches in grouped.values():
+        preferred = next((item for item in matches if item.is_invoice), matches[0])
+        total += preferred.cny_cents or 0
+    return total
+
+
+def travel_package_total(items: Sequence[EvidenceItem]) -> int | None:
+    """住宿服务 + 去返程/市内交通的净额；订单与其对应发票不重复累计。"""
+    if merge_stays(items) is None:
+        return None
+    lodging_invoices = [
+        item.cny_cents
+        for item in items
+        if item.is_lodging_invoice and item.cny_cents is not None
+    ]
+    if lodging_invoices:
+        lodging = sum(lodging_invoices)
+    else:
+        lodging = next(
+            (
+                item.cny_cents
+                for item in items
+                if item.is_hotel_order and item.cny_cents is not None
+            ),
+            0,
+        )
+    total = lodging + transport_total(items)
+    return total if total > 0 else None
 
 
 def _hotel(items: Sequence[EvidenceItem]) -> str:
@@ -88,9 +127,23 @@ def lodging_summary(session: Session, items: Sequence[EvidenceItem]) -> LodgingS
     if stay is None:
         return None
     hotel = _hotel(items)
+    fallback_day = next(
+        (
+            item.association_date
+            for item in items
+            if not item.is_invoice and item.association_date is not None
+        ),
+        None,
+    ) or next(
+        (item.association_date for item in items if item.association_date is not None),
+        None,
+    ) or next(
+        (item.occurred_on for item in items if item.is_lodging_invoice and item.occurred_on),
+        None,
+    )
     return LodgingSummary(
-        spent_on=stay.check_in or next((i.occurred_on for i in items if i.occurred_on), None),
-        amount_cents=_amount(items),
+        spent_on=stay.check_in or fallback_day,
+        amount_cents=travel_package_total(items),
         merchant=hotel,
         summary=_summary_text(hotel, _nights(items), transport_count(items)),
         category_id=_travel_category(session),

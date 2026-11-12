@@ -29,6 +29,7 @@ UNKNOWN_MERCHANT = "未知商家"
 MISSING_AMOUNT_REASON = "未识别到金额，请手工处理"
 MISSING_DATE_REASON = "未识别到开票日期，请手工处理"
 MISSING_EVIDENCE_DATE_REASON = "未识别到日期，请手工处理"
+MISSING_STAY_DATE_REASON = "未识别到住宿时间，请补充酒店订单或支付水单"
 NO_INVOICE_DATA_REASON = "未识别到发票内容，请先重新识别或手工处理"
 UNEXPECTED_REASON = "自动生成记录失败，请手工处理"
 
@@ -86,6 +87,8 @@ def skip_reason(group: ImportGroup) -> str:
     if group.summary.amount_cents is None:
         lacks_invoice_data = group.has_invoice and not any(item.has_data for item in group.items)
         return NO_INVOICE_DATA_REASON if lacks_invoice_data else MISSING_AMOUNT_REASON
+    if group.summary.spent_on is None and any(item.is_lodging_invoice for item in group.items):
+        return MISSING_STAY_DATE_REASON
     return MISSING_DATE_REASON if group.has_invoice else MISSING_EVIDENCE_DATE_REASON
 
 

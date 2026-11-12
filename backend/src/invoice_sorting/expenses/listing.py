@@ -19,6 +19,7 @@ SUMMARY_LOAD_OPTIONS = (
     selectinload(Expense.batch),
     selectinload(Expense.checklist_items),
     selectinload(Expense.attachments).selectinload(Attachment.invoice_data),
+    selectinload(Expense.attachments).selectinload(Attachment.evidence_data),
 )
 
 
