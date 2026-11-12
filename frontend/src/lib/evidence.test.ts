@@ -28,7 +28,7 @@ describe('evidence summary', () => {
       { label: '发票号', value: '2631' },
       { label: '订单号', value: 'JD1' },
       { label: '金额', value: '¥459.00' },
-      { label: '日期', value: '2026-03-12' },
+      { label: '开票日期', value: '2026-03-12' },
     ]);
     const order = makeAttachment({ kind: 'order', evidence: makeEvidence({ cny_cents: 14426 }) });
     expect(attachmentFacts(order)).toEqual([
@@ -65,6 +65,8 @@ describe('evidence summary', () => {
 
   test('attachmentFacts appends travel summary', () => {
     const facts = attachmentFacts(makeAttachment({ invoice: makeTransportInvoice() }));
+    expect(facts).toContainEqual({ label: '业务日期', value: '2026-08-15' });
+    expect(facts).toContainEqual({ label: '开票日期', value: '2026-09-15' });
     expect(facts.at(-1)).toEqual({ label: '行程', value: '火车 G7123 · 上海虹桥 → 苏州园区 · 08-15 · 张三' });
     const hotel = attachmentFacts(makeAttachment({ kind: 'order', evidence: makeHotelEvidence() }));
     expect(hotel.at(-1)?.label).toBe('住宿');

@@ -69,6 +69,7 @@ export function makeInvoice(overrides: Partial<InvoiceData> = {}): InvoiceData {
   return {
     invoice_no: '26312000000123456789',
     issued_on: '2026-09-15',
+    occurred_on: null,
     total_cents: 96000,
     tax_cents: 11044,
     seller_name: '京东某店',
@@ -273,6 +274,6 @@ export function makeLodgingInvoice(overrides: Partial<InvoiceData> = {}): Invoic
 export function makeTransportInvoice(overrides: Partial<InvoiceData> = {}): InvoiceData {
   return makeInvoice({
     total_cents: 15250, seller_name: '中国铁路上海局集团有限公司', item_summary: '铁路旅客运输服务', tax_category: '旅客运输服务',
-    invoice_type: '电子发票（铁路电子客票）', details: { ...TRAIN_DETAILS }, ...overrides,
+    invoice_type: '电子发票（铁路电子客票）', occurred_on: TRAIN_DETAILS.date, details: { ...TRAIN_DETAILS }, ...overrides,
   });
 }

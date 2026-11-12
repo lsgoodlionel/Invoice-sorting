@@ -13,6 +13,7 @@ from invoice_sorting.checklist.regions import (
 )
 from invoice_sorting.common.constants import AttachmentKind
 from invoice_sorting.db.models import TZ, Attachment, EvidenceData, InvoiceData
+from invoice_sorting.invoice_dates import invoice_business_date
 from invoice_sorting.users.refs import user_ref
 
 WHITESPACE = re.compile(r"\s+")
@@ -62,6 +63,7 @@ def serialize_invoice(
     return {
         "invoice_no": invoice.invoice_no,
         "issued_on": iso_date(invoice.issued_on),
+        "occurred_on": iso_date(invoice_business_date(invoice)),
         "total_cents": invoice.total_cents,
         "tax_cents": invoice.tax_cents,
         "seller_name": invoice.seller_name or "",

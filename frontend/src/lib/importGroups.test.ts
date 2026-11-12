@@ -296,6 +296,7 @@ describe('lodging groups with transport invoices', () => {
     const split = apply(initImportGroups(travelSession), { type: 'splitAttachment', attachmentId: 13 });
     expect(group(split, 'h1').amountCents).toBe(72000);
     expect(group(split, 'split-1').amountCents).toBe(15250);
+    expect(group(split, 'split-1').spentOn).toBe('2026-08-15');
   });
 
   test('amount edited by the user is kept when files move', () => {

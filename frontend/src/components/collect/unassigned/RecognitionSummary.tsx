@@ -11,7 +11,8 @@ function InvoiceLine({ attachment }: { attachment: Attachment }) {
   const invoice = attachment.invoice;
   if (!invoice) return null;
   const parts = [
-    invoice.issued_on ?? '日期未识别',
+    invoice.occurred_on ? `业务日期 ${invoice.occurred_on}` : '',
+    invoice.issued_on ? `开票日期 ${invoice.issued_on}` : '开票日期未识别',
     invoice.seller_name || '销售方未识别',
     invoice.total_cents === null ? '金额未识别' : formatCents(invoice.total_cents),
     ...(hasTransportDetails(invoice.details) ? transportParts(invoice.details) : []),
@@ -24,7 +25,7 @@ function InvoiceLine({ attachment }: { attachment: Attachment }) {
   );
 }
 
-/** 识别信息：发票显示开票日期 · 销售方 · 金额（交通票另加行程）· 地区；其他凭证显示类型 · 日期 · 金额 · 商户 · 订单号尾号（酒店订单、交通凭证用差旅摘要）。 */
+/** 识别信息：发票分开显示业务日期与开票日期；其他凭证显示实际发生日期。 */
 export function RecognitionSummary({ attachment }: { attachment: Attachment }) {
   if (attachment.kind === 'invoice' && attachment.invoice) return <InvoiceLine attachment={attachment} />;
   if (!isEvidenceRecognized(attachment.evidence)) return <Text size="xs" c="dimmed">{UNRECOGNIZED_TEXT}</Text>;

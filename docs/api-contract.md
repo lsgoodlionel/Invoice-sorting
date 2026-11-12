@@ -134,7 +134,10 @@ type Category = { id: number; name: string; color: string; keywords: string[]; r
 type Project  = { id: number; code: string; name: string; owner: string; active: boolean }
 
 type InvoiceData = {
-  invoice_no: string | null; issued_on: string | null; total_cents: number | null; tax_cents: number | null;
+  invoice_no: string | null; issued_on: string | null; occurred_on: string | null;
+  // issued_on 是开票日期；occurred_on 是识别出的实际业务日期（如乘车日），未识别到为 null。
+  // 建账、分组和候选匹配优先使用 occurred_on，缺失时才回退 issued_on。
+  total_cents: number | null; tax_cents: number | null;
   seller_name: string; seller_tax_id: string; buyer_name: string; buyer_tax_id: string;
   item_summary: string; invoice_type: string; parser: string; confirmed: boolean;
   tax_category: string;               // 税收分类简称，如“纸制品”
@@ -142,7 +145,8 @@ type InvoiceData = {
   is_nonlocal: boolean;              // region_name 非空且不等于设置中的本地地区
   order_no: string;                  // 票面订单号，无则 ""
   detail_platform: boolean;          // 销售方属于已带明细的平台（设置 detail_platforms），外地订单截图可免
-  buyer_mismatch: boolean            // 与设置中的购方抬头不一致
+  buyer_mismatch: boolean;           // 与设置中的购方抬头不一致
+  details: Record<string, string> | null // 交通票含 date/from/to/vehicle/number/passenger
 }
 
 type Attachment = {

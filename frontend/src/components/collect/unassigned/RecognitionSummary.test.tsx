@@ -18,6 +18,6 @@ describe('RecognitionSummary travel details', () => {
 
   test('transport invoice appends the trip after invoice facts', () => {
     renderWithProviders(<RecognitionSummary attachment={makeAttachment({ invoice: makeTransportInvoice() })} />);
-    expect(screen.getByText('2026-09-15 · 中国铁路上海局集团有限公司 · ¥152.50 · 火车 G7123 · 上海虹桥 → 苏州园区 · 08-15 · 张三')).toBeInTheDocument();
+    expect(screen.getByText('业务日期 2026-08-15 · 开票日期 2026-09-15 · 中国铁路上海局集团有限公司 · ¥152.50 · 火车 G7123 · 上海虹桥 → 苏州园区 · 08-15 · 张三')).toBeInTheDocument();
   });
 });

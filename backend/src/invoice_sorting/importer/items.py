@@ -9,6 +9,7 @@ from invoice_sorting.db.models import Attachment, EvidenceData, InvoiceData
 from invoice_sorting.db.seed import LODGING_KEYWORDS
 from invoice_sorting.importer.cities import find_city, normalize_city
 from invoice_sorting.importer.platforms import platform_tokens
+from invoice_sorting.invoice_dates import invoice_effective_date
 from invoice_sorting.parsers import ParsedInvoice
 
 CNY = "CNY"
@@ -161,7 +162,7 @@ def _invoice_fields(invoice: InvoiceData | ParsedInvoice, occurred_on: date | No
         "order_no": invoice.order_no or "",
         "amount_cents": invoice.total_cents,
         "cny_cents": invoice.total_cents,
-        "occurred_on": occurred_on if occurred_on is not None else invoice.issued_on,
+        "occurred_on": occurred_on if occurred_on is not None else invoice_effective_date(invoice),
         "merchant": invoice.seller_name or "",
         "item_name": invoice.item_summary or "",
         "recognizer": invoice.parser or "",

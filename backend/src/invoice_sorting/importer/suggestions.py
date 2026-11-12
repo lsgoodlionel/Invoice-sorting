@@ -15,6 +15,7 @@ from invoice_sorting.checklist.regions import (
 from invoice_sorting.common.platforms import ONLINE_PLATFORM_KEYWORDS
 from invoice_sorting.db.models import InvoiceData
 from invoice_sorting.importer.classify import suggest_category
+from invoice_sorting.invoice_dates import invoice_effective_date
 from invoice_sorting.parsers import ParsedInvoice
 from invoice_sorting.parsers.travel_details import travel_details
 
@@ -61,11 +62,7 @@ def invoice_data_from(parsed: ParsedInvoice) -> InvoiceData:
 
 def suggested_spent_on(parsed: ParsedInvoice) -> date | None:
     """差旅票优先取乘车/乘机日期，否则取开票日期。"""
-    travel_date = (parsed.travel or {}).get("date", "")
-    try:
-        return date.fromisoformat(travel_date) if travel_date else parsed.issued_on
-    except ValueError:
-        return parsed.issued_on
+    return invoice_effective_date(parsed)
 
 
 def is_online_purchase(order_no: str | None, seller_name: str | None) -> bool:
@@ -89,7 +86,7 @@ def build_suggestion(session: Session, parsed: ParsedInvoice) -> Suggestion:
 def suggestion_from_invoice(session: Session, invoice: InvoiceData) -> Suggestion:
     """由已入库的发票数据生成建议（用于待归属发票批量生成记录）。"""
     return Suggestion(
-        spent_on=invoice.issued_on,
+        spent_on=invoice_effective_date(invoice),
         amount_cents=invoice.total_cents,
         merchant=invoice.seller_name or "",
         summary=invoice.item_summary or "",

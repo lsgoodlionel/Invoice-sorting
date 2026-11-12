@@ -63,6 +63,58 @@ def test_creates_expense_from_invoice(client, add):
     assert detail["status"] != "spent"
 
 
+def test_train_invoice_uses_actual_travel_date_when_created_later(client, add):
+    attachment_id = add(
+        invoice(
+            "rail-1",
+            issued_on=date(2026, 11, 11),
+            parser="rail_ticket",
+            seller_name="中国铁路",
+            item_summary="安吉-上海南 C3029",
+            details={
+                "date": "2026-09-06",
+                "from": "安吉",
+                "to": "上海南",
+                "vehicle": "train",
+                "number": "C3029",
+            },
+        )
+    )
+
+    result = post(client, [attachment_id])
+
+    detail = client.get(f"/api/expenses/{result['created'][0]}").json()["data"]
+    assert detail["spent_on"] == "2026-09-06"
+
+
+def test_train_invoice_matches_existing_record_by_actual_travel_date(client, add):
+    expense = client.post(
+        "/api/expenses",
+        json={"spent_on": "2026-09-06", "amount_cents": 4500, "merchant": "中国铁路"},
+    ).json()["data"]
+    attachment_id = add(
+        invoice(
+            "rail-2",
+            issued_on=date(2026, 11, 11),
+            parser="rail_ticket",
+            seller_name="中国铁路",
+            item_summary="安吉-上海南 C3029",
+            details={"date": "2026-09-06", "vehicle": "train", "number": "C3029"},
+        )
+    )
+
+    candidates = client.get(f"/api/attachments/{attachment_id}/candidates").json()["data"]
+    matched = next(
+        candidate for candidate in candidates if candidate["expense_id"] == expense["id"]
+    )
+    assert "日期相同" in matched["reasons"]
+
+    result = post(client, [attachment_id])
+
+    assert result["attached"] == [expense["id"]]
+    assert result["created"] == []
+
+
 def test_attaches_to_matching_spent_expense(client, add):
     spent = client.post(
         "/api/expenses",

@@ -102,6 +102,8 @@ export interface Project {
 export interface InvoiceData {
   invoice_no: string | null;
   issued_on: string | null;
+  /** 识别出的实际业务发生日期（如乘车日）；无法识别时为 null，建账再回退开票日期。 */
+  occurred_on: string | null;
   total_cents: number | null;
   tax_cents: number | null;
   seller_name: string;

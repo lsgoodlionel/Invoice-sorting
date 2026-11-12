@@ -142,7 +142,7 @@ export function fieldsFromAttachment(attachment: Attachment, base: GroupFields):
   const { invoice, evidence } = attachment;
   if (invoice) {
     return {
-      ...common, spentOn: invoice.issued_on, amountCents: invoice.total_cents, currency: DEFAULT_CURRENCY, originalAmountCents: null,
+      ...common, spentOn: invoice.occurred_on ?? invoice.issued_on, amountCents: invoice.total_cents, currency: DEFAULT_CURRENCY, originalAmountCents: null,
       merchant: invoice.seller_name, summary: invoice.item_summary, invoiceExempt: false,
     };
   }

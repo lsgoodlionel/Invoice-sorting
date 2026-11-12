@@ -66,7 +66,8 @@ function baseFacts(attachment: Attachment): AttachmentFact[] {
       { label: '发票号', value: invoice.invoice_no || '—' },
       { label: '订单号', value: invoice.order_no || '—' },
       { label: '金额', value: formatCents(invoice.total_cents) },
-      { label: '日期', value: invoice.issued_on ?? '—' },
+      ...(invoice.occurred_on ? [{ label: '业务日期', value: invoice.occurred_on }] : []),
+      { label: '开票日期', value: invoice.issued_on ?? '—' },
     ];
   }
   if (!evidence) return [];
