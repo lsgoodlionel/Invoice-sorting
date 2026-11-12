@@ -70,6 +70,24 @@ def test_amount_date_requires_merchant_overlap():
     assert ids(groups) == [[1], [2]]
 
 
+def test_invoice_issue_date_does_not_link_to_order_as_business_date():
+    groups = group_items(
+        [
+            item(
+                1,
+                "invoice",
+                cny_cents=45900,
+                occurred_on=MARCH_12,
+                merchant=JD_SELLER,
+                date_is_issued=True,
+            ),
+            item(2, "order", cny_cents=45900, occurred_on=MARCH_12, merchant="京东"),
+        ]
+    )
+
+    assert ids(groups) == [[1], [2]]
+
+
 def test_amount_date_requires_close_date_and_different_kind():
     groups = group_items(
         [

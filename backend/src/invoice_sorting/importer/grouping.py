@@ -102,9 +102,9 @@ def _pairs(items: Sequence[EvidenceItem]) -> Iterator[tuple[int, int]]:
 
 
 def _day_gap(first: EvidenceItem, second: EvidenceItem) -> int | None:
-    if first.occurred_on is None or second.occurred_on is None:
+    if first.association_date is None or second.association_date is None:
         return None
-    return abs((first.occurred_on - second.occurred_on).days)
+    return abs((first.association_date - second.association_date).days)
 
 
 def _same_value_links(items: Sequence[EvidenceItem], attr: str, reason: str) -> list[Link]:

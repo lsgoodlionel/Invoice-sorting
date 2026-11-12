@@ -58,7 +58,7 @@ def _priority(item: EvidenceItem) -> int:
 def build_profile(items: Sequence[EvidenceItem]) -> GroupProfile:
     ordered = sorted(items, key=_priority)
     amount = next((item.cny_cents for item in ordered if item.cny_cents is not None), None)
-    occurred = next((item.occurred_on for item in ordered if item.occurred_on), None)
+    occurred = next((item.association_date for item in ordered if item.association_date), None)
     foreign = next(
         (item for item in ordered if item.is_foreign_currency and item.amount_cents), None
     )

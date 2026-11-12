@@ -115,17 +115,35 @@ def test_train_invoice_matches_existing_record_by_actual_travel_date(client, add
     assert result["created"] == []
 
 
-def test_attaches_to_matching_spent_expense(client, add):
+def test_invoice_without_business_date_is_only_a_manual_candidate(client, add):
     spent = client.post(
         "/api/expenses",
         json={"spent_on": "2026-09-10", "amount_cents": 4500, "merchant": "文具店"},
     ).json()["data"]
     first, second = add(invoice("1")), add(invoice("2"))
 
+    candidates = client.get(f"/api/attachments/{first}/candidates").json()["data"]
+    assert [candidate["expense_id"] for candidate in candidates] == [spent["id"]]
+
     result = post(client, [first, second])
 
+    assert result["attached"] == []
+    assert len(result["created"]) == 2
+
+
+def test_regular_invoice_with_business_date_can_auto_attach(client, add):
+    spent = client.post(
+        "/api/expenses",
+        json={"spent_on": "2026-09-10", "amount_cents": 4500, "merchant": "文具店"},
+    ).json()["data"]
+    attachment_id = add(
+        invoice("business-date", issued_on=date(2026, 9, 12), details={"date": "2026-09-10"})
+    )
+
+    result = post(client, [attachment_id])
+
     assert result["attached"] == [spent["id"]]
-    assert len(result["created"]) == 1 and result["created"][0] != spent["id"]
+    assert result["created"] == []
 
 
 def test_skips_with_reasons(client, add, session):

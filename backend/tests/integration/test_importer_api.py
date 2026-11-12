@@ -149,14 +149,17 @@ def test_t02_same_invoice_number_different_files(client, settings, tmp_path):
     assert again["duplicates"][0]["existing_expense_id"] == created["created"][0]
 
 
-def test_t03_match_spent_expense_and_attach(client, session, tmp_path):
+def test_t03_invoice_without_business_date_is_candidate_then_manual_attach(
+    client, session, tmp_path
+):
     spent = client.post(
         "/api/expenses", json={"spent_on": "2026-09-12", "amount_cents": 96000, "merchant": "京东"}
     ).json()["data"]
     data = upload(client, sample(tmp_path, "digital_same_line.pdf"))["data"]
     row = data["groups"][0]
-    assert row["suggested_action"] == "attach"
-    assert row["match"] == {
+    assert row["suggested_action"] == "create"
+    assert row["match"] is None
+    assert row["candidates"][0] == {
         "expense_id": spent["id"],
         "merchant": "京东",
         "amount_cents": 96000,
@@ -165,8 +168,8 @@ def test_t03_match_spent_expense_and_attach(client, session, tmp_path):
         "original_amount_cents": None,
         "status": "spent",
         "missing_kinds": ["invoice"],
-        "score": 80,
-        "reasons": ["金额相同", "日期相差 3 天", "正好缺少发票"],
+        "score": 50,
+        "reasons": ["金额相同", "正好缺少发票"],
     }
 
     payload = group_payload(row, "attach", expense_id=spent["id"], amount_cents=1, merchant="改")

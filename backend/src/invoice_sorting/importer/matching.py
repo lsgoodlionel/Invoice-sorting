@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from invoice_sorting.common.constants import BatchStatus, ExpenseStatus
 from invoice_sorting.db.models import Attachment, Batch, EvidenceData, Expense, InvoiceData
 from invoice_sorting.importer.items import EvidenceItem, item_from_attachment
-from invoice_sorting.importer.lodging_scoring import transport_window
+from invoice_sorting.importer.lodging_scoring import REASON_LODGING_INVOICE, transport_window
 from invoice_sorting.importer.merchants import merchant_similarity
 from invoice_sorting.importer.scoring import (
     DATE_NEAR_DAYS,
@@ -36,6 +36,7 @@ MIN_CANDIDATE_SCORE = 45
 MAX_CANDIDATES = 5
 REASON_ORDER_NO = "订单号一致"
 REASON_FILE_KEY = "文件名一致"
+EXACT_AMOUNT_REASONS = frozenset({"金额相同", "原币金额相同"})
 ORDER_NO_NOISE_CHARS = (" ", "-", "_", ":", "：", "#")
 
 
@@ -100,7 +101,11 @@ def _score_pool(session: Session, profile: GroupProfile) -> list[Expense]:
 
 def _rank(profile: GroupProfile, expenses: list[Expense]) -> list[MatchCandidate]:
     scored = [score_expense(profile, expense) for expense in expenses]
-    kept = [item for item in scored if item.score >= MIN_CANDIDATE_SCORE]
+    kept = [
+        item
+        for item in scored
+        if item.score >= MIN_CANDIDATE_SCORE or EXACT_AMOUNT_REASONS.intersection(item.reasons)
+    ]
 
     def sort_key(item: MatchCandidate) -> tuple[int, int, int]:
         gap = abs((profile.occurred_on - item.expense.spent_on).days) if profile.occurred_on else 0
@@ -142,7 +147,10 @@ def find_candidates(
         return strong[0], scored[:MAX_CANDIDATES]
     if strong:
         return None, (strong + scored)[:MAX_CANDIDATES]
-    match = pick_match(scored)
+    # 没有明确业务发生日期时，金额/商家相符只作为人工候选；订单号、文件名强匹配已在上方处理。
+    # 酒店发票与订单另有明确的酒店名、金额和开票窗口专用规则，仍允许自动关联。
+    has_lodging_rule = any(REASON_LODGING_INVOICE in item.reasons for item in scored)
+    match = pick_match(scored) if profile.occurred_on is not None or has_lodging_rule else None
     others = [candidate for candidate in scored if candidate is not match]
     return match, others[:MAX_CANDIDATES]
 

@@ -9,7 +9,7 @@ from invoice_sorting.db.models import Attachment, EvidenceData, InvoiceData
 from invoice_sorting.db.seed import LODGING_KEYWORDS
 from invoice_sorting.importer.cities import find_city, normalize_city
 from invoice_sorting.importer.platforms import platform_tokens
-from invoice_sorting.invoice_dates import invoice_effective_date
+from invoice_sorting.invoice_dates import invoice_business_date, invoice_effective_date
 from invoice_sorting.parsers import ParsedInvoice
 
 CNY = "CNY"
@@ -56,6 +56,7 @@ class EvidenceItem:
     currency: str = CNY
     cny_cents: int | None = None  # 人民币金额
     occurred_on: date | None = None
+    date_is_issued: bool = False  # True 表示 occurred_on 只是开票日期兜底，不可当作业务日期自动匹配
     merchant: str = ""
     item_name: str = ""
     card_last4: str = ""
@@ -109,6 +110,11 @@ class EvidenceItem:
         return parse_day(self.detail("date")) or self.occurred_on
 
     @property
+    def association_date(self) -> date | None:
+        """用于自动归组/匹配的实际业务日期；开票日期兜底不参与自动确认。"""
+        return None if self.is_invoice and self.date_is_issued else self.occurred_on
+
+    @property
     def route(self) -> tuple[str, str]:
         return self.detail("from"), self.detail("to")
 
@@ -158,11 +164,14 @@ def invoice_details(invoice: InvoiceData | ParsedInvoice) -> dict[str, str]:
 
 
 def _invoice_fields(invoice: InvoiceData | ParsedInvoice, occurred_on: date | None) -> dict:
+    business_date = invoice_business_date(invoice)
+    effective_date = occurred_on if occurred_on is not None else invoice_effective_date(invoice)
     return {
         "order_no": invoice.order_no or "",
         "amount_cents": invoice.total_cents,
         "cny_cents": invoice.total_cents,
-        "occurred_on": occurred_on if occurred_on is not None else invoice_effective_date(invoice),
+        "occurred_on": effective_date,
+        "date_is_issued": business_date is None and effective_date is not None,
         "merchant": invoice.seller_name or "",
         "item_name": invoice.item_summary or "",
         "recognizer": invoice.parser or "",
