@@ -59,6 +59,34 @@ def test_week_old_without_merchant_is_only_candidate(session, settings):
     assert candidates[0].score == 40 + 15 + 10
 
 
+def test_invoice_issue_date_is_not_used_for_automatic_matching(session, settings):
+    expense = spent(session, settings, merchant="京东")
+
+    match, candidates = find_candidates(
+        session,
+        [invoice_item(date_is_issued=True)],
+    )
+
+    assert match is None
+    assert [candidate.expense for candidate in candidates] == [expense]
+    assert "金额相同" in candidates[0].reasons
+    assert "商家相同" in candidates[0].reasons
+    assert not any(reason.startswith("日期") for reason in candidates[0].reasons)
+
+
+def test_amount_only_invoice_candidate_is_kept_for_manual_confirmation(session, settings):
+    expense = spent(session, settings, merchant="其他商家", invoice_exempt=True)
+
+    match, candidates = find_candidates(
+        session,
+        [invoice_item(merchant="", date_is_issued=True)],
+    )
+
+    assert match is None
+    assert [candidate.expense for candidate in candidates] == [expense]
+    assert candidates[0].reasons == ("金额相同",)
+
+
 def test_existing_same_kind_is_penalized(session, settings, tmp_path: Path):
     expense = spent(session, settings)
     store_invoice(session, settings, tmp_path, expense=expense, invoice={"invoice_no": "X1"})
