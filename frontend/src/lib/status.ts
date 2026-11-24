@@ -61,6 +61,8 @@ export const BATCH_STATUS_META: Readonly<Record<BatchStatus, { label: string; co
 };
 
 export const DATE_BASIS_OPTIONS: readonly { value: DateBasis; label: string }[] = [
+  { value: 'payment', label: '支付日期' },
+  { value: 'order', label: '订单日期' },
   { value: 'spent', label: '业务发生日期' },
   { value: 'invoiced', label: '开票日期' },
   { value: 'created', label: '凭证填报日期' },

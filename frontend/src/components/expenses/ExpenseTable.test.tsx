@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react';
+import { fireEvent, screen, within } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 import { makeExpense } from '../../test/fixtures';
 import { renderWithProviders } from '../../test/render';
@@ -48,5 +48,43 @@ describe('ExpenseTable creator', () => {
     expect(screen.getByText('INV-1')).toBeInTheDocument();
     screen.getByRole('button', { name: '按状态排序' }).click();
     expect(onSort).toHaveBeenCalledWith('status');
+  });
+
+  test('renders visible columns in the saved order', () => {
+    renderWithProviders(
+      <ExpenseTable
+        items={[makeExpense()]}
+        selectedIds={[]}
+        onToggle={vi.fn()}
+        onToggleAll={vi.fn()}
+        onOpen={vi.fn()}
+        onDropFiles={vi.fn()}
+        columns={['amount', 'item_name', 'spent_on']}
+      />,
+    );
+    expect(screen.getAllByRole('columnheader').slice(1).map((cell) => cell.textContent)).toEqual([
+      expect.stringContaining('总价'),
+      '名称',
+      expect.stringContaining('业务发生日期'),
+    ]);
+  });
+
+  test('resizes a column from its header handle', () => {
+    const onWidthChange = vi.fn();
+    renderWithProviders(
+      <ExpenseTable
+        items={[makeExpense()]}
+        selectedIds={[]}
+        onToggle={vi.fn()}
+        onToggleAll={vi.fn()}
+        onOpen={vi.fn()}
+        onDropFiles={vi.fn()}
+        columns={['amount']}
+        onWidthChange={onWidthChange}
+      />,
+    );
+    fireEvent.pointerDown(screen.getByRole('button', { name: '调整amount列宽' }), { clientX: 100 });
+    fireEvent.pointerUp(window, { clientX: 150 });
+    expect(onWidthChange).toHaveBeenCalledWith('amount', 170);
   });
 });

@@ -137,6 +137,25 @@ body {
   white-space: nowrap;
 }
 
+.column-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  width: 7px;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: col-resize;
+  z-index: 2;
+}
+
+.column-resize-handle:hover,
+.column-resize-handle:focus-visible {
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
+  outline: none;
+}
+
 .ledger-table tbody tr {
   transition: background-color var(--duration-fast) ease;
 }

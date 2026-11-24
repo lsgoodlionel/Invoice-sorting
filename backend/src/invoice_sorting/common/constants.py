@@ -108,6 +108,8 @@ class ExportLayout(StrEnum):
 
 
 class DateBasis(StrEnum):
+    PAYMENT = "payment"
+    ORDER = "order"
     SPENT = "spent"
     INVOICED = "invoiced"
     CREATED = "created"

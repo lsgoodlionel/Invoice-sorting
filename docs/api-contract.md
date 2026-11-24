@@ -207,13 +207,15 @@ type ExportRecord = { id: number; layout: ExportLayout; file_name: string; url: 
 
 | 方法 | 路径 | 请求 | 返回 data |
 | --- | --- | --- | --- |
-| GET | `/api/expenses` | query: `start`,`end`(含),`date_basis`(默认 spent),`category_id`,`project_id`,`travel_scope`(`local`/`nonlocal`),`status`(可多个，逗号分隔),`q`(商家/摘要/发票号),`batch_id`,`unbatched`(bool),`missing`(bool，仅含必需缺项),`page`(1),`page_size`(默认 50, 最大 500) | `{ items: ExpenseSummary[], total: number, total_cents: number, status_counts: { [status]: { count, amount_cents } } }` |
+| GET | `/api/expenses` | query: `start`,`end`(含),`date_basis`(默认 spent，可选 payment/order/spent/invoiced/created/sent/received),`category_id`,`project_id`,`travel_scope`(`local`/`nonlocal`),`status`(可多个，逗号分隔),`q`(商家/摘要/发票号),`batch_id`,`unbatched`(bool),`missing`(bool，仅含必需缺项),`page`(1),`page_size`(默认 50, 最大 500) | `{ items: ExpenseSummary[], total: number, total_cents: number, status_counts: { [status]: { count, amount_cents } } }` |
 | POST | `/api/expenses` | `{ spent_on, amount_cents, merchant, summary?, category_id?, project_id?, pay_method?, is_online?, note?, invoice_exempt?(默认 false), currency?(3 位 ISO 大写，小写自动转大写，默认 "CNY"), original_amount_cents?, travel_scope?(""/"local"/"nonlocal") }`；币种为 CNY 时 original_amount_cents 自动置空 | `ExpenseDetail` |
 | GET | `/api/expenses/{id}` | — | `ExpenseDetail` |
 | PATCH | `/api/expenses/{id}` | 上述任意字段 | `ExpenseDetail`（自动重算清单、状态、文件夹名） |
 | DELETE | `/api/expenses/{id}` | — | `null`（软删除：移出草稿批次，文件移到回收站并删除附件记录；所在批次已外发时 409） |
 | POST | `/api/expenses/{id}/status` | `{ status, note? }`；`void` 必须带 note，并自动移出草稿批次（批次已外发时 409）；`{ status: null }` 表示取消手动、恢复自动 | `ExpenseDetail` |
 | POST | `/api/expenses/{id}/attachments` | multipart：`files`(多个)，`kind`(可选)。不传 kind 时自动识别：能解析为发票（且发票号未被占用）→ `invoice` 并写入 invoice（confirmed=true）；否则走凭证识别器，按 doc_type 设类型（order/receipt→order，payment→payment，itinerary→itinerary，未识别→文件名线索/关键词），写入 evidence（confirmed=true）。传 kind 时不识别 | `ExpenseDetail`（清单与状态已重算） |
+
+记录未人工填写单价/数量时，创建及附件刷新会从订单凭证、发票项目名称、记录名称和摘要中识别带明确数量语义的 1–100（如 `×12`、`20件`、`数量：100`）；未识别按数量 1、单价=总价，识别后单价=总价÷数量（四舍五入到分）。PATCH 人工填写任一价格字段后标记为人工设置，不再自动覆盖；把单价和数量都清空可恢复自动推导。
 
 ### 附件与清单
 
@@ -367,7 +369,9 @@ type ConfirmGroup = {
 
 ### 统计（stats 模块）
 
-`GET /api/stats?start=&end=&date_basis=spent&group_by=category|project|merchant|month|travel_scope`
+`GET /api/stats?start=&end=&date_basis=payment&group_by=category|project|merchant|month|travel_scope`
+
+统计默认 `date_basis=payment`：取支付凭证 `occurred_on`，缺少时回退 `Expense.spent_on`。`order` 同理取订单凭证日期并回退业务发生日期；`invoiced` 为发票开票日期且不回退。接口同时支持 `spent`、`created`、`sent`、`received`。
 
 ```ts
 type Stats = {

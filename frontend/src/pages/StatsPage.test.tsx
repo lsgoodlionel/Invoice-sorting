@@ -13,7 +13,7 @@ function makeStats(overrides: Partial<Stats> = {}): Stats {
   return {
     start: '2016-10-01',
     end: '2026-09-30',
-    date_basis: 'spent',
+    date_basis: 'payment',
     data_start: '2025-05-18',
     totals: TOTALS,
     rows: [],
@@ -38,6 +38,8 @@ describe('StatsPage', () => {
     expect(lastParams(calls).get('end')).toBe(decade.end);
     expect(calls.some((call) => call.url.includes('2000-01-01'))).toBe(false);
     expect(screen.getByRole('button', { name: '近10年' })).toHaveAttribute('aria-pressed', 'true');
+    expect(lastParams(calls).get('date_basis')).toBe('payment');
+    expect(screen.getByText(/当前时间口径：月份和区间按支付凭证日期归属/)).toBeInTheDocument();
   });
 
   test('shows the data start hint when data begins after the selected start', async () => {

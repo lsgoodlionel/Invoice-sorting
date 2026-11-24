@@ -25,7 +25,7 @@ export interface BatchExportOptions {
   layout: ExportLayout;
   duplex: boolean;
 }
-export type DateBasis = 'spent' | 'invoiced' | 'created' | 'sent' | 'received';
+export type DateBasis = 'payment' | 'order' | 'spent' | 'invoiced' | 'created' | 'sent' | 'received';
 export type ExpenseSortBy = 'date' | 'summary' | 'category' | 'amount' | 'status';
 export type SortOrder = 'asc' | 'desc';
 export type TravelScope = '' | 'local' | 'nonlocal';

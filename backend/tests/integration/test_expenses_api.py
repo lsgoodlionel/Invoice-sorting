@@ -64,6 +64,7 @@ def test_create_returns_detail_shape(client):
     assert detail["category_name"] == "易耗品"
     assert detail["requires_lab_platform"] is True
     assert detail["item_name"] == "鼠标×2" and detail["created_on"]
+    assert detail["quantity"] == 2 and detail["unit_price_cents"] == 48000
     assert "设备与实验室" in detail["route_hint"]
     assert detail["missing_count"] == 3
     assert detail["timeline"][0]["to_status"] == "spent"

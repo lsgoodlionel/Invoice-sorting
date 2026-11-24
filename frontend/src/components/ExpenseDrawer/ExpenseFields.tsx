@@ -60,6 +60,7 @@ export function ExpenseFields({ expense }: { expense: ExpenseDetail }) {
       <NumberInput
         label="数量"
         min={1}
+        max={100}
         allowDecimal={false}
         value={expense.quantity ?? ''}
         onChange={(value) => {

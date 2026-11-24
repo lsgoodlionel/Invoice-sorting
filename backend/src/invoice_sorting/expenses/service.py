@@ -22,6 +22,7 @@ from invoice_sorting.db.models import (
     StatusEvent,
     now,
 )
+from invoice_sorting.expenses.pricing import apply_default_pricing
 from invoice_sorting.expenses.status import derive_status
 from invoice_sorting.importer.travel_scope import infer_expense_travel_scope
 from invoice_sorting.settings.service import region_policy
@@ -150,6 +151,9 @@ def create_expense(session: Session, settings: Settings, **fields: Any) -> Expen
     _validate_fields(session, fields)
     manual_scope = bool(fields.get("travel_scope"))
     expense = Expense(status=str(ExpenseStatus.SPENT), status_manual=False, **fields)
+    expense.pricing_manual = (
+        fields.get("unit_price_cents") is not None or fields.get("quantity") is not None
+    )
     expense.travel_scope_manual = manual_scope
     _normalize_currency(expense)
     session.add(expense)
@@ -169,6 +173,10 @@ def update_expense(
         expense.travel_scope_manual = bool(fields["travel_scope"])
     for name, value in fields.items():
         setattr(expense, name, value)
+    if "unit_price_cents" in fields or "quantity" in fields:
+        expense.pricing_manual = not (
+            expense.unit_price_cents is None and expense.quantity is None
+        )
     _normalize_currency(expense)
     session.flush()
     # 只有用户实际改了分类才记住，避免把原有（可能错误的）分类固化
@@ -220,6 +228,7 @@ def refresh_expense(
     """重算清单 → （可选）取消手动 → 自动推导状态 → 同步文件夹名。"""
     session.flush()
     session.refresh(expense, attribute_names=["attachments", "batch", "category", "project"])
+    apply_default_pricing(expense)
     if not expense.travel_scope_manual:
         expense.travel_scope = infer_expense_travel_scope(
             expense, region_policy(session).local_region

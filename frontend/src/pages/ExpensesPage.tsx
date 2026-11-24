@@ -1,11 +1,12 @@
 import { Button, Group, Loader, Stack, Text, Title } from '@mantine/core';
 import { useHotkeys } from '@mantine/hooks';
 import { IconPlus } from '@tabler/icons-react';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { useExpenseList } from '../api/hooks/expenses';
 import { EmptyHint } from '../components/EmptyHint';
 import { ExpenseDrawer } from '../components/ExpenseDrawer/ExpenseDrawer';
+import { useCurrentUser } from '../components/auth/CurrentUserContext';
 import { AddToBatchModal } from '../components/expenses/AddToBatchModal';
 import { ExpenseFilterBar } from '../components/expenses/ExpenseFilterBar';
 import { ExpenseColumnSelector } from '../components/expenses/ExpenseColumnSelector';
@@ -17,7 +18,7 @@ import { usePreventFileDrop } from '../components/expenses/useFileDropTarget';
 import { useRowUpload } from '../components/expenses/useRowUpload';
 import { useQuickAdd } from '../components/QuickAddContext';
 import { filtersToQuery, parseOpenExpenseId } from '../lib/expenseFilters';
-import { readExpenseColumns, saveExpenseColumns, type ExpenseColumnKey } from '../lib/expenseColumns';
+import { readExpenseTablePreferences, saveExpenseTablePreferences, type ExpenseTablePreferences } from '../lib/expenseColumns';
 import { formatCents, sumCents } from '../lib/money';
 import { DEFAULT_VISIBLE_STATUSES, toggleStatus } from '../lib/status';
 
@@ -30,11 +31,18 @@ export function ExpensesPage() {
   const query = useMemo(() => filtersToQuery(filters), [filters]);
   const { data, isLoading } = useExpenseList(query);
   const { openQuickAdd } = useQuickAdd();
+  const { user } = useCurrentUser();
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [searchParams] = useSearchParams();
   const [openId, setOpenId] = useState<number | null>(() => parseOpenExpenseId(searchParams));
   const [isBatchOpen, setBatchOpen] = useState(false);
-  const [columns, setColumns] = useState<ExpenseColumnKey[]>(readExpenseColumns);
+  const userId = user?.id ?? null;
+  const [tablePreferences, setTablePreferences] = useState<ExpenseTablePreferences>(() => readExpenseTablePreferences(userId));
+  useEffect(() => setTablePreferences(readExpenseTablePreferences(userId)), [userId]);
+  const saveTablePreferences = (next: ExpenseTablePreferences) => {
+    setTablePreferences(next);
+    saveExpenseTablePreferences(userId, next);
+  };
   const searchRef = useRef<HTMLInputElement>(null);
   const uploadToRow = useRowUpload();
   usePreventFileDrop();
@@ -58,7 +66,7 @@ export function ExpensesPage() {
           </Text>
         </div>
         <Group gap="xs">
-          <ExpenseColumnSelector value={columns} onChange={(next) => { setColumns(next); saveExpenseColumns(next); }} />
+          <ExpenseColumnSelector value={tablePreferences} onSave={saveTablePreferences} />
           <Button variant="outline" leftSection={<IconPlus size={14} />} onClick={openQuickAdd}>
             记一笔
           </Button>
@@ -90,7 +98,9 @@ export function ExpensesPage() {
           onToggleAll={(checked) => setSelectedIds(checked ? items.map((item) => item.id) : [])}
           onOpen={setOpenId}
           onDropFiles={uploadToRow}
-          columns={columns}
+          columns={tablePreferences.order.filter((key) => tablePreferences.visible.includes(key))}
+          widths={tablePreferences.widths}
+          onWidthChange={(key, width) => saveTablePreferences({ ...tablePreferences, widths: { ...tablePreferences.widths, [key]: width } })}
           sortBy={filters.sortBy}
           sortOrder={filters.sortOrder}
           dateBasis={filters.dateBasis}

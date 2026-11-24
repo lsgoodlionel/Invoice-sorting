@@ -35,7 +35,7 @@ def get_today() -> date:
 def stats_query(
     start: date,
     end: date,
-    date_basis: DateBasis = DateBasis.SPENT,
+    date_basis: DateBasis = DateBasis.PAYMENT,
     group_by: StatsGroupBy = StatsGroupBy.CATEGORY,
     cross_by: StatsCrossBy = StatsCrossBy.STATUS,
 ) -> StatsQuery:
