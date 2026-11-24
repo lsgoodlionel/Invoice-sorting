@@ -55,6 +55,7 @@ def get_expenses(
     sort_order: SortOrder = SortOrder.DESC,
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)] = DEFAULT_PAGE_SIZE,
+    all_items: Annotated[bool, Query(alias="all")] = False,
 ) -> dict[str, Any]:
     filters = ExpenseFilter(
         start=start,
@@ -73,7 +74,7 @@ def get_expenses(
         sort_by=sort_by,
         sort_order=sort_order,
     )
-    return ok(list_expenses(session, filters, page, page_size))
+    return ok(list_expenses(session, filters, page, None if all_items else page_size))
 
 
 @router.post("/expenses")

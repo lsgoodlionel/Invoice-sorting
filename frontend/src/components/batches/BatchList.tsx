@@ -6,6 +6,8 @@ import { BatchStatusBadge } from './BatchStatusBadge';
 interface BatchListProps {
   /** 筛选后的批次 */
   batches: readonly Batch[];
+  /** 筛选后的全部批次，用于汇总；batches 仅为当前页。 */
+  summaryBatches?: readonly Batch[];
   /** 筛选前的批次总数（区分“还没有批次”与“无符合筛选的批次”） */
   totalCount: number;
   selectedId: number | null;
@@ -25,14 +27,14 @@ function BatchListSummary({ batches, isSelectedHidden }: Pick<BatchListProps, 'b
   );
 }
 
-export function BatchList({ batches, totalCount, selectedId, isSelectedHidden, onSelect }: BatchListProps) {
+export function BatchList({ batches, summaryBatches = batches, totalCount, selectedId, isSelectedHidden, onSelect }: BatchListProps) {
   if (totalCount === 0) {
     return <Text size="sm" c="dimmed" p="sm">还没有批次。点上方“新建批次”，再从批次里“添加记录”。</Text>;
   }
   return (
     <Stack gap={0}>
-      <BatchListSummary batches={batches} isSelectedHidden={isSelectedHidden} />
-      {batches.length === 0 && <Text size="sm" c="dimmed" p="sm">没有符合筛选条件的批次。</Text>}
+      <BatchListSummary batches={summaryBatches} isSelectedHidden={isSelectedHidden} />
+      {summaryBatches.length === 0 && <Text size="sm" c="dimmed" p="sm">没有符合筛选条件的批次。</Text>}
       <Stack gap={0} role="list">
         {batches.map((batch) => (
           <UnstyledButton

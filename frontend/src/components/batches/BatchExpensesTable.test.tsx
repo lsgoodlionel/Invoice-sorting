@@ -44,4 +44,14 @@ describe('BatchExpensesTable filters', () => {
     expect(screen.queryAllByTestId(/^batch-expense-/)).toHaveLength(0);
     expect(screen.getByText('没有符合筛选条件的记录')).toBeInTheDocument();
   });
+
+  test('paginates batch records with 10 rows by default', async () => {
+    const user = userEvent.setup();
+    const many = Array.from({ length: 12 }, (_, index) => makeExpense({ id: index + 1, merchant: `商家${index + 1}` }));
+    renderWithProviders(<BatchExpensesTable expenses={many} canRemove={false} onRemove={vi.fn()} onOpen={vi.fn()} />);
+    expect(screen.getAllByTestId(/^batch-expense-/)).toHaveLength(10);
+    await user.click(screen.getByRole('combobox', { name: '每页显示' }));
+    await user.click(await screen.findByRole('option', { name: '20 行' }));
+    expect(screen.getAllByTestId(/^batch-expense-/)).toHaveLength(12);
+  });
 });

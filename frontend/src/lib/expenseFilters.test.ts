@@ -23,6 +23,8 @@ describe('expense filters', () => {
       requiresLabPlatform: null,
       sortBy: 'date',
       sortOrder: 'desc',
+      page: 1,
+      pageSize: 10,
     });
   });
 
@@ -66,8 +68,16 @@ describe('expense filters', () => {
       sort_by: 'date',
       sort_order: 'desc',
       page: 1,
-      page_size: 200,
+      page_size: 10,
     });
+  });
+
+  test('supports page sizes and the unbounded all option', () => {
+    const paged = decodeExpenseFilters(new URLSearchParams('page=3&page_size=40'));
+    expect(filtersToQuery(paged, NOW)).toMatchObject({ page: 3, page_size: 40 });
+    const all = decodeExpenseFilters(new URLSearchParams('page=8&page_size=all'));
+    expect(filtersToQuery(all, NOW)).toMatchObject({ page: 1, all: true });
+    expect(filtersToQuery(all, NOW)).not.toHaveProperty('page_size');
   });
 
   test('expensesLink starts from all-time filters', () => {

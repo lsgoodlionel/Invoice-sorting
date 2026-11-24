@@ -1,6 +1,6 @@
 import { Box, Button, Group, Loader, Stack, Title } from '@mantine/core';
 import { IconPlus } from '@tabler/icons-react';
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { useBatch, useBatchList } from '../api/hooks/batches';
 import { AddExpensesModal } from '../components/batches/AddExpensesModal';
@@ -11,7 +11,9 @@ import { NewBatchModal } from '../components/batches/NewBatchModal';
 import { useBatchFilters } from '../components/batches/useBatchFilters';
 import { EmptyHint } from '../components/EmptyHint';
 import { ExpenseDrawer } from '../components/ExpenseDrawer/ExpenseDrawer';
+import { ListPagination } from '../components/ListPagination';
 import { filterBatches } from '../lib/batchFilters';
+import { pageCount, pageSlice, parsePage, parsePageSize, type PageSize } from '../lib/pagination';
 
 const LIST_WIDTH = 300;
 
@@ -20,12 +22,29 @@ export function BatchesPage() {
   const { data: batches = [], isLoading } = useBatchList();
   const [filters, setFilters] = useBatchFilters();
   const visibleBatches = filterBatches(batches, filters);
+  const listPageSize = parsePageSize(params.get('batch_page_size'));
+  const requestedPage = parsePage(params.get('batch_page'));
+  const listPage = Math.min(requestedPage, pageCount(visibleBatches.length, listPageSize));
+  const shownBatches = pageSlice(visibleBatches, listPage, listPageSize);
   const [isNewOpen, setNewOpen] = useState(false);
   const [openExpenseId, setOpenExpenseId] = useState<number | null>(null);
   const [addingBatchId, setAddingBatchId] = useState<number | null>(null);
 
+  const setListPagination = useCallback((page: number, pageSize: PageSize = listPageSize) => {
+    setParams((current) => {
+      const next = new URLSearchParams(current);
+      if (page === 1) next.delete('batch_page'); else next.set('batch_page', String(page));
+      if (pageSize === 10) next.delete('batch_page_size'); else next.set('batch_page_size', String(pageSize));
+      return next;
+    }, { replace: true });
+  }, [listPageSize, setParams]);
+
+  useEffect(() => {
+    if (requestedPage !== listPage) setListPagination(listPage, listPageSize);
+  }, [listPage, listPageSize, requestedPage, setListPagination]);
+
   const rawId = Number(params.get('id'));
-  const selectedId = Number.isInteger(rawId) && rawId > 0 ? rawId : (visibleBatches[0]?.id ?? null);
+  const selectedId = Number.isInteger(rawId) && rawId > 0 ? rawId : (shownBatches[0]?.id ?? null);
   const isSelectedHidden =
     batches.some((item) => item.id === selectedId) && !visibleBatches.some((item) => item.id === selectedId);
   const { data: batch } = useBatch(selectedId);
@@ -54,10 +73,14 @@ export function BatchesPage() {
           <BatchFilterBar filters={filters} onChange={setFilters} />
           <Box className="batch-list">
             {isLoading ? <Loader size="sm" m="sm" /> : (
-              <BatchList batches={visibleBatches} totalCount={batches.length} selectedId={selectedId}
+              <BatchList batches={shownBatches} summaryBatches={visibleBatches} totalCount={batches.length} selectedId={selectedId}
                 isSelectedHidden={isSelectedHidden} onSelect={select} />
             )}
           </Box>
+          {!isLoading && visibleBatches.length > 0 && (
+            <ListPagination total={visibleBatches.length} page={listPage} pageSize={listPageSize}
+              onPageChange={(page) => setListPagination(page)} onPageSizeChange={(pageSize) => setListPagination(1, pageSize)} compact />
+          )}
         </Stack>
         <Box style={{ flex: 1, minWidth: 0 }}>
           {batch && batch.id === selectedId ? (

@@ -87,4 +87,11 @@ describe('ExpenseTable creator', () => {
     fireEvent.pointerUp(window, { clientX: 150 });
     expect(onWidthChange).toHaveBeenCalledWith('amount', 170);
   });
+
+  test('provides a synchronized horizontal scrollbar above the table', () => {
+    renderWithProviders(
+      <ExpenseTable items={[makeExpense()]} selectedIds={[]} onToggle={vi.fn()} onToggleAll={vi.fn()} onOpen={vi.fn()} onDropFiles={vi.fn()} />,
+    );
+    expect(screen.getByLabelText('横向滚动工具')).toBeInTheDocument();
+  });
 });

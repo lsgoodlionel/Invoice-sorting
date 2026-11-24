@@ -2,6 +2,7 @@
 import type { DateBasis, ExpenseQuery, ExpenseSortBy, ExpenseStatus, SortOrder, TravelScope } from '../api/types';
 import { decodePeriod, encodePeriod, resolvePeriod, type Period } from './period';
 import { DEFAULT_VISIBLE_STATUSES, isDateBasis, parseStatusList } from './status';
+import { DEFAULT_PAGE_SIZE, parsePage, parsePageSize, type PageSize } from './pagination';
 
 export interface ExpenseFilters {
   period: Period;
@@ -18,9 +19,9 @@ export interface ExpenseFilters {
   requiresLabPlatform: boolean | null;
   sortBy: ExpenseSortBy;
   sortOrder: SortOrder;
+  page: number;
+  pageSize: PageSize;
 }
-
-export const DEFAULT_PAGE_SIZE = 200;
 
 function parseId(raw: string | null): number | null {
   if (!raw || !/^\d+$/.test(raw)) return null;
@@ -51,6 +52,8 @@ export function decodeExpenseFilters(params: URLSearchParams): ExpenseFilters {
       ? params.get('sort_by') as ExpenseSortBy
       : 'date',
     sortOrder: params.get('sort_order') === 'asc' ? 'asc' : 'desc',
+    page: parsePage(params.get('page')),
+    pageSize: parsePageSize(params.get('page_size')),
   };
 }
 
@@ -76,6 +79,8 @@ export function encodeExpenseFilters(filters: ExpenseFilters): URLSearchParams {
   setOrDelete(params, 'lab_platform', filters.requiresLabPlatform === null ? null : filters.requiresLabPlatform ? 'required' : 'not_required');
   setOrDelete(params, 'sort_by', filters.sortBy === 'date' ? null : filters.sortBy);
   setOrDelete(params, 'sort_order', filters.sortOrder === 'desc' ? null : filters.sortOrder);
+  setOrDelete(params, 'page', filters.page === 1 ? null : String(filters.page));
+  setOrDelete(params, 'page_size', filters.pageSize === DEFAULT_PAGE_SIZE ? null : String(filters.pageSize));
   return params;
 }
 
@@ -96,8 +101,8 @@ export function filtersToQuery(filters: ExpenseFilters, now: Date = new Date()):
     ...(filters.requiresLabPlatform !== null ? { requires_lab_platform: filters.requiresLabPlatform } : {}),
     sort_by: filters.sortBy,
     sort_order: filters.sortOrder,
-    page: 1,
-    page_size: DEFAULT_PAGE_SIZE,
+    page: filters.pageSize === 'all' ? 1 : filters.page,
+    ...(filters.pageSize === 'all' ? { all: true } : { page_size: filters.pageSize }),
   };
 }
 
@@ -118,6 +123,8 @@ export function expensesLink(partial: Partial<ExpenseFilters>): string {
     requiresLabPlatform: null,
     sortBy: 'date',
     sortOrder: 'desc',
+    page: 1,
+    pageSize: DEFAULT_PAGE_SIZE,
   };
   return `/expenses?${encodeExpenseFilters({ ...base, ...partial }).toString()}`;
 }

@@ -8,7 +8,11 @@ export function useBatchFilters(): [BatchFilters, (patch: Partial<BatchFilters>)
   const filters = useMemo(() => decodeBatchFilters(params), [params]);
   const update = useCallback(
     (patch: Partial<BatchFilters>) => {
-      setParams((current) => encodeBatchFilters(current, { ...decodeBatchFilters(current), ...patch }), { replace: true });
+      setParams((current) => {
+        const next = encodeBatchFilters(current, { ...decodeBatchFilters(current), ...patch });
+        next.delete('batch_page');
+        return next;
+      }, { replace: true });
     },
     [setParams],
   );
