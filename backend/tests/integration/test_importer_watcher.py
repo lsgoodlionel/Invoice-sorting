@@ -186,3 +186,19 @@ def test_watcher_survives_processing_errors(app, settings, monkeypatch):
         assert wait_until(lambda: len(calls) >= 2)
     finally:
         handle.stop()
+
+
+def test_macos_polling_watcher_can_restart(app, settings, monkeypatch):
+    monkeypatch.setattr(watcher, "platform", "darwin")
+    monkeypatch.setattr(watcher, "Observer", lambda: pytest.fail("macOS 启动了原生 Observer"))
+    monkeypatch.setattr(watcher, "STABLE_INTERVAL_SECONDS", 0)
+
+    for name in ("第一次.txt", "第二次.txt"):
+        handle = watcher.InboxWatcher(app, poll_seconds=0.05).start()
+        try:
+            (settings.inbox_dir / name).write_text("x", encoding="utf-8")
+            failed_file = settings.inbox_dir / watcher.FAILED_DIRNAME / name
+            assert wait_until(failed_file.is_file)
+        finally:
+            handle.stop()
+        assert not handle._thread.is_alive()

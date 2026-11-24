@@ -5,6 +5,7 @@ import shutil
 import threading
 import time
 from pathlib import Path
+from sys import platform
 from typing import Any
 
 from sqlalchemy.orm import Session, sessionmaker
@@ -150,13 +151,15 @@ class InboxWatcher:
     def start(self) -> "InboxWatcher":
         inbox = self._app.state.settings.inbox_dir
         inbox.mkdir(parents=True, exist_ok=True)
-        try:
-            observer = Observer()
-            observer.schedule(_WakeHandler(self._wake), str(inbox), recursive=False)
-            observer.start()
-            self._observer = observer
-        except Exception:
-            logger.exception("收件箱文件事件监听启动失败，改为定时轮询")
+        # macOS 上 watchdog 6.0 的 FSEvents 流在启停时可能导致进程崩溃，使用下方已有的轮询线程。
+        if platform != "darwin":
+            try:
+                observer = Observer()
+                observer.schedule(_WakeHandler(self._wake), str(inbox), recursive=False)
+                observer.start()
+                self._observer = observer
+            except Exception:
+                logger.exception("收件箱文件事件监听启动失败，改为定时轮询")
         self._wake.set()  # 启动时先处理一次已有文件
         self._thread.start()
         return self
