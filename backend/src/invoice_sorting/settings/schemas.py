@@ -37,6 +37,7 @@ class CategoryCreate(BaseModel):
     color: str = Field(default="gray", min_length=1, max_length=COLOR_MAX)
     keywords: list[Annotated[str, Field(min_length=1, max_length=NAME_MAX)]] = []
     route_hint: str = Field(default="", max_length=TEXT_MAX)
+    requires_lab_platform: bool = False
 
 
 class CategoryUpdate(BaseModel):
@@ -46,6 +47,7 @@ class CategoryUpdate(BaseModel):
     color: str | None = Field(default=None, min_length=1, max_length=COLOR_MAX)
     keywords: list[Annotated[str, Field(min_length=1, max_length=NAME_MAX)]] | None = None
     route_hint: str | None = Field(default=None, max_length=TEXT_MAX)
+    requires_lab_platform: bool | None = None
     sort: int | None = None
     archived: bool | None = None
 

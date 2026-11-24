@@ -48,6 +48,8 @@ DETAIL_KEYS = {
     "original_amount_cents", "created_by",
     "travel_scope", "travel_scope_label", "travel_scope_manual",
     "stay_check_in", "stay_check_out", "travel_dates_missing",
+    "issued_on", "created_on", "item_name", "item_name_manual", "unit_price_cents",
+    "quantity", "requires_lab_platform",
 }  # fmt: skip
 
 
@@ -60,10 +62,65 @@ def test_create_returns_detail_shape(client):
     assert detail["status"] == "spent"
     assert detail["status_label"] == "已支出"
     assert detail["category_name"] == "易耗品"
+    assert detail["requires_lab_platform"] is True
+    assert detail["item_name"] == "鼠标×2" and detail["created_on"]
     assert "设备与实验室" in detail["route_hint"]
     assert detail["missing_count"] == 3
     assert detail["timeline"][0]["to_status"] == "spent"
     assert detail["created_at"].endswith("+08:00")
+
+
+def test_list_supports_business_fields_sorting_and_platform_filter(client):
+    office = create(
+        client,
+        spent_on="2026-09-02",
+        amount_cents=2000,
+        merchant="乙商家",
+        summary="订书机",
+        item_name="重型订书机",
+        unit_price_cents=1000,
+        quantity=2,
+        category_id=category_id(client, "办公用品"),
+    )
+    consumable = create(
+        client,
+        spent_on="2026-09-01",
+        amount_cents=5000,
+        merchant="甲商家",
+        summary="鼠标",
+        category_id=category_id(client, "易耗品"),
+    )
+    client.post(f"/api/expenses/{consumable['id']}/status", json={"status": "complete"})
+
+    by_amount = client.get(
+        "/api/expenses",
+        params={"sort_by": "amount", "sort_order": "asc", "page_size": 20},
+    ).json()["data"]["items"]
+    assert [item["id"] for item in by_amount] == [office["id"], consumable["id"]]
+    assert by_amount[0]["item_name"] == "重型订书机"
+    assert by_amount[0]["unit_price_cents"] == 1000 and by_amount[0]["quantity"] == 2
+    assert by_amount[0]["created_on"] and by_amount[0]["issued_on"] is None
+
+    platform = client.get(
+        "/api/expenses", params={"requires_lab_platform": True, "page_size": 20}
+    ).json()["data"]
+    assert [item["id"] for item in platform["items"]] == [consumable["id"]]
+
+    by_status = client.get(
+        "/api/expenses",
+        params={"sort_by": "status", "sort_order": "asc", "page_size": 20},
+    ).json()["data"]["items"]
+    assert [item["status"] for item in by_status] == ["spent", "complete"]
+
+
+def test_uncategorized_expense_keeps_platform_application_undetermined(client):
+    expense = create(client, category_id=None)
+
+    assert expense["requires_lab_platform"] is None
+    no_platform = client.get(
+        "/api/expenses", params={"requires_lab_platform": False, "page_size": 20}
+    ).json()["data"]
+    assert expense["id"] not in {item["id"] for item in no_platform["items"]}
 
 
 @pytest.mark.parametrize(
@@ -204,6 +261,10 @@ def test_patch_can_clear_nullable_fields_and_rejects_null_required(client):
     assert cleared.json()["data"]["category_id"] is None
     bad = client.patch(f"/api/expenses/{expense['id']}", json={"amount_cents": None})
     assert bad.status_code == 422
+    assert (
+        client.patch(f"/api/expenses/{expense['id']}", json={"item_name": None}).status_code
+        == 422
+    )
 
 
 def test_travel_scope_can_be_set_manually_or_returned_to_auto(client):

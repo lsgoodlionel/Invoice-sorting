@@ -64,7 +64,7 @@ export function QuickExpenseModal({ opened, onClose, onCreated }: QuickExpenseMo
         }}
       >
         <Stack gap="sm">
-          <DateInput label="支出日期" valueFormat="YYYY-MM-DD" value={draft.spentOn} onChange={(v) => update({ spentOn: v })} required />
+          <DateInput label="业务发生日期" valueFormat="YYYY-MM-DD" value={draft.spentOn} onChange={(v) => update({ spentOn: v })} required />
           <MoneyInput label="金额（元）" cents={draft.cents} onCentsChange={(cents) => update({ cents })} required data-autofocus />
           <TextInput label="商家" value={draft.merchant} onChange={(e) => update({ merchant: e.currentTarget.value })} required />
           <CategorySelect label="分类" value={draft.categoryId} onChange={(categoryId) => update({ categoryId })} clearable />

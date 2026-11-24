@@ -6,7 +6,13 @@ from typing import Annotated, Any
 from fastapi import APIRouter, File, Form, Query, UploadFile
 
 from invoice_sorting.attachments.uploads import store_uploads
-from invoice_sorting.common.constants import AttachmentKind, DateBasis, TravelScope
+from invoice_sorting.common.constants import (
+    AttachmentKind,
+    DateBasis,
+    ExpenseSortBy,
+    SortOrder,
+    TravelScope,
+)
 from invoice_sorting.common.errors import ok
 from invoice_sorting.expenses.amounts import expense_document_total, merge_invoice_amounts
 from invoice_sorting.expenses.listing import list_expenses, parse_statuses
@@ -36,6 +42,7 @@ def get_expenses(
     end: date | None = None,
     date_basis: DateBasis = DateBasis.SPENT,
     category_id: int | None = None,
+    uncategorized: bool = False,
     project_id: int | None = None,
     status: str | None = None,
     q: str | None = None,
@@ -43,6 +50,9 @@ def get_expenses(
     unbatched: bool = False,
     missing: bool = False,
     travel_scope: TravelScope | None = None,
+    requires_lab_platform: bool | None = None,
+    sort_by: ExpenseSortBy = ExpenseSortBy.DATE,
+    sort_order: SortOrder = SortOrder.DESC,
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)] = DEFAULT_PAGE_SIZE,
 ) -> dict[str, Any]:
@@ -51,6 +61,7 @@ def get_expenses(
         end=end,
         date_basis=date_basis,
         category_id=category_id,
+        uncategorized=uncategorized,
         project_id=project_id,
         statuses=parse_statuses(status),
         q=q,
@@ -58,6 +69,9 @@ def get_expenses(
         unbatched=unbatched,
         missing=missing,
         travel_scope=str(travel_scope) if travel_scope else None,
+        requires_lab_platform=requires_lab_platform,
+        sort_by=sort_by,
+        sort_order=sort_order,
     )
     return ok(list_expenses(session, filters, page, page_size))
 

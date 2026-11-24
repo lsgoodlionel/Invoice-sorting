@@ -87,6 +87,12 @@ def test_summary_keyword_when_tax_category_unmatched(session):
     assert result == category_id(session, "低值品")
 
 
+def test_picture_catalog_keywords_route_to_expected_categories(session):
+    assert suggest_category(session, "", "台灯", "") == category_id(session, "办公用品")
+    assert suggest_category(session, "", "生物试剂", "") == category_id(session, "易耗品")
+    assert suggest_category(session, "", "特殊实验材料", "") == category_id(session, "材料")
+
+
 def test_seller_keyword_used_when_summary_unmatched(session):
     result = suggest_category(session, "中国铁路", "上海虹桥-南京南 G7", "")
 

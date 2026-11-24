@@ -22,8 +22,37 @@ describe('statsCellLink', () => {
   });
 
   test('non-numeric or malformed keys do not add filters', () => {
-    expect(statsCellLink({ ...base, groupBy: 'category', row: row('none'), status: null })).not.toContain('category_id');
+    expect(statsCellLink({ ...base, groupBy: 'category', row: row('none'), status: null })).toContain('uncategorized=true');
     expect(statsCellLink({ ...base, groupBy: 'month', row: row('2026-13'), status: null })).toContain('start=2026-07-01');
     expect(statsCellLink({ ...base, groupBy: 'month', row: row('bad'), status: null })).toContain('start=2026-07-01');
+  });
+
+  test('cross dimension and unbatched cells drill through', () => {
+    const batch = statsCellLink({
+      ...base,
+      groupBy: 'category',
+      row: row('3', '易耗品'),
+      status: null,
+      crossBy: 'batch',
+      column: { key: '9', label: '九月批次' },
+    });
+    expect(batch).toContain('category_id=3');
+    expect(batch).toContain('batch_id=9');
+    const unbatched = statsCellLink({
+      ...base,
+      groupBy: 'lab_platform',
+      row: row('required', '需要平台申请'),
+      status: null,
+      crossBy: 'batch',
+      column: { key: 'none', label: '未分批' },
+    });
+    expect(unbatched).toContain('lab_platform=required');
+    expect(unbatched).toContain('unbatched=true');
+    expect(statsCellLink({
+      ...base,
+      groupBy: 'lab_platform',
+      row: row('none', '未判定'),
+      status: null,
+    })).toContain('uncategorized=true');
   });
 });

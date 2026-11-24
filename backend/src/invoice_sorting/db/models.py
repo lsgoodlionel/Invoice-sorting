@@ -58,6 +58,7 @@ class Category(Base):
     color: Mapped[str] = mapped_column(String(20), default="gray")
     keywords: Mapped[list[str]] = mapped_column(JSON, default=list)
     route_hint: Mapped[str] = mapped_column(Text, default="")  # 办理路径说明
+    requires_lab_platform: Mapped[bool] = mapped_column(Boolean, default=False)
     sort: Mapped[int] = mapped_column(Integer, default=0)
     archived: Mapped[bool] = mapped_column(Boolean, default=False)
 
@@ -124,6 +125,9 @@ class Expense(Base):
     amount_cents: Mapped[int] = mapped_column(Integer)
     merchant: Mapped[str] = mapped_column(String(200), default="")
     summary: Mapped[str] = mapped_column(String(200), default="")
+    item_name: Mapped[str] = mapped_column(String(300), default="")
+    unit_price_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    quantity: Mapped[int | None] = mapped_column(Integer, nullable=True)
     category_id: Mapped[int | None] = mapped_column(ForeignKey("category.id"), nullable=True)
     project_id: Mapped[int | None] = mapped_column(ForeignKey("project.id"), nullable=True)
     pay_method: Mapped[str] = mapped_column(String(30), default="")

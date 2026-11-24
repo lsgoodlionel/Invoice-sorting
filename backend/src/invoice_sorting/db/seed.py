@@ -20,9 +20,11 @@ YUAN = 100
 KEYWORDS_VERSION_KEY = "keywords_version"
 RULES_VERSION_KEY = "rules_version"
 MEMORY_VERSION_KEY = "classification_memory_version"
+PLATFORM_CATEGORY_VERSION_KEY = "platform_category_version"
 # 版本 2：分类记忆只记录用户手动修改；旧版自动写入的记忆可能固化了错误分类，升级时清空一次
 MEMORY_VERSION = 2
 RULES_VERSION = 6
+PLATFORM_CATEGORY_VERSION = 1
 LODGING_RULES_VERSION = 5
 BASE_RULES_VERSION = 1  # 未记录 rules_version 的旧库视为版本 1
 
@@ -37,27 +39,32 @@ DEFAULT_CATEGORIES: list[dict] = [
     {
         "name": "办公用品",
         "color": "blue",
+        "requires_lab_platform": False,
         "route_hint": "办公用品不在设备与实验室平台填报，走日常报销。",
     },
     {
         "name": "易耗品",
         "color": "teal",
+        "requires_lab_platform": True,
         "route_hint": "公共数据库 → 设备与实验室 → 报账管理 → 材料易耗品低值品报账 → "
         "新增报账单 → 审批后打印验收单；报销金额填“材料费”。",
     },
     {
         "name": "低值品",
         "color": "cyan",
+        "requires_lab_platform": True,
         "route_hint": "同易耗品路径：材料易耗品低值品报账，审批后打印验收单。",
     },
     {
         "name": "设备",
         "color": "indigo",
+        "requires_lab_platform": True,
         "route_hint": "单价≥1000元设备先申购报账，再到财务“资产业务”；申购时间须早于购买时间。",
     },
     {
         "name": "材料",
         "color": "green",
+        "requires_lab_platform": True,
         "route_hint": "材料易耗品低值品报账，审批后打印验收单；金额填“材料费”。",
     },
     {
@@ -361,4 +368,21 @@ def reset_polluted_memory(session: Session) -> None:
     session.query(ItemMemory).delete()
     session.query(MerchantMemory).delete()
     session.merge(AppSetting(key=MEMORY_VERSION_KEY, value=str(MEMORY_VERSION)))
+    session.commit()
+
+
+def sync_platform_category_flags(session: Session) -> None:
+    """首次升级时为系统默认分类写入平台申请标记；之后尊重用户手工修改。"""
+    stored = session.get(AppSetting, PLATFORM_CATEGORY_VERSION_KEY)
+    if stored is not None and stored.value == str(PLATFORM_CATEGORY_VERSION):
+        return
+    required = {"材料", "易耗品", "低值品", "设备"}
+    for category in session.scalars(select(Category)):
+        if category.name in required:
+            category.requires_lab_platform = True
+        elif category.name == "办公用品":
+            category.requires_lab_platform = False
+    session.merge(
+        AppSetting(key=PLATFORM_CATEGORY_VERSION_KEY, value=str(PLATFORM_CATEGORY_VERSION))
+    )
     session.commit()

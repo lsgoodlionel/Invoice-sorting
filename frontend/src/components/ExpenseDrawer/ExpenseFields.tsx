@@ -1,4 +1,4 @@
-import { Autocomplete, Select, SimpleGrid, Switch, Textarea, TextInput } from '@mantine/core';
+import { Autocomplete, NumberInput, Select, SimpleGrid, Switch, Textarea, TextInput } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
 import { useEffect, useState } from 'react';
 import { useUpdateExpense } from '../../api/hooks/expenses';
@@ -10,7 +10,7 @@ import { ForeignExpenseFields } from './ForeignExpenseFields';
 
 const PAY_METHODS = ['微信', '支付宝', '银行卡', '公务卡', '现金', '对公转账'];
 
-type TextField = 'merchant' | 'summary' | 'pay_method' | 'note';
+type TextField = 'merchant' | 'summary' | 'item_name' | 'pay_method' | 'note';
 
 /** 可编辑字段：文本失焦保存，选择类即时保存；只提交变化的字段。 */
 export function ExpenseFields({ expense }: { expense: ExpenseDetail }) {
@@ -22,7 +22,8 @@ export function ExpenseFields({ expense }: { expense: ExpenseDetail }) {
   const save = (patch: ExpensePatch) => update.mutate(patch);
   const commitText = (field: TextField) => {
     const value = field === 'note' ? texts[field] : texts[field].trim();
-    if (value !== expense[field]) save({ [field]: value });
+    const original = field === 'item_name' ? (expense.item_name_manual ?? '') : expense[field];
+    if (value !== original) save({ [field]: value });
   };
   const textProps = (field: TextField) => ({
     value: texts[field],
@@ -36,7 +37,7 @@ export function ExpenseFields({ expense }: { expense: ExpenseDetail }) {
   return (
     <SimpleGrid cols={2} spacing="sm" verticalSpacing="xs">
       <DateInput
-        label="支出日期"
+        label="业务发生日期"
         valueFormat="YYYY-MM-DD"
         value={expense.spent_on}
         onChange={(value) => value && value !== expense.spent_on && save({ spent_on: value })}
@@ -49,6 +50,23 @@ export function ExpenseFields({ expense }: { expense: ExpenseDetail }) {
       />
       <TextInput label="商家" {...textProps('merchant')} />
       <TextInput label="摘要" {...textProps('summary')} />
+      <TextInput label="名称" description="用于清单和导出；留空时自动取摘要或发票商品名称" {...textProps('item_name')} />
+      <MoneyInput
+        label="单价（元）"
+        cents={expense.unit_price_cents ?? null}
+        onCentsChange={() => undefined}
+        onCommit={(cents) => cents !== (expense.unit_price_cents ?? null) && save({ unit_price_cents: cents })}
+      />
+      <NumberInput
+        label="数量"
+        min={1}
+        allowDecimal={false}
+        value={expense.quantity ?? ''}
+        onChange={(value) => {
+          const quantity = typeof value === 'number' ? value : null;
+          if (quantity !== (expense.quantity ?? null)) save({ quantity });
+        }}
+      />
       <CategorySelect label="分类" value={expense.category_id} onChange={(id) => id !== expense.category_id && save({ category_id: id })} clearable />
       <ProjectSelect label="经费项目" value={expense.project_id} onChange={(id) => id !== expense.project_id && save({ project_id: id })} clearable />
       <Select
@@ -82,5 +100,5 @@ export function ExpenseFields({ expense }: { expense: ExpenseDetail }) {
 }
 
 function pickTexts(expense: ExpenseDetail): Record<TextField, string> {
-  return { merchant: expense.merchant, summary: expense.summary, pay_method: expense.pay_method, note: expense.note };
+  return { merchant: expense.merchant, summary: expense.summary, item_name: expense.item_name_manual ?? '', pay_method: expense.pay_method, note: expense.note };
 }

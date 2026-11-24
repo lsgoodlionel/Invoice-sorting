@@ -136,6 +136,48 @@ def test_group_and_filter_by_travel_scope(client):
     assert filtered["total"] == 1 and filtered["total_cents"] == 300
 
 
+def test_cross_stats_by_category_and_batch(client):
+    office_id = next(
+        item["id"]
+        for item in client.get("/api/categories").json()["data"]
+        if item["name"] == "办公用品"
+    )
+    consumable_id = next(
+        item["id"]
+        for item in client.get("/api/categories").json()["data"]
+        if item["name"] == "易耗品"
+    )
+    office = make_expense(
+        client, spent_on="2026-09-01", cents=300, merchant="办公", category_id=office_id
+    )
+    consumable = make_expense(
+        client,
+        spent_on="2026-09-02",
+        cents=700,
+        merchant="耗材",
+        category_id=consumable_id,
+    )
+    batch = make_batch(client, "九月批次")
+    add_items(client, batch["id"], [office["id"], consumable["id"]], force=True)
+
+    data = stats(client, **Q3, group_by="category", cross_by="batch")
+    assert data["columns"] == [{"key": str(batch["id"]), "label": "九月批次"}]
+    by_label = {row["label"]: row for row in data["rows"]}
+    assert by_label["办公用品"]["cells"][str(batch["id"])] == {
+        "count": 1,
+        "amount_cents": 300,
+    }
+    assert by_label["易耗品"]["total_count"] == 1
+
+    make_expense(client, spent_on="2026-09-03", cents=100, merchant="待分类")
+    platform_rows = stats(client, **Q3, group_by="lab_platform")["rows"]
+    assert {(row["key"], row["total_cents"]) for row in platform_rows} == {
+        ("required", 700),
+        ("not_required", 300),
+        ("none", 100),
+    }
+
+
 def test_stats_validation(client):
     assert client.get("/api/stats", params={"start": "2026-09-01"}).status_code == 422
     reversed_range = client.get("/api/stats", params={"start": "2026-09-02", "end": "2026-09-01"})
@@ -156,14 +198,16 @@ def test_stats_export_xlsx(client, lifecycle):
     workbook = openpyxl.load_workbook(io.BytesIO(response.content))
     assert workbook.sheetnames == ["汇总", "明细"]
     summary = list(workbook["汇总"].iter_rows(values_only=True))
-    assert "按支出日期统计" in summary[0][0]
+    assert "按业务发生日期统计" in summary[0][0]
     assert summary[1][:2] == ("支出总额（不含作废）", 570)
     assert summary[7][:2] == ("月份", "合计（不含作废）")
     assert summary[8][:2] == ("2026-09", 570)
     details = list(workbook["明细"].iter_rows(values_only=True))
     assert len(details) == 3
     assert details[1][1:4] == ("2026-09-20", "2026-09-20", "滴滴")
-    assert details[1][7:] == ("未识别", "已报销", 500, 500)
+    assert details[0][3:8] == ("名称", "单价", "数量", "总价", "发票号")
+    assert details[1][6] == 500 and details[1][7] is None
+    assert details[1][12:] == ("未识别", "已报销", 500)
 
 
 def test_data_start_is_earliest_basis_date_in_range(client, lifecycle):

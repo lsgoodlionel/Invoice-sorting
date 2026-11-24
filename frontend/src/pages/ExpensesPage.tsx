@@ -8,6 +8,7 @@ import { EmptyHint } from '../components/EmptyHint';
 import { ExpenseDrawer } from '../components/ExpenseDrawer/ExpenseDrawer';
 import { AddToBatchModal } from '../components/expenses/AddToBatchModal';
 import { ExpenseFilterBar } from '../components/expenses/ExpenseFilterBar';
+import { ExpenseColumnSelector } from '../components/expenses/ExpenseColumnSelector';
 import { ExpenseTable } from '../components/expenses/ExpenseTable';
 import { SelectionBar } from '../components/expenses/SelectionBar';
 import { StatusGroupBar } from '../components/expenses/StatusGroupBar';
@@ -16,8 +17,9 @@ import { usePreventFileDrop } from '../components/expenses/useFileDropTarget';
 import { useRowUpload } from '../components/expenses/useRowUpload';
 import { useQuickAdd } from '../components/QuickAddContext';
 import { filtersToQuery, parseOpenExpenseId } from '../lib/expenseFilters';
+import { readExpenseColumns, saveExpenseColumns, type ExpenseColumnKey } from '../lib/expenseColumns';
 import { formatCents, sumCents } from '../lib/money';
-import { toggleStatus } from '../lib/status';
+import { DEFAULT_VISIBLE_STATUSES, toggleStatus } from '../lib/status';
 
 function toggleId(ids: readonly number[], id: number): number[] {
   return ids.includes(id) ? ids.filter((item) => item !== id) : [...ids, id];
@@ -32,6 +34,7 @@ export function ExpensesPage() {
   const [searchParams] = useSearchParams();
   const [openId, setOpenId] = useState<number | null>(() => parseOpenExpenseId(searchParams));
   const [isBatchOpen, setBatchOpen] = useState(false);
+  const [columns, setColumns] = useState<ExpenseColumnKey[]>(readExpenseColumns);
   const searchRef = useRef<HTMLInputElement>(null);
   const uploadToRow = useRowUpload();
   usePreventFileDrop();
@@ -54,15 +57,22 @@ export function ExpensesPage() {
             共 {data?.total ?? 0} 条 · {formatCents(data?.total_cents ?? 0)}
           </Text>
         </div>
-        <Button variant="outline" leftSection={<IconPlus size={14} />} onClick={openQuickAdd}>
-          记一笔
-        </Button>
+        <Group gap="xs">
+          <ExpenseColumnSelector value={columns} onChange={(next) => { setColumns(next); saveExpenseColumns(next); }} />
+          <Button variant="outline" leftSection={<IconPlus size={14} />} onClick={openQuickAdd}>
+            记一笔
+          </Button>
+        </Group>
       </Group>
       <ExpenseFilterBar ref={searchRef} filters={filters} onChange={setFilters} />
       <StatusGroupBar
         counts={data?.status_counts ?? {}}
         selected={filters.statuses}
-        onToggle={(status) => setFilters({ statuses: toggleStatus(filters.statuses, status) })}
+        onToggle={(status) => {
+          const isDefault = filters.statuses.length === DEFAULT_VISIBLE_STATUSES.length
+            && DEFAULT_VISIBLE_STATUSES.every((item) => filters.statuses.includes(item));
+          setFilters({ statuses: isDefault && !DEFAULT_VISIBLE_STATUSES.includes(status) ? [status] : toggleStatus(filters.statuses, status) });
+        }}
       />
       {isLoading && <Loader size="sm" />}
       {!isLoading && items.length === 0 && (
@@ -80,6 +90,19 @@ export function ExpensesPage() {
           onToggleAll={(checked) => setSelectedIds(checked ? items.map((item) => item.id) : [])}
           onOpen={setOpenId}
           onDropFiles={uploadToRow}
+          columns={columns}
+          sortBy={filters.sortBy}
+          sortOrder={filters.sortOrder}
+          dateBasis={filters.dateBasis}
+          onSort={(sortBy, dateBasis) => {
+            const same = filters.sortBy === sortBy && (!dateBasis || filters.dateBasis === dateBasis);
+            const defaultOrder = sortBy === 'date' || sortBy === 'amount' ? 'desc' : 'asc';
+            setFilters({
+              sortBy,
+              ...(dateBasis ? { dateBasis } : {}),
+              sortOrder: same ? (filters.sortOrder === 'asc' ? 'desc' : 'asc') : defaultOrder,
+            });
+          }}
         />
       )}
       {visibleSelectedIds.length > 0 && (

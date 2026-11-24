@@ -13,6 +13,7 @@ from invoice_sorting.db.models import TZ
 from invoice_sorting.settings.deps import SessionDep
 from invoice_sorting.stats.dashboard import build_dashboard
 from invoice_sorting.stats.service import (
+    StatsCrossBy,
     StatsGroupBy,
     StatsQuery,
     load_entries,
@@ -36,8 +37,15 @@ def stats_query(
     end: date,
     date_basis: DateBasis = DateBasis.SPENT,
     group_by: StatsGroupBy = StatsGroupBy.CATEGORY,
+    cross_by: StatsCrossBy = StatsCrossBy.STATUS,
 ) -> StatsQuery:
-    query = StatsQuery(start=start, end=end, date_basis=date_basis, group_by=group_by)
+    query = StatsQuery(
+        start=start,
+        end=end,
+        date_basis=date_basis,
+        group_by=group_by,
+        cross_by=cross_by,
+    )
     validate_range(query)
     return query
 

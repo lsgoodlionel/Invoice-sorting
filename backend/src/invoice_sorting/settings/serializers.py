@@ -12,6 +12,7 @@ def serialize_category(category: Category) -> dict[str, Any]:
         "color": category.color,
         "keywords": list(category.keywords or []),
         "route_hint": category.route_hint or "",
+        "requires_lab_platform": bool(category.requires_lab_platform),
         "sort": category.sort,
         "archived": bool(category.archived),
     }

@@ -18,6 +18,7 @@ export interface CandidateFilters {
   statuses: readonly ExpenseStatus[];
   evidence: EvidenceFilter;
   search: string;
+  requiresLabPlatform: boolean | null;
 }
 
 export const DEFAULT_CANDIDATE_FILTERS: CandidateFilters = {
@@ -29,6 +30,7 @@ export const DEFAULT_CANDIDATE_FILTERS: CandidateFilters = {
   statuses: [],
   evidence: 'all',
   search: '',
+  requiresLabPlatform: null,
 };
 
 /** 服务端查询中除 unbatched/page_size 外的部分。 */
@@ -62,6 +64,7 @@ export function buildCandidateQuery(
     ...(projectId !== null ? { project_id: projectId } : {}),
     ...(filters.statuses.length > 0 ? { status: [...filters.statuses] } : {}),
     ...(filters.evidence === 'missing' ? { missing: true } : {}),
+    ...(filters.requiresLabPlatform !== null ? { requires_lab_platform: filters.requiresLabPlatform } : {}),
   };
 }
 
@@ -91,6 +94,7 @@ export function hasActiveFilters(filters: CandidateFilters): boolean {
     filters.projectId !== null ||
     filters.statuses.length > 0 ||
     filters.evidence !== 'all' ||
-    filters.search.trim() !== ''
+    filters.search.trim() !== '' ||
+    filters.requiresLabPlatform !== null
   );
 }

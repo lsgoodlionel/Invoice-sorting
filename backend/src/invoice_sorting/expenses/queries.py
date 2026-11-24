@@ -3,15 +3,18 @@
 from dataclasses import dataclass, field
 from datetime import date
 
-from sqlalchemy import ColumnElement, Select, and_, exists, func, or_, select
+from sqlalchemy import ColumnElement, Select, and_, case, exists, func, or_, select
 
 from invoice_sorting.common.constants import (
     AttachmentKind,
     ChecklistLevel,
     ChecklistState,
     DateBasis,
+    ExpenseSortBy,
+    ExpenseStatus,
+    SortOrder,
 )
-from invoice_sorting.db.models import Attachment, ChecklistItem, Expense, InvoiceData
+from invoice_sorting.db.models import Attachment, Category, ChecklistItem, Expense, InvoiceData
 
 
 @dataclass(frozen=True)
@@ -20,6 +23,7 @@ class ExpenseFilter:
     end: date | None = None  # 含当天
     date_basis: DateBasis = DateBasis.SPENT
     category_id: int | None = None
+    uncategorized: bool = False
     project_id: int | None = None
     statuses: list[str] = field(default_factory=list)
     q: str | None = None
@@ -28,6 +32,9 @@ class ExpenseFilter:
     missing: bool = False  # 仅含必需缺项的记录
     include_deleted: bool = False
     travel_scope: str | None = None
+    requires_lab_platform: bool | None = None
+    sort_by: ExpenseSortBy = ExpenseSortBy.DATE
+    sort_order: SortOrder = SortOrder.DESC
 
 
 def invoice_issued_on_column() -> ColumnElement[date]:
@@ -46,6 +53,8 @@ def expense_date_column(date_basis: DateBasis) -> ColumnElement[date]:
     basis = DateBasis(date_basis)
     if basis == DateBasis.INVOICED:
         return invoice_issued_on_column()
+    if basis == DateBasis.CREATED:
+        return func.date(Expense.created_at)
     if basis == DateBasis.SENT:
         return Expense.sent_on
     if basis == DateBasis.RECEIVED:
@@ -65,6 +74,7 @@ def _text_condition(q: str) -> ColumnElement[bool]:
     return or_(
         Expense.merchant.contains(q, autoescape=True),
         Expense.summary.contains(q, autoescape=True),
+        Expense.item_name.contains(q, autoescape=True),
         invoice_match,
     )
 
@@ -89,6 +99,8 @@ def _conditions(filters: ExpenseFilter) -> list[ColumnElement[bool]]:
             conditions.append(column <= filters.end)
     if filters.category_id is not None:
         conditions.append(Expense.category_id == filters.category_id)
+    if filters.uncategorized:
+        conditions.append(Expense.category_id.is_(None))
     if filters.project_id is not None:
         conditions.append(Expense.project_id == filters.project_id)
     if filters.statuses:
@@ -103,13 +115,49 @@ def _conditions(filters: ExpenseFilter) -> list[ColumnElement[bool]]:
         conditions.append(_has_required_missing())
     if filters.travel_scope:
         conditions.append(Expense.travel_scope == filters.travel_scope)
+    if filters.requires_lab_platform is not None:
+        conditions.append(
+            exists().where(
+                Category.id == Expense.category_id,
+                Category.requires_lab_platform.is_(filters.requires_lab_platform),
+            )
+        )
     return conditions
 
 
+def _sort_column(filters: ExpenseFilter) -> ColumnElement:
+    if filters.sort_by == ExpenseSortBy.SUMMARY:
+        return Expense.summary
+    if filters.sort_by == ExpenseSortBy.CATEGORY:
+        return (
+            select(Category.name)
+            .where(Category.id == Expense.category_id)
+            .correlate(Expense)
+            .scalar_subquery()
+        )
+    if filters.sort_by == ExpenseSortBy.AMOUNT:
+        return Expense.amount_cents
+    if filters.sort_by == ExpenseSortBy.STATUS:
+        return case(
+            *[
+                (Expense.status == status.value, index)
+                for index, status in enumerate(ExpenseStatus)
+            ],
+            else_=len(ExpenseStatus),
+        )
+    return expense_date_column(filters.date_basis)
+
+
 def build_expense_query(filters: ExpenseFilter) -> Select[tuple[Expense]]:
-    """按筛选条件构造查询，默认按支出日期倒序。"""
+    """按筛选条件构造查询，默认按业务发生日期倒序。"""
+    column = _sort_column(filters)
+    ordered = (
+        column.asc().nulls_last()
+        if filters.sort_order == SortOrder.ASC
+        else column.desc().nulls_last()
+    )
     return (
         select(Expense)
         .where(and_(True, *_conditions(filters)))
-        .order_by(Expense.spent_on.desc(), Expense.id.desc())
+        .order_by(ordered, Expense.id.desc())
     )

@@ -43,6 +43,29 @@ def first_invoice_no(expense: Expense) -> str | None:
     return None
 
 
+def first_invoice_issued_on(expense: Expense) -> str | None:
+    dates = [
+        attachment.invoice_data.issued_on
+        for attachment in expense.attachments
+        if attachment.kind == AttachmentKind.INVOICE
+        and attachment.invoice_data is not None
+        and attachment.invoice_data.issued_on is not None
+    ]
+    return iso_date(min(dates)) if dates else None
+
+
+def display_item_name(expense: Expense) -> str:
+    if expense.item_name.strip():
+        return expense.item_name.strip()
+    if expense.summary.strip():
+        return expense.summary.strip()
+    for attachment in sorted(expense.attachments, key=lambda item: item.id):
+        invoice = attachment.invoice_data
+        if invoice is not None and invoice.item_summary.strip():
+            return invoice.item_summary.strip()
+    return expense.merchant.strip()
+
+
 def _policy_for(expense: Expense) -> RegionPolicy:
     session = object_session(expense)
     return region_policy(session) if session is not None else DEFAULT_POLICY
@@ -68,12 +91,19 @@ def serialize_expense_summary(
     return {
         "id": expense.id,
         "spent_on": iso_date(expense.spent_on),
+        "issued_on": first_invoice_issued_on(expense),
+        "created_on": iso_date(expense.created_at.date()),
         "amount_cents": expense.amount_cents,
         "merchant": expense.merchant,
         "summary": expense.summary,
+        "item_name": display_item_name(expense),
+        "item_name_manual": expense.item_name or "",
+        "unit_price_cents": expense.unit_price_cents,
+        "quantity": expense.quantity,
         "category_id": expense.category_id,
         "category_name": category.name if category else None,
         "category_color": category.color if category else None,
+        "requires_lab_platform": bool(category.requires_lab_platform) if category else None,
         "project_id": expense.project_id,
         "project_name": project.name if project else None,
         "status": expense.status,

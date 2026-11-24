@@ -10,6 +10,7 @@ export interface BatchExpenseFilter {
   category: string | null;
   /** 为空表示全部状态 */
   statuses: readonly ExpenseStatus[];
+  requiresLabPlatform?: boolean | null;
 }
 
 export interface Option<V extends string = string> {
@@ -17,7 +18,7 @@ export interface Option<V extends string = string> {
   label: string;
 }
 
-export const EMPTY_BATCH_EXPENSE_FILTER: BatchExpenseFilter = { category: null, statuses: [] };
+export const EMPTY_BATCH_EXPENSE_FILTER: BatchExpenseFilter = { category: null, statuses: [], requiresLabPlatform: null };
 
 const categoryKey = (expense: ExpenseSummary): string =>
   expense.category_id === null ? UNCATEGORIZED : String(expense.category_id);
@@ -30,7 +31,8 @@ export function filterBatchExpenses(
   return expenses.filter(
     (expense) =>
       (filter.category === null || categoryKey(expense) === filter.category) &&
-      (filter.statuses.length === 0 || filter.statuses.includes(expense.status)),
+      (filter.statuses.length === 0 || filter.statuses.includes(expense.status)) &&
+      (filter.requiresLabPlatform == null || expense.requires_lab_platform === filter.requiresLabPlatform),
   );
 }
 
