@@ -150,7 +150,7 @@ curl -fsSL https://raw.githubusercontent.com/lsgoodlionel/Invoice-sorting/main/d
 
 ### 按版本安装与回滚
 
-脚本默认走 `release` 通道：从 GitHub Releases 下载**固定版本**的发布包并逐个校验 SHA-256，任何时候装到的都是同一份通过了完整 CI 的产物，而不是「当时的 main」。当前最新正式版 **v0.3.1**；本分支开发版本为 v0.3.2。
+脚本默认走 `release` 通道：从 GitHub Releases 下载**固定版本**的发布包并逐个校验 SHA-256，任何时候装到的都是同一份通过了完整 CI 的产物，而不是「当时的 main」。[v0.3.2 发布说明](https://github.com/lsgoodlionel/Invoice-sorting/releases/tag/v0.3.2)提供该版本的安装命令和校验文件。
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/lsgoodlionel/Invoice-sorting/main/deploy/install.sh | sudo VERSION=v0.3.1 bash
