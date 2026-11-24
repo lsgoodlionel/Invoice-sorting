@@ -1,11 +1,13 @@
 """统计 API（T14/T15/T16）与统计导出。"""
 
 import io
+from datetime import date
 from urllib.parse import quote
 
 import openpyxl
 import pytest
 
+from invoice_sorting.db.models import Attachment, EvidenceData
 from tests.integration.test_batches_helpers import (
     add_items,
     category_id,
@@ -44,7 +46,7 @@ def lifecycle(client):
 
 
 def test_date_basis_assigns_periods(client, lifecycle):  # T14
-    by_spent = stats(client, **Q3)
+    by_spent = stats(client, **Q3, date_basis="spent")
     assert by_spent["date_basis"] == "spent"
     assert by_spent["totals"]["spent_cents"] == 57000
     assert by_spent["totals"]["reimbursed_cents"] == 50000
@@ -60,6 +62,47 @@ def test_date_basis_assigns_periods(client, lifecycle):  # T14
     by_sent = stats(client, **Q4, date_basis="sent", group_by="month")
     assert [(row["key"], row["total_cents"]) for row in by_sent["rows"]] == [("2026-10", 50000)]
     assert stats(client, **Q4, date_basis="invoiced")["rows"] == []  # 图片发票无开票日期
+
+
+def test_payment_and_order_date_basis_use_evidence_date_with_business_fallback(client, session):
+    with_dates = make_expense(
+        client,
+        spent_on="2026-09-20",
+        cents=500,
+        merchant="有凭证日期",
+        with_invoice=False,
+    )
+    fallback = make_expense(
+        client,
+        spent_on="2026-09-25",
+        cents=700,
+        merchant="回退业务日期",
+        with_invoice=False,
+    )
+    payment = Attachment(
+        expense_id=with_dates["id"],
+        kind="payment",
+        file_path="a",
+        original_name="支付.png",
+        sha256="p" * 64,
+    )
+    payment.evidence_data = EvidenceData(occurred_on=date(2026, 10, 2), item_name="支付")
+    order = Attachment(
+        expense_id=with_dates["id"],
+        kind="order",
+        file_path="b",
+        original_name="订单.png",
+        sha256="o" * 64,
+    )
+    order.evidence_data = EvidenceData(occurred_on=date(2026, 8, 15), item_name="订单")
+    session.add_all([payment, order])
+    session.commit()
+
+    assert stats(client, start="2026-10-01", end="2026-10-31")["totals"]["spent_cents"] == 500
+    by_order = stats(client, start="2026-08-01", end="2026-08-31", date_basis="order")
+    assert by_order["totals"]["spent_cents"] == 500
+    fallback_payment = stats(client, start="2026-09-01", end="2026-09-30", date_basis="payment")
+    assert fallback_payment["totals"]["spent_cents"] == fallback["amount_cents"]
 
 
 def test_void_is_listed_separately(client):  # T15
@@ -198,7 +241,7 @@ def test_stats_export_xlsx(client, lifecycle):
     workbook = openpyxl.load_workbook(io.BytesIO(response.content))
     assert workbook.sheetnames == ["汇总", "明细"]
     summary = list(workbook["汇总"].iter_rows(values_only=True))
-    assert "按业务发生日期统计" in summary[0][0]
+    assert "按支付日期（缺失时按业务发生日期）统计" in summary[0][0]
     assert summary[1][:2] == ("支出总额（不含作废）", 570)
     assert summary[7][:2] == ("月份", "合计（不含作废）")
     assert summary[8][:2] == ("2026-09", 570)

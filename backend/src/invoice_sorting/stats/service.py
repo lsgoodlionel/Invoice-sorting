@@ -25,6 +25,8 @@ NO_TRAVEL_SCOPE = "未识别"
 MAX_MONTHS = 240
 PENDING_STATUSES = frozenset({ExpenseStatus.SPENT, ExpenseStatus.INVOICED, ExpenseStatus.COMPLETE})
 DATE_BASIS_LABELS: dict[DateBasis, str] = {
+    DateBasis.PAYMENT: "支付日期（缺失时按业务发生日期）",
+    DateBasis.ORDER: "订单日期（缺失时按业务发生日期）",
     DateBasis.SPENT: "业务发生日期",
     DateBasis.INVOICED: "发票开票日期",
     DateBasis.CREATED: "凭证填报日期",
@@ -55,7 +57,7 @@ class StatsCrossBy(StrEnum):
 class StatsQuery:
     start: date
     end: date
-    date_basis: DateBasis = DateBasis.SPENT
+    date_basis: DateBasis = DateBasis.PAYMENT
     group_by: StatsGroupBy = StatsGroupBy.CATEGORY
     cross_by: StatsCrossBy = StatsCrossBy.STATUS
 

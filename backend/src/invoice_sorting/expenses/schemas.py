@@ -53,7 +53,7 @@ class ExpenseCreate(BaseModel):
     summary: str = Field(default="", max_length=SUMMARY_MAX)
     item_name: str = Field(default="", max_length=ITEM_NAME_MAX)
     unit_price_cents: Cents | None = None
-    quantity: Annotated[int, Field(ge=1, strict=True)] | None = None
+    quantity: Annotated[int, Field(ge=1, le=100, strict=True)] | None = None
     category_id: int | None = None
     project_id: int | None = None
     pay_method: str = Field(default="", max_length=PAY_METHOD_MAX)
@@ -74,7 +74,7 @@ class ExpenseUpdate(BaseModel):
     summary: str | None = Field(default=None, max_length=SUMMARY_MAX)
     item_name: str | None = Field(default=None, max_length=ITEM_NAME_MAX)
     unit_price_cents: Cents | None = None
-    quantity: Annotated[int, Field(ge=1, strict=True)] | None = None
+    quantity: Annotated[int, Field(ge=1, le=100, strict=True)] | None = None
     category_id: int | None = None
     project_id: int | None = None
     pay_method: str | None = Field(default=None, max_length=PAY_METHOD_MAX)

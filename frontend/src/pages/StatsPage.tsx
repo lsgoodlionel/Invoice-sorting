@@ -33,6 +33,16 @@ const CROSS_OPTIONS: { value: StatsCrossBy; label: string }[] = [
 const isGroupBy = (value: string | null): value is StatsGroupBy => GROUP_OPTIONS.some((o) => o.value === value);
 const isCrossBy = (value: string | null): value is StatsCrossBy => CROSS_OPTIONS.some((o) => o.value === value);
 
+const DATE_BASIS_HINTS: Record<DateBasis, string> = {
+  payment: '月份和区间按支付凭证日期归属；没有支付日期时使用业务发生日期。',
+  order: '月份和区间按订单日期归属；没有订单日期时使用业务发生日期。',
+  spent: '月份和区间按业务实际发生日期归属。',
+  invoiced: '月份和区间按发票开票日期归属；没有开票日期的记录不计入。',
+  created: '月份和区间按凭证录入系统的日期归属。',
+  sent: '月份和区间按批次外发日期归属；未外发记录不计入。',
+  received: '月份和区间按实际到账日期归属；未到账记录不计入。',
+};
+
 function DataStartHint({ dataStart, start }: { dataStart: string | null | undefined; start: string }) {
   if (!dataStart || dataStart <= start) return null;
   return (
@@ -46,7 +56,7 @@ export function StatsPage() {
   const [params, setParams] = useSearchParams();
   const period = toStatsPeriod(decodePeriod(params, 'this_year'));
   const basisParam = params.get('date_basis');
-  const dateBasis: DateBasis = isDateBasis(basisParam) ? basisParam : 'spent';
+  const dateBasis: DateBasis = isDateBasis(basisParam) ? basisParam : 'payment';
   const groupParam = params.get('group_by');
   const groupBy: StatsGroupBy = isGroupBy(groupParam) ? groupParam : 'category';
   const crossParam = params.get('cross_by');
@@ -78,6 +88,7 @@ export function StatsPage() {
             hint={<DataStartHint dataStart={data?.data_start} start={data?.start ?? start} />}
           />
           <PeriodPresetBar value={period.preset} onSelect={changePeriod} />
+          <Text size="xs" c="dimmed">当前时间口径：{DATE_BASIS_HINTS[dateBasis]}</Text>
         </Stack>
         <Button component="a" href={statsApi.exportUrl(query)} variant="outline" leftSection={<IconFileSpreadsheet size={16} />}>
           导出 Excel

@@ -14,7 +14,14 @@ from invoice_sorting.common.constants import (
     ExpenseStatus,
     SortOrder,
 )
-from invoice_sorting.db.models import Attachment, Category, ChecklistItem, Expense, InvoiceData
+from invoice_sorting.db.models import (
+    Attachment,
+    Category,
+    ChecklistItem,
+    EvidenceData,
+    Expense,
+    InvoiceData,
+)
 
 
 @dataclass(frozen=True)
@@ -48,9 +55,25 @@ def invoice_issued_on_column() -> ColumnElement[date]:
     )
 
 
+def evidence_occurred_on_column(kind: AttachmentKind) -> ColumnElement[date]:
+    """指定订单/支付凭证中最早的实际日期；缺少时回退记录业务发生日期。"""
+    occurred = (
+        select(func.min(EvidenceData.occurred_on))
+        .join(Attachment, Attachment.id == EvidenceData.attachment_id)
+        .where(Attachment.expense_id == Expense.id, Attachment.kind == kind)
+        .correlate(Expense)
+        .scalar_subquery()
+    )
+    return func.coalesce(occurred, Expense.spent_on)
+
+
 def expense_date_column(date_basis: DateBasis) -> ColumnElement[date]:
     """日期口径 → 对应的日期表达式。统计模块按月分组时也应使用它。"""
     basis = DateBasis(date_basis)
+    if basis == DateBasis.PAYMENT:
+        return evidence_occurred_on_column(AttachmentKind.PAYMENT)
+    if basis == DateBasis.ORDER:
+        return evidence_occurred_on_column(AttachmentKind.ORDER)
     if basis == DateBasis.INVOICED:
         return invoice_issued_on_column()
     if basis == DateBasis.CREATED:

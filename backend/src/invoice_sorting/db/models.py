@@ -128,6 +128,7 @@ class Expense(Base):
     item_name: Mapped[str] = mapped_column(String(300), default="")
     unit_price_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
     quantity: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    pricing_manual: Mapped[bool] = mapped_column(Boolean, default=False)
     category_id: Mapped[int | None] = mapped_column(ForeignKey("category.id"), nullable=True)
     project_id: Mapped[int | None] = mapped_column(ForeignKey("project.id"), nullable=True)
     pay_method: Mapped[str] = mapped_column(String(30), default="")
