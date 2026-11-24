@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from invoice_sorting.common.constants import DateBasis, ExpenseStatus
 from invoice_sorting.common.errors import AppError
-from invoice_sorting.db.models import Expense
+from invoice_sorting.db.models import Attachment, Expense
 from invoice_sorting.expenses.queries import (
     ExpenseFilter,
     build_expense_query,
@@ -25,8 +25,9 @@ NO_TRAVEL_SCOPE = "未识别"
 MAX_MONTHS = 240
 PENDING_STATUSES = frozenset({ExpenseStatus.SPENT, ExpenseStatus.INVOICED, ExpenseStatus.COMPLETE})
 DATE_BASIS_LABELS: dict[DateBasis, str] = {
-    DateBasis.SPENT: "支出日期",
-    DateBasis.INVOICED: "开票日期",
+    DateBasis.SPENT: "业务发生日期",
+    DateBasis.INVOICED: "发票开票日期",
+    DateBasis.CREATED: "凭证填报日期",
     DateBasis.SENT: "外发日期",
     DateBasis.RECEIVED: "到账日期",
 }
@@ -38,6 +39,16 @@ class StatsGroupBy(StrEnum):
     MERCHANT = "merchant"
     MONTH = "month"
     TRAVEL_SCOPE = "travel_scope"
+    BATCH = "batch"
+    LAB_PLATFORM = "lab_platform"
+
+
+class StatsCrossBy(StrEnum):
+    STATUS = "status"
+    CATEGORY = "category"
+    MONTH = "month"
+    BATCH = "batch"
+    LAB_PLATFORM = "lab_platform"
 
 
 @dataclass(frozen=True)
@@ -46,6 +57,7 @@ class StatsQuery:
     end: date
     date_basis: DateBasis = DateBasis.SPENT
     group_by: StatsGroupBy = StatsGroupBy.CATEGORY
+    cross_by: StatsCrossBy = StatsCrossBy.STATUS
 
 
 @dataclass(frozen=True)
@@ -81,9 +93,20 @@ def load_entries(session: Session, query: StatsQuery) -> list[StatsEntry]:
     statement = (
         build_expense_query(filters)
         .add_columns(column)
-        .options(selectinload(Expense.category), selectinload(Expense.project))
+        .options(
+            selectinload(Expense.category),
+            selectinload(Expense.project),
+            selectinload(Expense.batch),
+            selectinload(Expense.attachments).selectinload(Attachment.invoice_data),
+        )
     )
-    return [StatsEntry(expense, basis_date) for expense, basis_date in session.execute(statement)]
+    return [
+        StatsEntry(
+            expense,
+            date.fromisoformat(basis_date) if isinstance(basis_date, str) else basis_date,
+        )
+        for expense, basis_date in session.execute(statement)
+    ]
 
 
 def _is_void(expense: Expense) -> bool:
@@ -105,7 +128,7 @@ def compute_totals(expenses: list[Expense]) -> dict[str, int]:
     }
 
 
-def _group_key(entry: StatsEntry, group_by: StatsGroupBy) -> tuple[str, str]:
+def _group_key(entry: StatsEntry, group_by: StatsGroupBy | StatsCrossBy) -> tuple[str, str]:
     expense = entry.expense
     if group_by == StatsGroupBy.CATEGORY:
         category = expense.category
@@ -120,26 +143,66 @@ def _group_key(entry: StatsEntry, group_by: StatsGroupBy) -> tuple[str, str]:
         labels = {"local": "市内", "nonlocal": "市外"}
         scope = expense.travel_scope or NONE_KEY
         return scope, labels.get(scope, NO_TRAVEL_SCOPE)
+    if group_by in (StatsGroupBy.BATCH, StatsCrossBy.BATCH):
+        batch = expense.batch
+        return (str(batch.id), batch.name) if batch else (NONE_KEY, "未分批")
+    if group_by in (StatsGroupBy.LAB_PLATFORM, StatsCrossBy.LAB_PLATFORM):
+        if expense.category is None:
+            return NONE_KEY, "未判定"
+        required = bool(expense.category and expense.category.requires_lab_platform)
+        return ("required", "需要平台申请") if required else ("not_required", "无需平台申请")
     month = f"{entry.basis_date:%Y-%m}"
     return month, month
+
+
+def _cross_key(entry: StatsEntry, cross_by: StatsCrossBy) -> tuple[str, str]:
+    if cross_by == StatsCrossBy.STATUS:
+        status = ExpenseStatus(entry.expense.status)
+        return status.value, status.label
+    return _group_key(entry, cross_by)
+
+
+def compute_columns(entries: list[StatsEntry], cross_by: StatsCrossBy) -> list[dict[str, str]]:
+    if cross_by == StatsCrossBy.STATUS:
+        return [{"key": status.value, "label": status.label} for status in ExpenseStatus]
+    values = {_cross_key(entry, cross_by) for entry in entries}
+    return [
+        {"key": key, "label": label}
+        for key, label in sorted(values, key=lambda value: value[1])
+    ]
 
 
 def _empty_by_status() -> dict[str, dict[str, int]]:
     return {status.value: {"count": 0, "amount_cents": 0} for status in ExpenseStatus}
 
 
-def compute_rows(entries: list[StatsEntry], group_by: StatsGroupBy) -> list[dict[str, Any]]:
+def compute_rows(
+    entries: list[StatsEntry], group_by: StatsGroupBy, cross_by: StatsCrossBy
+) -> list[dict[str, Any]]:
     groups: dict[str, dict[str, Any]] = {}
     for entry in entries:
         key, label = _group_key(entry, group_by)
         row = groups.setdefault(
-            key, {"key": key, "label": label, "by_status": _empty_by_status(), "total_cents": 0}
+            key,
+            {
+                "key": key,
+                "label": label,
+                "by_status": _empty_by_status(),
+                "cells": {},
+                "total_count": 0,
+                "total_cents": 0,
+            },
         )
         expense = entry.expense
         bucket = row["by_status"].setdefault(expense.status, {"count": 0, "amount_cents": 0})
         bucket["count"] += 1
         bucket["amount_cents"] += expense.amount_cents
+        cross_key, _cross_label = _cross_key(entry, cross_by)
+        cross_bucket = row["cells"].setdefault(cross_key, {"count": 0, "amount_cents": 0})
+        cross_bucket["count"] += 1
+        cross_bucket["amount_cents"] += expense.amount_cents
         if not _is_void(expense):
+            row["total_count"] += 1
             row["total_cents"] += expense.amount_cents
     rows = list(groups.values())
     if group_by == StatsGroupBy.MONTH:
@@ -176,6 +239,7 @@ def summarize(query: StatsQuery, entries: list[StatsEntry]) -> dict[str, Any]:
         "date_basis": str(query.date_basis),
         "data_start": data_start.isoformat() if data_start else None,
         "totals": compute_totals([entry.expense for entry in entries]),
-        "rows": compute_rows(entries, query.group_by),
+        "columns": compute_columns(entries, query.cross_by),
+        "rows": compute_rows(entries, query.group_by, query.cross_by),
         "months": compute_months(entries, trend_start(query.start, data_start), query.end),
     }

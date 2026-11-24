@@ -14,9 +14,11 @@ describe('invoice region and order info', () => {
     expect(screen.getByTestId('invoice-meta')).toHaveTextContent('订单号：JD20260915');
   });
 
-  test('InvoiceMeta renders nothing without invoice info', () => {
+  test('InvoiceMeta keeps the three dates visible without invoice info', () => {
     renderWithProviders(<InvoiceMeta expense={makeDetail()} />);
-    expect(screen.queryByTestId('invoice-meta')).not.toBeInTheDocument();
+    expect(screen.getByTestId('invoice-meta')).toHaveTextContent('业务发生日期：2026-09-15');
+    expect(screen.getByTestId('invoice-meta')).toHaveTextContent('发票开票日期：—');
+    expect(screen.getByTestId('invoice-meta')).toHaveTextContent('凭证填报日期：—');
   });
 
   test('AttachmentList shows region and order number on invoice rows', () => {

@@ -27,4 +27,26 @@ describe('ExpenseTable creator', () => {
     );
     expect(screen.getByText('市外')).toBeInTheDocument();
   });
+
+  test('shows three dates and business columns and exposes sortable headers', () => {
+    const onSort = vi.fn();
+    renderWithProviders(
+      <ExpenseTable
+        items={[makeExpense({ spent_on: '2026-09-01', issued_on: '2026-09-03', created_on: '2026-09-04', item_name: '订书机', unit_price_cents: 1200, quantity: 2, amount_cents: 2400, invoice_no: 'INV-1', requires_lab_platform: false })]}
+        selectedIds={[]}
+        onToggle={vi.fn()}
+        onToggleAll={vi.fn()}
+        onOpen={vi.fn()}
+        onDropFiles={vi.fn()}
+        onSort={onSort}
+      />,
+    );
+    expect(screen.getByText('2026-09-01')).toBeInTheDocument();
+    expect(screen.getByText('2026-09-03')).toBeInTheDocument();
+    expect(screen.getByText('2026-09-04')).toBeInTheDocument();
+    expect(screen.getByText('订书机')).toBeInTheDocument();
+    expect(screen.getByText('INV-1')).toBeInTheDocument();
+    screen.getByRole('button', { name: '按状态排序' }).click();
+    expect(onSort).toHaveBeenCalledWith('status');
+  });
 });

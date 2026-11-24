@@ -170,7 +170,7 @@ def _remember_if_user_changed(
 
 def _create(ctx: ConfirmContext, attachments: list[Attachment], group: ConfirmGroup) -> None:
     exempt = bool(group.invoice_exempt)
-    _require(group.spent_on is not None, "请填写支出日期")
+    _require(group.spent_on is not None, "请填写业务发生日期")
     _require(group.amount_cents is not None, "请填写人民币金额" if exempt else "请填写金额")
     _require(bool(group.merchant), "请填写商家")
     expense = create_expense(
@@ -180,6 +180,7 @@ def _create(ctx: ConfirmContext, attachments: list[Attachment], group: ConfirmGr
         amount_cents=group.amount_cents,
         merchant=group.merchant,
         summary=group.summary or "",
+        item_name=group.summary or "",
         category_id=group.category_id,
         project_id=group.project_id,
         is_online=bool(group.is_online),

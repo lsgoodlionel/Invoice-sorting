@@ -12,6 +12,7 @@ describe('expense filters', () => {
       period: { preset: 'this_month' },
       dateBasis: 'sent',
       categoryId: 3,
+      uncategorized: false,
       projectId: null,
       statuses: ['spent'],
       q: '京东',
@@ -19,6 +20,9 @@ describe('expense filters', () => {
       unbatched: true,
       missingOnly: true,
       travelScope: 'nonlocal',
+      requiresLabPlatform: null,
+      sortBy: 'date',
+      sortOrder: 'desc',
     });
   });
 
@@ -26,7 +30,7 @@ describe('expense filters', () => {
     const filters = decodeExpenseFilters(new URLSearchParams());
     expect(filters.dateBasis).toBe('spent');
     expect(filters.period.preset).toBe('this_year');
-    expect(filters.statuses).toEqual([]);
+    expect(filters.statuses).toEqual(['spent', 'invoiced', 'complete']);
   });
 
   test('round-trips through encode', () => {
@@ -34,6 +38,15 @@ describe('expense filters', () => {
     const encoded = encodeExpenseFilters(decodeExpenseFilters(params));
     expect(decodeExpenseFilters(encoded)).toEqual(decodeExpenseFilters(params));
     expect(encoded.has('date_basis')).toBe(false);
+  });
+
+  test('round-trips platform, uncategorized and sorting filters', () => {
+    const filters = decodeExpenseFilters(new URLSearchParams('lab_platform=required&uncategorized=true&sort_by=status&sort_order=asc'));
+    expect(filters.requiresLabPlatform).toBe(true);
+    expect(filters.uncategorized).toBe(true);
+    expect(filters.sortBy).toBe('status');
+    expect(filters.sortOrder).toBe('asc');
+    expect(decodeExpenseFilters(encodeExpenseFilters(filters))).toEqual(filters);
   });
 
   test('builds API query', () => {
@@ -50,6 +63,8 @@ describe('expense filters', () => {
       unbatched: true,
       missing: true,
       travel_scope: 'local',
+      sort_by: 'date',
+      sort_order: 'desc',
       page: 1,
       page_size: 200,
     });

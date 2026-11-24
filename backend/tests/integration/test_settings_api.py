@@ -36,6 +36,7 @@ def test_categories_crud(client):
         "color",
         "keywords",
         "route_hint",
+        "requires_lab_platform",
         "sort",
         "archived",
     }
@@ -43,11 +44,18 @@ def test_categories_crud(client):
     created = data(client.post("/api/categories", json={"name": "培训", "keywords": ["培训费"]}))
     assert created["sort"] == 11
     assert created["color"] == "gray"
+    assert created["requires_lab_platform"] is False
     assert client.post("/api/categories", json={"name": "培训"}).status_code == 409
     assert client.post("/api/categories", json={"name": "  "}).status_code == 422
 
-    patched = data(client.patch(f"/api/categories/{created['id']}", json={"color": "pink"}))
+    patched = data(
+        client.patch(
+            f"/api/categories/{created['id']}",
+            json={"color": "pink", "requires_lab_platform": True},
+        )
+    )
     assert patched["color"] == "pink"
+    assert patched["requires_lab_platform"] is True
     assert (
         client.patch(f"/api/categories/{created['id']}", json={"name": "办公用品"}).status_code
         == 409

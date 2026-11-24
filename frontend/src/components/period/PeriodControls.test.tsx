@@ -156,7 +156,7 @@ describe('PeriodPresetBar + PeriodRangeText', () => {
     );
     const user = userEvent.setup();
     await user.click(screen.getByRole('combobox', { name: '日期口径' }));
-    expect(screen.queryByRole('option', { name: '支出日期' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: '业务发生日期' })).not.toBeInTheDocument();
     await user.click(await screen.findByRole('option', { name: '外发日期' }));
     expect(onDateBasisChange).toHaveBeenCalledWith('sent');
   });

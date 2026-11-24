@@ -31,6 +31,16 @@ export function BatchExpensesFilterBar({ expenses, filter, shownCount, onChange 
           ))}
         </Group>
       </Chip.Group>
+      <Select
+        aria-label="按平台申请筛选"
+        size="xs"
+        w={150}
+        placeholder="平台申请"
+        clearable
+        data={[{ value: 'required', label: '需要平台申请' }, { value: 'not_required', label: '无需平台申请' }]}
+        value={filter.requiresLabPlatform == null ? null : filter.requiresLabPlatform ? 'required' : 'not_required'}
+        onChange={(value) => onChange({ ...filter, requiresLabPlatform: value === 'required' ? true : value === 'not_required' ? false : null })}
+      />
       <Text size="xs" c="dimmed" ml="auto" className="num" data-testid="batch-filter-count">
         显示 {shownCount} / 共 {expenses.length} 条
       </Text>

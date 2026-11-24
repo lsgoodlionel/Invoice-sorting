@@ -1,4 +1,4 @@
-import { Button, ColorInput, Group, Modal, Stack, Table, TagsInput, Text, Textarea, TextInput } from '@mantine/core';
+import { Badge, Button, ColorInput, Group, Modal, Stack, Switch, Table, TagsInput, Text, Textarea, TextInput } from '@mantine/core';
 import { modals } from '@mantine/modals';
 import { useEffect, useState } from 'react';
 import { useArchiveCategory, useCategories, useSaveCategory } from '../../api/hooks/settings';
@@ -6,14 +6,14 @@ import type { Category, CategoryInput } from '../../api/types';
 import { CategoryDot } from '../CategoryDot';
 
 const DEFAULT_COLOR = '#1F5F4A';
-const emptyInput = (): CategoryInput => ({ name: '', color: DEFAULT_COLOR, keywords: [], route_hint: '' });
+const emptyInput = (): CategoryInput => ({ name: '', color: DEFAULT_COLOR, keywords: [], route_hint: '', requires_lab_platform: false });
 
 function CategoryModal({ editing, onClose }: { editing: Category | 'new' | null; onClose: () => void }) {
   const [input, setInput] = useState<CategoryInput>(emptyInput);
   const save = useSaveCategory();
   useEffect(() => {
     if (editing === 'new') setInput(emptyInput());
-    else if (editing) setInput({ name: editing.name, color: editing.color, keywords: editing.keywords, route_hint: editing.route_hint });
+    else if (editing) setInput({ name: editing.name, color: editing.color, keywords: editing.keywords, route_hint: editing.route_hint, requires_lab_platform: editing.requires_lab_platform });
   }, [editing]);
   const patch = (p: Partial<CategoryInput>) => setInput((current) => ({ ...current, ...p }));
   const submit = () =>
@@ -25,6 +25,11 @@ function CategoryModal({ editing, onClose }: { editing: Category | 'new' | null;
         <ColorInput label="颜色" value={input.color} onChange={(color) => patch({ color })} />
         <TagsInput label="识别关键词" description="回车添加" value={input.keywords} onChange={(keywords) => patch({ keywords })} />
         <Textarea label="办理路径" autosize minRows={3} value={input.route_hint} onChange={(e) => patch({ route_hint: e.currentTarget.value })} />
+        <Switch
+          label="需要在设备与实验室管理平台填写申请"
+          checked={input.requires_lab_platform ?? false}
+          onChange={(event) => patch({ requires_lab_platform: event.currentTarget.checked })}
+        />
         <Group justify="flex-end">
           <Button variant="subtle" onClick={onClose}>取消</Button>
           <Button variant="filled" disabled={!input.name.trim()} loading={save.isPending} onClick={submit}>保存</Button>
@@ -51,11 +56,12 @@ export function CategoryManager({ readOnly = false }: { readOnly?: boolean }) {
       {!readOnly && <Group justify="flex-end"><Button size="xs" variant="outline" onClick={() => setEditing('new')}>新增分类</Button></Group>}
       <div className="table-scroll">
         <Table className="ledger-table" miw={640}>
-          <Table.Thead><Table.Tr><Table.Th>名称</Table.Th><Table.Th>关键词</Table.Th><Table.Th>办理路径</Table.Th><Table.Th /></Table.Tr></Table.Thead>
+          <Table.Thead><Table.Tr><Table.Th>名称</Table.Th><Table.Th>平台申请</Table.Th><Table.Th>关键词</Table.Th><Table.Th>办理路径</Table.Th><Table.Th /></Table.Tr></Table.Thead>
           <Table.Tbody>
             {data.map((category) => (
               <Table.Tr key={category.id} style={{ opacity: category.archived ? 0.5 : 1 }}>
                 <Table.Td><CategoryDot color={category.color} name={category.name + (category.archived ? '（已归档）' : '')} /></Table.Td>
+                <Table.Td><Badge size="xs" color={category.requires_lab_platform ? 'orange' : 'gray'} variant="light">{category.requires_lab_platform ? '需要' : '无需'}</Badge></Table.Td>
                 <Table.Td><Text size="xs" c="dimmed" truncate maw={260}>{category.keywords.join('、')}</Text></Table.Td>
                 <Table.Td><Text size="xs" c="dimmed" truncate maw={200}>{category.route_hint}</Text></Table.Td>
                 <Table.Td>

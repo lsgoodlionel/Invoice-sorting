@@ -52,7 +52,8 @@ def download(client, record: dict) -> zipfile.ZipFile:
 
 def summary_rows(archive: zipfile.ZipFile) -> tuple[list[tuple], list[tuple]]:
     workbook = openpyxl.load_workbook(io.BytesIO(archive.read("00_报销汇总表.xlsx")))
-    assert workbook.sheetnames == ["汇总", "分类小计"]
+    assert workbook.sheetnames[:2] == ["汇总", "分类小计"]
+    assert all(name.startswith("分类-") for name in workbook.sheetnames[2:])
     summary = list(workbook["汇总"].iter_rows(values_only=True))
     subtotal = list(workbook["分类小计"].iter_rows(values_only=True))
     assert workbook["汇总"].freeze_panes == "A3"
@@ -96,23 +97,24 @@ def test_export_zip_structure_and_summary(client, settings, eight_items):  # T09
 
     summary, subtotal = summary_rows(archive)
     assert "第1批" in summary[0][0] and "科研A" in summary[0][0]
-    assert summary[1][:6] == ("序号", "日期", "商家", "摘要", "分类", "金额")
+    assert summary[1][0:4] == ("序号", "业务发生日期", "发票开票日期", "凭证填报日期")
+    assert summary[1][6:11] == ("名称", "单价", "数量", "总价", "发票号")
     body, total_row = summary[2:-1], summary[-1]
     assert [row[0] for row in body] == list(range(1, 9))
     assert [row[1] for row in body] == sorted(row[1] for row in body)
-    assert sum(cents(row[5]) for row in body) == cents(total_row[5]) == record["total_cents"]
+    assert sum(cents(row[9]) for row in body) == cents(total_row[9]) == record["total_cents"]
     assert total_row[0] == "合计"
-    assert subtotal[-1] == ("合计", 8, total_row[5])
+    assert subtotal[-1] == ("合计", None, 8, 10, total_row[9])
     assert subtotal[2][0] == "未分类"
 
     by_seq = {row[0]: row for row in body}
     for name in invoices:
         seq, category, amount, merchant = Path(name).stem.split("_")[:4]
         row = by_seq[int(seq)]
-        assert (category, amount, merchant) == (row[4] or "未分类", f"{row[5]:.2f}", row[2])
-    first = next(row for row in body if row[2] == "商家0")
-    assert first[7] == "发票、订单明细、支付记录"
-    group = f"03_支撑材料/{first[0]:02d}_商家0_{first[5]:.2f}/"
+        assert (category, amount, merchant) == (row[11] or "未分类", f"{row[9]:.2f}", row[4])
+    first = next(row for row in body if row[4] == "商家0")
+    assert first[13] == "发票、订单明细、支付记录"
+    group = f"03_支撑材料/{first[0]:02d}_商家0_{first[9]:.2f}/"
     assert {f"{group}订单明细_1.png", f"{group}支付记录_1.png"} <= set(names)
 
     pdf = PdfReader(io.BytesIO(archive.read("01_打印版_全部材料.pdf")))
@@ -198,7 +200,7 @@ def test_export_by_kind_uses_category_then_date_order_for_every_member(client):
     summary, _ = summary_rows(archive)
     body = summary[2:-1]
     expected_merchants = ["前分类早日期", "前分类晚日期", "后分类更早日期", "未分类最早日期"]
-    assert [row[2] for row in body] == expected_merchants
+    assert [row[4] for row in body] == expected_merchants
 
     invoice_merchants = [
         Path(name).stem.split("_")[3]
@@ -258,7 +260,7 @@ def test_export_skips_unmergeable_files_with_note(client):  # T10 附带：XML/�
 
     archive = download(client, export(client, batch["id"]))
     summary, _ = summary_rows(archive)
-    note = summary[2][9]
+    note = summary[2][15]
     assert note.startswith("原备注；")
     assert "发票.xml 未合并到打印版" in note and "坏.pdf 未合并到打印版" in note
     assert "好.pdf" not in note
@@ -276,7 +278,7 @@ def test_export_skips_missing_source_file(client, settings):
     archive = download(client, export(client, batch["id"]))
     assert not [n for n in archive.namelist() if n.startswith("02_发票原件/")]
     summary, _ = summary_rows(archive)
-    assert "发票.png 未合并到打印版" in summary[2][9]
+    assert "发票.png 未合并到打印版" in summary[2][15]
 
 
 def expense_detail_first_attachment(client, expense_id: int) -> dict:

@@ -25,9 +25,12 @@ export interface BatchExportOptions {
   layout: ExportLayout;
   duplex: boolean;
 }
-export type DateBasis = 'spent' | 'invoiced' | 'sent' | 'received';
+export type DateBasis = 'spent' | 'invoiced' | 'created' | 'sent' | 'received';
+export type ExpenseSortBy = 'date' | 'summary' | 'category' | 'amount' | 'status';
+export type SortOrder = 'asc' | 'desc';
 export type TravelScope = '' | 'local' | 'nonlocal';
-export type StatsGroupBy = 'category' | 'project' | 'merchant' | 'month' | 'travel_scope';
+export type StatsGroupBy = 'category' | 'project' | 'merchant' | 'month' | 'travel_scope' | 'batch' | 'lab_platform';
+export type StatsCrossBy = 'status' | 'category' | 'month' | 'batch' | 'lab_platform';
 
 // —— 用户与操作人 ——
 export type UserRole = 'admin' | 'member';
@@ -88,6 +91,7 @@ export interface Category {
   color: string;
   keywords: string[];
   route_hint: string;
+  requires_lab_platform?: boolean;
   sort: number;
   archived: boolean;
 }
@@ -198,12 +202,19 @@ export interface StatusEvent {
 export interface ExpenseSummary {
   id: number;
   spent_on: string;
+  issued_on?: string | null;
+  created_on?: string;
   amount_cents: number;
   merchant: string;
   summary: string;
+  item_name?: string;
+  item_name_manual?: string;
+  unit_price_cents?: number | null;
+  quantity?: number | null;
   category_id: number | null;
   category_name: string | null;
   category_color: string | null;
+  requires_lab_platform?: boolean | null;
   project_id: number | null;
   project_name: string | null;
   status: ExpenseStatus;
@@ -267,6 +278,7 @@ export interface ExpenseQuery {
   end?: string;
   date_basis?: DateBasis;
   category_id?: number;
+  uncategorized?: boolean;
   project_id?: number;
   status?: ExpenseStatus[];
   q?: string;
@@ -274,6 +286,9 @@ export interface ExpenseQuery {
   unbatched?: boolean;
   missing?: boolean;
   travel_scope?: Exclude<TravelScope, ''>;
+  requires_lab_platform?: boolean;
+  sort_by?: ExpenseSortBy;
+  sort_order?: SortOrder;
   page?: number;
   page_size?: number;
 }
@@ -283,6 +298,9 @@ export interface ExpenseCreate {
   amount_cents: number;
   merchant: string;
   summary?: string;
+  item_name?: string;
+  unit_price_cents?: number | null;
+  quantity?: number | null;
   category_id?: number | null;
   project_id?: number | null;
   pay_method?: string;
@@ -514,8 +532,12 @@ export interface StatsRow {
   key: string;
   label: string;
   by_status: StatusCounts;
+  cells?: Record<string, StatusCount>;
+  total_count?: number;
   total_cents: number;
 }
+
+export interface StatsColumn { key: string; label: string }
 
 export interface Stats {
   start: string;
@@ -524,6 +546,7 @@ export interface Stats {
   /** 所选区间与口径下最早有数据的日期；无数据为 null */
   data_start: string | null;
   totals: StatsTotals;
+  columns?: StatsColumn[];
   rows: StatsRow[];
   months: { month: string; amount_cents: number }[];
 }
@@ -533,6 +556,7 @@ export interface StatsQuery {
   end: string;
   date_basis: DateBasis;
   group_by: StatsGroupBy;
+  cross_by?: StatsCrossBy;
 }
 
 export interface Dashboard {
@@ -560,6 +584,7 @@ export interface CategoryInput {
   color?: string;
   keywords?: string[];
   route_hint?: string;
+  requires_lab_platform?: boolean;
 }
 
 export interface ProjectInput {

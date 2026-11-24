@@ -1,8 +1,9 @@
 // 统计交叉表单元格 → 清单页筛选链接。
-import type { DateBasis, ExpenseStatus, StatsGroupBy, StatsRow } from '../api/types';
+import type { DateBasis, ExpenseStatus, StatsColumn, StatsCrossBy, StatsGroupBy, StatsRow } from '../api/types';
 import { expensesLink, type ExpenseFilters } from './expenseFilters';
 
 const MONTH_KEY = /^(\d{4})-(\d{2})$/;
+const NON_VOID_STATUSES: ExpenseStatus[] = ['spent', 'invoiced', 'complete', 'sent', 'reimbursed'];
 
 function monthBounds(key: string): { start: string; end: string } | null {
   const match = MONTH_KEY.exec(key);
@@ -18,20 +19,28 @@ function numericKey(key: string): number | null {
   return /^\d+$/.test(key) ? Number(key) : null;
 }
 
-function groupFilter(groupBy: StatsGroupBy, row: StatsRow): Partial<ExpenseFilters> {
+type Dimension = StatsGroupBy | StatsCrossBy;
+
+function dimensionFilter(groupBy: Dimension, key: string, label: string): Partial<ExpenseFilters> {
   switch (groupBy) {
     case 'category':
-      return { categoryId: numericKey(row.key) };
+      return key === 'none' ? { uncategorized: true } : { categoryId: numericKey(key) };
     case 'project':
-      return { projectId: numericKey(row.key) };
+      return { projectId: numericKey(key) };
     case 'merchant':
-      return { q: row.label };
+      return { q: label };
     case 'month': {
-      const bounds = monthBounds(row.key);
+      const bounds = monthBounds(key);
       return bounds ? { period: { preset: 'custom', ...bounds } } : {};
     }
     case 'travel_scope':
-      return row.key === 'local' || row.key === 'nonlocal' ? { travelScope: row.key } : {};
+      return key === 'local' || key === 'nonlocal' ? { travelScope: key } : {};
+    case 'batch':
+      return key === 'none' ? { unbatched: true } : { batchId: numericKey(key) };
+    case 'lab_platform':
+      return key === 'required' ? { requiresLabPlatform: true } : key === 'not_required' ? { requiresLabPlatform: false } : key === 'none' ? { uncategorized: true } : {};
+    case 'status':
+      return { statuses: [key as ExpenseStatus] };
     default:
       return {};
   }
@@ -44,13 +53,16 @@ export interface DrillInput {
   groupBy: StatsGroupBy;
   row: StatsRow;
   status: ExpenseStatus | null;
+  crossBy?: StatsCrossBy;
+  column?: StatsColumn | null;
 }
 
-export function statsCellLink({ start, end, dateBasis, groupBy, row, status }: DrillInput): string {
+export function statsCellLink({ start, end, dateBasis, groupBy, row, status, crossBy, column }: DrillInput): string {
   return expensesLink({
     period: { preset: 'custom', start, end },
     dateBasis,
-    statuses: status ? [status] : [],
-    ...groupFilter(groupBy, row),
+    statuses: status ? [status] : NON_VOID_STATUSES,
+    ...dimensionFilter(groupBy, row.key, row.label),
+    ...(crossBy && column ? dimensionFilter(crossBy, column.key, column.label) : {}),
   });
 }

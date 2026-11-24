@@ -110,8 +110,22 @@ class ExportLayout(StrEnum):
 class DateBasis(StrEnum):
     SPENT = "spent"
     INVOICED = "invoiced"
+    CREATED = "created"
     SENT = "sent"
     RECEIVED = "received"
+
+
+class ExpenseSortBy(StrEnum):
+    DATE = "date"
+    SUMMARY = "summary"
+    CATEGORY = "category"
+    AMOUNT = "amount"
+    STATUS = "status"
+
+
+class SortOrder(StrEnum):
+    ASC = "asc"
+    DESC = "desc"
 
 
 class TravelScope(StrEnum):

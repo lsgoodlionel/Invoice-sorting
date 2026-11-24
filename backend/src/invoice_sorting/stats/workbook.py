@@ -9,6 +9,7 @@ from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.worksheet import Worksheet
 
 from invoice_sorting.common.constants import EXPENSE_STATUS_LABELS, ExpenseStatus
+from invoice_sorting.expenses.serializers import display_item_name, first_invoice_no
 from invoice_sorting.exporter.workbook import AMOUNT_FORMAT, cents_to_decimal
 from invoice_sorting.stats.service import DATE_BASIS_LABELS, StatsEntry, StatsQuery
 
@@ -26,21 +27,27 @@ GROUP_LABELS = {
     "merchant": "商家",
     "month": "月份",
     "travel_scope": "市内/市外",
+    "batch": "批次",
+    "lab_platform": "平台申请",
 }
 DETAIL_HEADERS = (
     "ID",
     "口径日期",
-    "支出日期",
+    "业务发生日期",
+    "名称",
+    "单价",
+    "数量",
+    "总价",
+    "发票号",
     "商家",
     "摘要",
     "分类",
     "经费项目",
     "市内/市外",
     "状态",
-    "金额",
     "到账金额",
 )
-DETAIL_AMOUNT_COLUMNS = (10, 11)
+DETAIL_AMOUNT_COLUMNS = (5, 7, 15)
 COLUMN_WIDTH = 16
 
 
@@ -63,14 +70,18 @@ def _write_summary(sheet: Worksheet, query: StatsQuery, stats: dict[str, Any]) -
         sheet.append((label, cents_to_decimal(stats["totals"][key])))
         _format_amounts(sheet, (2,))
     sheet.append(())
-    statuses = list(ExpenseStatus)
     header = [GROUP_LABELS[str(query.group_by)], "合计（不含作废）"]
-    header += [EXPENSE_STATUS_LABELS[status] for status in statuses]
+    header += [column["label"] for column in stats["columns"]]
     sheet.append(header)
     _bold_row(sheet)
     for row in stats["rows"]:
-        amounts = [row["by_status"][status.value]["amount_cents"] for status in statuses]
-        sheet.append([row["label"], *(cents_to_decimal(c) for c in [row["total_cents"], *amounts])])
+        amounts = [
+            row["cells"].get(column["key"], {}).get("amount_cents", 0)
+            for column in stats["columns"]
+        ]
+        sheet.append(
+            [row["label"], *(cents_to_decimal(c) for c in [row["total_cents"], *amounts])]
+        )
         _format_amounts(sheet, range(2, len(header) + 1))
     for index in range(1, len(header) + 1):
         sheet.column_dimensions[get_column_letter(index)].width = COLUMN_WIDTH
@@ -89,13 +100,19 @@ def _write_details(sheet: Worksheet, entries: list[StatsEntry]) -> None:
                 expense.id,
                 entry.basis_date.isoformat(),
                 expense.spent_on.isoformat(),
+                display_item_name(expense),
+                cents_to_decimal(expense.unit_price_cents)
+                if expense.unit_price_cents is not None
+                else "",
+                expense.quantity if expense.quantity is not None else "",
+                cents_to_decimal(expense.amount_cents),
+                first_invoice_no(expense) or "",
                 expense.merchant,
                 expense.summary,
                 expense.category.name if expense.category else "",
                 expense.project.name if expense.project else "",
                 {"local": "市内", "nonlocal": "市外"}.get(expense.travel_scope, "未识别"),
                 EXPENSE_STATUS_LABELS.get(ExpenseStatus(expense.status), expense.status),
-                cents_to_decimal(expense.amount_cents),
                 cents_to_decimal(expense.reimbursed_cents or 0),
             )
         )

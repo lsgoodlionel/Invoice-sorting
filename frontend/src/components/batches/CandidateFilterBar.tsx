@@ -1,4 +1,4 @@
-import { Chip, Group, SegmentedControl, Stack, Switch, TextInput } from '@mantine/core';
+import { Chip, Group, SegmentedControl, Select, Stack, Switch, TextInput } from '@mantine/core';
 import { IconSearch } from '@tabler/icons-react';
 import { CANDIDATE_STATUSES, type CandidateFilters, type EvidenceFilter } from '../../lib/batchCandidates';
 import { resolvePeriod } from '../../lib/period';
@@ -56,6 +56,16 @@ export function CandidateFilterBar({ filters, onChange, batchProjectName, hasPro
         <ProjectSelect aria-label="经费项目筛选" w={180} size="xs" creatable={false} clearable
           placeholder={projectPlaceholder(filters, hasProjectLimit, batchProjectName)}
           value={filters.projectId} onChange={(projectId) => onChange({ projectId })} />
+        <Select
+          aria-label="平台申请筛选"
+          w={150}
+          size="xs"
+          placeholder="平台申请"
+          clearable
+          data={[{ value: 'required', label: '需要平台申请' }, { value: 'not_required', label: '无需平台申请' }]}
+          value={filters.requiresLabPlatform === null ? null : filters.requiresLabPlatform ? 'required' : 'not_required'}
+          onChange={(value) => onChange({ requiresLabPlatform: value === 'required' ? true : value === 'not_required' ? false : null })}
+        />
         {hasProjectLimit && (
           <Switch size="xs" label="显示全部项目" checked={filters.showAllProjects} disabled={filters.projectId !== null}
             onChange={(event) => onChange({ showAllProjects: event.currentTarget.checked })} />

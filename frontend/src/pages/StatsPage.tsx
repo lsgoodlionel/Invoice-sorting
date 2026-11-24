@@ -3,14 +3,14 @@ import { IconFileSpreadsheet } from '@tabler/icons-react';
 import { useMemo } from 'react';
 import { useSearchParams } from 'react-router';
 import { statsApi, useStats } from '../api/hooks/stats';
-import type { DateBasis, StatsGroupBy, StatsQuery } from '../api/types';
+import type { DateBasis, StatsCrossBy, StatsGroupBy, StatsQuery } from '../api/types';
 import { PeriodPresetBar } from '../components/period/PeriodPresetBar';
 import { PeriodRangeText } from '../components/period/PeriodRangeText';
 import { MonthTrendChart } from '../components/stats/MonthTrendChart';
 import { StatCards } from '../components/stats/StatCards';
 import { StatsCrossTable } from '../components/stats/StatsCrossTable';
 import { boundedRange, decodePeriod, encodePeriod, formatDataStart, toStatsPeriod, type Period } from '../lib/period';
-import { isDateBasis } from '../lib/status';
+import { ALL_STATUSES, isDateBasis, STATUS_META } from '../lib/status';
 
 const GROUP_OPTIONS: { value: StatsGroupBy; label: string }[] = [
   { value: 'category', label: '分类' },
@@ -18,9 +18,20 @@ const GROUP_OPTIONS: { value: StatsGroupBy; label: string }[] = [
   { value: 'merchant', label: '商家' },
   { value: 'month', label: '月份' },
   { value: 'travel_scope', label: '市内/市外' },
+  { value: 'batch', label: '批次' },
+  { value: 'lab_platform', label: '平台申请' },
+];
+
+const CROSS_OPTIONS: { value: StatsCrossBy; label: string }[] = [
+  { value: 'status', label: '状态' },
+  { value: 'category', label: '分类' },
+  { value: 'month', label: '月份' },
+  { value: 'batch', label: '批次' },
+  { value: 'lab_platform', label: '平台申请' },
 ];
 
 const isGroupBy = (value: string | null): value is StatsGroupBy => GROUP_OPTIONS.some((o) => o.value === value);
+const isCrossBy = (value: string | null): value is StatsCrossBy => CROSS_OPTIONS.some((o) => o.value === value);
 
 function DataStartHint({ dataStart, start }: { dataStart: string | null | undefined; start: string }) {
   if (!dataStart || dataStart <= start) return null;
@@ -38,8 +49,10 @@ export function StatsPage() {
   const dateBasis: DateBasis = isDateBasis(basisParam) ? basisParam : 'spent';
   const groupParam = params.get('group_by');
   const groupBy: StatsGroupBy = isGroupBy(groupParam) ? groupParam : 'category';
+  const crossParam = params.get('cross_by');
+  const crossBy: StatsCrossBy = isCrossBy(crossParam) ? crossParam : 'status';
   const { start, end } = boundedRange(period);
-  const query: StatsQuery = useMemo(() => ({ start, end, date_basis: dateBasis, group_by: groupBy }), [start, end, dateBasis, groupBy]);
+  const query: StatsQuery = useMemo(() => ({ start, end, date_basis: dateBasis, group_by: groupBy, cross_by: crossBy }), [start, end, dateBasis, groupBy, crossBy]);
   const { data } = useStats(query);
 
   const patchParams = (patch: Record<string, string>, nextPeriod: Period = period) =>
@@ -70,13 +83,18 @@ export function StatsPage() {
           导出 Excel
         </Button>
       </Group>
-      {data && <StatCards totals={data.totals} />}
+      {data && <StatCards totals={data.totals} start={data.start} end={data.end} dateBasis={dateBasis} />}
       <Stack gap="xs">
         <Group justify="space-between">
           <Text className="section-label">交叉汇总（点击金额查看记录）</Text>
-          <SegmentedControl size="xs" data={GROUP_OPTIONS} value={groupBy} onChange={(value) => patchParams({ group_by: value })} />
+          <Group gap="xs">
+            <Text size="xs" c="dimmed">行</Text>
+            <SegmentedControl size="xs" data={GROUP_OPTIONS} value={groupBy} onChange={(value) => patchParams({ group_by: value })} />
+            <Text size="xs" c="dimmed">列</Text>
+            <SegmentedControl size="xs" data={CROSS_OPTIONS} value={crossBy} onChange={(value) => patchParams({ cross_by: value })} />
+          </Group>
         </Group>
-        {data && <StatsCrossTable rows={data.rows} start={data.start} end={data.end} dateBasis={dateBasis} groupBy={groupBy} />}
+        {data && <StatsCrossTable rows={data.rows} columns={data.columns ?? ALL_STATUSES.map((key) => ({ key, label: STATUS_META[key].shortLabel }))} start={data.start} end={data.end} dateBasis={dateBasis} groupBy={groupBy} crossBy={crossBy} />}
       </Stack>
       <Stack gap="xs">
         <Text className="section-label">按月趋势</Text>

@@ -45,7 +45,7 @@ describe('status utils', () => {
 
   test('date basis guard and kind options', () => {
     expect(isDateBasis('received')).toBe(true);
-    expect(isDateBasis('created')).toBe(false);
+    expect(isDateBasis('created')).toBe(true);
     expect(ATTACHMENT_KIND_OPTIONS).toHaveLength(13);
     expect(ATTACHMENT_KIND_OPTIONS).toContainEqual({ value: 'transport', label: '往来交通凭证' });
     expect(ATTACHMENT_KIND_LABELS.transport).toBe('往来交通凭证');

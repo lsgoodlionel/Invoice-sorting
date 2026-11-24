@@ -14,6 +14,7 @@ from invoice_sorting.db.seed import (
     seed_defaults,
     sync_default_keywords,
     sync_default_rules,
+    sync_platform_category_flags,
 )
 from invoice_sorting.db.session import create_db_engine, init_db, make_session_factory
 from invoice_sorting.importer.travel_scope import backfill_travel_scopes
@@ -39,6 +40,7 @@ def _seed(session: Session, settings: Settings) -> None:
     seed_defaults(session)
     sync_default_keywords(session)
     sync_default_rules(session)
+    sync_platform_category_flags(session)
     reset_polluted_memory(session)
     backfill_file_keys(session)
     backfill_travel_scopes(session, region_policy(session).local_region)

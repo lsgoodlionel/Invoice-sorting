@@ -48,7 +48,8 @@ ENV UV_NO_CONFIG=1 \
     UV_HTTP_RETRIES=5 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 # 慢速网络下放宽超时并重试，避免半途 ReadTimeout 让整个构建失败
-RUN pip install --no-cache-dir --timeout 120 --retries 10 --index-url "${PYPI_INDEX}" uv
+# 与 pyproject.toml 的 uv_build 版本范围保持一致，避免上游最新版造成不可重复构建。
+RUN pip install --no-cache-dir --timeout 120 --retries 10 --index-url "${PYPI_INDEX}" "uv==0.11.7"
 WORKDIR /src/backend
 # 只拷元数据即可导出锁定版本，源码改动不会让依赖层失效
 COPY backend/pyproject.toml backend/uv.lock backend/README.md ./

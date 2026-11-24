@@ -16,6 +16,7 @@ from invoice_sorting.common.constants import ExpenseStatus, TravelScope
 
 MERCHANT_MAX = 200
 SUMMARY_MAX = 200
+ITEM_NAME_MAX = 300
 PAY_METHOD_MAX = 30
 NOTE_MAX = 2000
 
@@ -32,6 +33,7 @@ NON_NULLABLE_FIELDS = (
     "amount_cents",
     "merchant",
     "summary",
+    "item_name",
     "pay_method",
     "is_online",
     "invoice_exempt",
@@ -49,6 +51,9 @@ class ExpenseCreate(BaseModel):
     amount_cents: Cents
     merchant: str = Field(min_length=1, max_length=MERCHANT_MAX)
     summary: str = Field(default="", max_length=SUMMARY_MAX)
+    item_name: str = Field(default="", max_length=ITEM_NAME_MAX)
+    unit_price_cents: Cents | None = None
+    quantity: Annotated[int, Field(ge=1, strict=True)] | None = None
     category_id: int | None = None
     project_id: int | None = None
     pay_method: str = Field(default="", max_length=PAY_METHOD_MAX)
@@ -67,6 +72,9 @@ class ExpenseUpdate(BaseModel):
     amount_cents: Cents | None = None
     merchant: str | None = Field(default=None, min_length=1, max_length=MERCHANT_MAX)
     summary: str | None = Field(default=None, max_length=SUMMARY_MAX)
+    item_name: str | None = Field(default=None, max_length=ITEM_NAME_MAX)
+    unit_price_cents: Cents | None = None
+    quantity: Annotated[int, Field(ge=1, strict=True)] | None = None
     category_id: int | None = None
     project_id: int | None = None
     pay_method: str | None = Field(default=None, max_length=PAY_METHOD_MAX)

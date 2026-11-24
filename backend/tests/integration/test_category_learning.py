@@ -53,6 +53,30 @@ def test_sync_default_keywords_merges_into_existing_categories_once(session):
     assert office.keywords == ["自定义词"]
 
 
+def test_office_catalog_and_platform_application_flags(session):
+    office = category(session, "办公用品")
+    consumable = category(session, "易耗品")
+    low_value = category(session, "低值品")
+    material = category(session, "材料")
+    equipment = category(session, "设备")
+
+    assert {"无线装订本", "票据装订机", "无碳复写票据", "大盘纸", "台灯"} <= set(
+        office.keywords
+    )
+    assert {"光电倍增管", "实验室玻璃器皿", "体育专业运动服", "生物试剂"} <= set(
+        consumable.keywords
+    )
+    assert {"低值仪器仪表", "低值工具量具"} <= set(low_value.keywords)
+    assert {"稀金属", "实验动物垫料", "排风过滤棉", "特殊实验材料"} <= set(
+        material.keywords
+    )
+    assert office.requires_lab_platform is False
+    assert consumable.requires_lab_platform is True
+    assert low_value.requires_lab_platform is True
+    assert material.requires_lab_platform is True
+    assert equipment.requires_lab_platform is True
+
+
 def test_confirm_with_user_changed_category_remembers_item(client, session, tmp_path):
     from invoice_sorting.db.models import MerchantMemory
 

@@ -2,6 +2,7 @@ import type { AttachmentKind, BatchStatus, DateBasis, ExpenseStatus } from '../a
 
 export const STATUS_ORDER: readonly ExpenseStatus[] = ['spent', 'invoiced', 'complete', 'sent', 'reimbursed'];
 export const ALL_STATUSES: readonly ExpenseStatus[] = [...STATUS_ORDER, 'void'];
+export const DEFAULT_VISIBLE_STATUSES: readonly ExpenseStatus[] = ['spent', 'invoiced', 'complete'];
 
 export interface StatusMeta {
   label: string;
@@ -60,8 +61,9 @@ export const BATCH_STATUS_META: Readonly<Record<BatchStatus, { label: string; co
 };
 
 export const DATE_BASIS_OPTIONS: readonly { value: DateBasis; label: string }[] = [
-  { value: 'spent', label: '支出日期' },
+  { value: 'spent', label: '业务发生日期' },
   { value: 'invoiced', label: '开票日期' },
+  { value: 'created', label: '凭证填报日期' },
   { value: 'sent', label: '外发日期' },
   { value: 'received', label: '到账日期' },
 ];
