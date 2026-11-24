@@ -363,6 +363,8 @@ type ConfirmGroup = {
 | POST | `/api/batches/{id}/received` | `{ received_on, expense_ids?: number[] }`（不传=全部）；草稿或已全部到账时 409 | `BatchDetail` |
 | POST | `/api/batches/{id}/reopen` | — 回到草稿，清空外发/到账信息并重算记录状态；草稿批次 409 | `BatchDetail` |
 
+资料包 ZIP 固定包含全部材料打印版、按分类打印版和 `03_按项目名称打印/`。项目名称打印版使用清单“名称”字段（为空时依次回退摘要、发票项目摘要、商家）合并同名记录；分组及组内记录均沿用“分类配置顺序 → 业务发生日期 → 记录 id”的稳定顺序，文件名经过安全字符处理并避免重名覆盖。`duplex=true` 时每份项目名称 PDF 也独立补双面空白页。
+
 ### 统计（stats 模块）
 
 `GET /api/stats?start=&end=&date_basis=spent&group_by=category|project|merchant|month|travel_scope`

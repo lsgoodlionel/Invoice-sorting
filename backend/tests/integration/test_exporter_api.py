@@ -167,6 +167,55 @@ def test_export_adds_category_pdfs_and_applies_duplex_per_file(client):
     ] == [7, 3, 3]
 
 
+def test_export_adds_item_name_pdfs_sorted_by_category_then_spent_on(client):
+    categories = client.get("/api/categories").json()["data"][:2]
+    first, second = categories
+    expenses = [
+        make_expense(
+            client,
+            spent_on="2026-09-03",
+            merchant="同名晚日期",
+            item_name="打印纸",
+            category_id=first["id"],
+        ),
+        make_expense(
+            client,
+            spent_on="2026-09-01",
+            merchant="同名早日期",
+            item_name="打印纸",
+            category_id=first["id"],
+        ),
+        make_expense(
+            client,
+            spent_on="2026-08-01",
+            merchant="后分类",
+            item_name="高铁票",
+            category_id=second["id"],
+        ),
+        make_expense(
+            client,
+            spent_on="2026-07-01",
+            merchant="未分类",
+            item_name="高铁票",
+        ),
+    ]
+    batch = make_batch(client, "按项目名称打印")
+    add_items(client, batch["id"], [expense["id"] for expense in expenses], force=True)
+
+    archive = download(client, export(client, batch["id"]))
+    item_name_members = [
+        name for name in archive.namelist() if name.startswith("03_按项目名称打印/")
+    ]
+
+    assert item_name_members == [
+        "03_按项目名称打印/01_打印纸.pdf",
+        "03_按项目名称打印/02_高铁票.pdf",
+    ]
+    assert [
+        len(PdfReader(io.BytesIO(archive.read(name))).pages) for name in item_name_members
+    ] == [2, 2]
+
+
 def test_export_by_kind_uses_category_then_date_order_for_every_member(client):
     categories = client.get("/api/categories").json()["data"][:2]
     first, second = categories

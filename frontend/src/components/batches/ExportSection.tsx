@@ -68,7 +68,7 @@ export function ExportSection({ batch }: { batch: BatchDetail }) {
         {isEmpty && <Text size="sm" c="dimmed">先添加记录再打包</Text>}
       </Group>
       <Text size="xs" c="dimmed">
-        {LAYOUT_HINTS[layout]}。资料包同时包含一份全部材料打印版和按分类拆分的打印版；启用双面打印后，除最后一条外，奇数页记录会补空白页，确保下一条从正面开始。
+        {LAYOUT_HINTS[layout]}。资料包同时包含全部材料打印版、按分类打印版和按清单“名称”合并的项目名称打印版；各打印版按分类优先、业务发生日期其次排序。启用双面打印后，除最后一条外，奇数页记录会补空白页，确保下一条从正面开始。
       </Text>
       {batch.exports.length > 0 && (
         <Table className="ledger-table">

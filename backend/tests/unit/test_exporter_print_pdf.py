@@ -13,6 +13,7 @@ from pypdf import PdfReader, PdfWriter
 from invoice_sorting.exporter.naming import (
     PackageItem,
     category_print_groups,
+    item_name_print_groups,
     kind_rank,
     package_items,
     support_name,
@@ -217,5 +218,61 @@ def test_category_print_groups_follow_package_order_and_use_safe_unique_names():
     assert [[item.expense.id for item in group.items] for group in groups] == [
         [3, 4],
         [2],
+        [1],
+    ]
+
+
+def test_item_name_print_groups_merge_same_name_and_follow_package_order():
+    first = SimpleNamespace(id=10, name="办公用品", sort=1)
+    second = SimpleNamespace(id=20, name="差旅/交通", sort=2)
+    expenses = [
+        SimpleNamespace(
+            id=4,
+            spent_on=date(2026, 11, 4),
+            category=first,
+            attachments=[],
+            item_name="打印纸",
+            summary="",
+            merchant="甲",
+        ),
+        SimpleNamespace(
+            id=2,
+            spent_on=date(2026, 11, 2),
+            category=first,
+            attachments=[],
+            item_name="打印纸",
+            summary="",
+            merchant="乙",
+        ),
+        SimpleNamespace(
+            id=3,
+            spent_on=date(2026, 11, 3),
+            category=second,
+            attachments=[],
+            item_name="高铁/票",
+            summary="",
+            merchant="丙",
+        ),
+        SimpleNamespace(
+            id=1,
+            spent_on=date(2026, 11, 1),
+            category=None,
+            attachments=[],
+            item_name="高铁:票",
+            summary="",
+            merchant="丁",
+        ),
+    ]
+
+    groups = item_name_print_groups(package_items(expenses))
+
+    assert [group.name for group in groups] == [
+        "03_按项目名称打印/01_打印纸.pdf",
+        "03_按项目名称打印/02_高铁_票.pdf",
+        "03_按项目名称打印/03_高铁_票.pdf",
+    ]
+    assert [[item.expense.id for item in group.items] for group in groups] == [
+        [2, 4],
+        [3],
         [1],
     ]

@@ -10,15 +10,19 @@ from invoice_sorting.attachments.storage import safe_component
 from invoice_sorting.common.constants import AttachmentKind, ExportLayout
 from invoice_sorting.common.money import cents_to_yuan
 from invoice_sorting.db.models import Attachment, Batch, Expense
+from invoice_sorting.expenses.serializers import display_item_name
 
 MERCHANT_MAX_CHARS = 30
 SUMMARY_NAME = "00_报销汇总表.xlsx"
 PRINT_NAME = "01_打印版_全部材料.pdf"
 CATEGORY_PRINT_DIR = "02_按分类打印"
+ITEM_NAME_PRINT_DIR = "03_按项目名称打印"
 INVOICE_DIR = "02_发票原件"
 SUPPORT_DIR = "03_支撑材料"
 FALLBACK_MERCHANT = "未填商家"
 FALLBACK_CATEGORY = "未分类"
+FALLBACK_ITEM_NAME = "未填项目名称"
+ITEM_NAME_MAX_CHARS = 60
 
 # 打印版合并顺序；同时用于附件清单的显示顺序
 KIND_ORDER: tuple[AttachmentKind, ...] = (
@@ -49,6 +53,14 @@ class PackageItem:
 @dataclass(frozen=True)
 class CategoryPrintGroup:
     """同一分类的打印版文件名与记录。"""
+
+    name: str
+    items: tuple[PackageItem, ...]
+
+
+@dataclass(frozen=True)
+class ItemNamePrintGroup:
+    """同一清单项目名称的打印版文件名与记录。"""
 
     name: str
     items: tuple[PackageItem, ...]
@@ -97,6 +109,22 @@ def category_print_groups(items: list[PackageItem]) -> list[CategoryPrintGroup]:
             grouped.items(), start=1
         )
     ]
+
+
+def item_name_print_groups(items: list[PackageItem]) -> list[ItemNamePrintGroup]:
+    """按清单“名称”分组；组及组内记录沿用分类、业务日期、id 的资料包顺序。"""
+    grouped: dict[str, list[PackageItem]] = {}
+    for item in items:
+        label = display_item_name(item.expense).strip() or FALLBACK_ITEM_NAME
+        grouped.setdefault(label, []).append(item)
+
+    used: set[str] = set()
+    groups: list[ItemNamePrintGroup] = []
+    for index, (label, grouped_items) in enumerate(grouped.items(), start=1):
+        token = safe_component(label)[:ITEM_NAME_MAX_CHARS] or FALLBACK_ITEM_NAME
+        name = unique_name(f"{ITEM_NAME_PRINT_DIR}/{index:02d}_{token}.pdf", used)
+        groups.append(ItemNamePrintGroup(name=name, items=tuple(grouped_items)))
+    return groups
 
 
 def merchant_token(expense: Expense) -> str:

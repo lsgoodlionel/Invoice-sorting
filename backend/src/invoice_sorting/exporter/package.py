@@ -20,6 +20,7 @@ from invoice_sorting.exporter.naming import (
     PackageItem,
     category_print_groups,
     invoice_original_name,
+    item_name_print_groups,
     package_dir_name,
     package_file_name,
     package_items,
@@ -105,6 +106,10 @@ def export_batch(
     target = _free_file(directory, package_file_name(batch, moment))
     members = {SUMMARY_NAME: workbook, PRINT_NAME: printed.pdf_bytes}
     for group in category_print_groups(items):
+        members[group.name] = build_print_pdf(
+            list(group.items), resolve, duplex=duplex
+        ).pdf_bytes
+    for group in item_name_print_groups(items):
         members[group.name] = build_print_pdf(
             list(group.items), resolve, duplex=duplex
         ).pdf_bytes
