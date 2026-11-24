@@ -113,4 +113,21 @@ describe('BatchesPage', () => {
       expect(search().get('batch_status')).toBe('draft');
     });
   });
+
+  test('batch list defaults to 10 rows and can show 20', async () => {
+    const user = userEvent.setup();
+    const batches = Array.from({ length: 12 }, (_, index) => makeBatch({ id: index + 1, name: `批次${index + 1}` }));
+    mockFetch({
+      'GET /api/batches': batches,
+      'GET /api/batches/1': { ...batches[0], expenses: [], exports: [] },
+      'GET /api/projects': [],
+      'GET /api/categories': [],
+    });
+    renderWithProviders(<BatchesPage />, { route: '/batches' });
+    await screen.findByTestId('batch-list-summary');
+    expect(screen.getAllByRole('listitem')).toHaveLength(10);
+    await user.click(screen.getByRole('combobox', { name: '每页显示' }));
+    await user.click(await screen.findByRole('option', { name: '20 行' }));
+    expect(screen.getAllByRole('listitem')).toHaveLength(12);
+  });
 });

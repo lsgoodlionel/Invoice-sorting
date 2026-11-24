@@ -46,7 +46,8 @@ describe('ExpensesPage', () => {
     expect(screen.getByTestId('status-count-complete')).toHaveTextContent('1');
     expect(screen.getByTestId('status-count-spent')).toHaveTextContent('0');
     expect(within(screen.getByTestId('status-group-invoiced')).getByText('¥960.00')).toBeInTheDocument();
-    expect(screen.getByText(/共 2 条/)).toHaveTextContent('¥1,258.00');
+    const headingBlock = screen.getByRole('heading', { name: '清单' }).parentElement as HTMLElement;
+    expect(within(headingBlock).getByText(/共 2 条/)).toHaveTextContent('¥1,258.00');
   });
 
   test('clicking a status group adds it to the request filter', async () => {
@@ -132,6 +133,27 @@ describe('ExpensesPage', () => {
     renderWithProviders(<ExpensesPage />, { route: '/expenses?period=all&open=2' });
     expect(await screen.findByRole('dialog')).toBeInTheDocument();
     await waitFor(() => expect(calls.some((call) => call.url === '/api/expenses/2')).toBe(true));
+  });
+
+  test('detail name matches the effective name shown in the list', async () => {
+    const effectiveName = '订单识别名称';
+    setupRoutes(
+      { ...list, items: [makeExpense({ id: 8, item_name: effectiveName })], total: 1 },
+      { 'GET /api/expenses/8': makeDetail({ id: 8, item_name: effectiveName, item_name_manual: '' }) },
+    );
+    renderWithProviders(<ExpensesPage />, { route: '/expenses?period=all&open=8' });
+    expect(await screen.findByRole('textbox', { name: /名称/ })).toHaveValue(effectiveName);
+  });
+
+  test('defaults to 10 rows and can change page size', async () => {
+    const user = userEvent.setup();
+    const { calls } = setupRoutes();
+    renderWithProviders(<ExpensesPage />, { route: '/expenses?period=all' });
+    await screen.findByText('京东某店');
+    expect(calls.some((call) => call.url.includes('page_size=10'))).toBe(true);
+    await user.click(screen.getByRole('combobox', { name: '每页显示' }));
+    await user.click(await screen.findByRole('option', { name: '20 行' }));
+    await waitFor(() => expect(calls.some((call) => call.url.includes('page_size=20'))).toBe(true));
   });
   test('period controls: legacy all shows 全部日期, presets and typed dates drive the request', async () => {
     const user = userEvent.setup();

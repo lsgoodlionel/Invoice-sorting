@@ -7,6 +7,9 @@ import { formatCents } from '../../lib/money';
 import { CategoryDot } from '../CategoryDot';
 import { StatusBadge } from '../StatusBadge';
 import { BatchExpensesFilterBar } from './BatchExpensesFilterBar';
+import { ListPagination } from '../ListPagination';
+import { SyncedHorizontalScroll } from '../SyncedHorizontalScroll';
+import { DEFAULT_PAGE_SIZE, pageCount, pageSlice, type PageSize } from '../../lib/pagination';
 
 interface BatchExpensesTableProps {
   expenses: readonly ExpenseSummary[];
@@ -18,11 +21,15 @@ interface BatchExpensesTableProps {
 /** 批次记录表：表头上方可按分类/状态本地筛选（仅影响显示，不影响打包）。 */
 export function BatchExpensesTable({ expenses, canRemove, onRemove, onOpen }: BatchExpensesTableProps) {
   const [filter, setFilter] = useState<BatchExpenseFilter>(EMPTY_BATCH_EXPENSE_FILTER);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<PageSize>(DEFAULT_PAGE_SIZE);
   const shown = filterBatchExpenses(expenses, filter);
+  const currentPage = Math.min(page, pageCount(shown.length, pageSize));
+  const pageItems = pageSlice(shown, currentPage, pageSize);
   return (
     <Stack gap="xs">
-      <BatchExpensesFilterBar expenses={expenses} filter={filter} shownCount={shown.length} onChange={setFilter} />
-      <div className="table-scroll">
+      <BatchExpensesFilterBar expenses={expenses} filter={filter} shownCount={shown.length} onChange={(next) => { setFilter(next); setPage(1); }} />
+      <SyncedHorizontalScroll contentWidth={680}>
         <Table className="ledger-table" miw={680}>
           <Table.Thead>
             <Table.Tr>
@@ -35,7 +42,7 @@ export function BatchExpensesTable({ expenses, canRemove, onRemove, onOpen }: Ba
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
-            {shown.map((expense) => (
+            {pageItems.map((expense) => (
               <Table.Tr key={expense.id} data-testid={`batch-expense-${expense.id}`} className="clickable" tabIndex={0} onClick={() => onOpen(expense.id)} onKeyDown={(e) => e.key === 'Enter' && onOpen(expense.id)}>
                 <Table.Td className="num">{expense.spent_on}</Table.Td>
                 <Table.Td>
@@ -61,7 +68,11 @@ export function BatchExpensesTable({ expenses, canRemove, onRemove, onOpen }: Ba
             ))}
           </Table.Tbody>
         </Table>
-      </div>
+      </SyncedHorizontalScroll>
+      {shown.length > 0 && (
+        <ListPagination total={shown.length} page={currentPage} pageSize={pageSize}
+          onPageChange={setPage} onPageSizeChange={(next) => { setPageSize(next); setPage(1); }} />
+      )}
       {shown.length === 0 && <Text size="sm" c="dimmed" py="sm">没有符合筛选条件的记录</Text>}
     </Stack>
   );

@@ -3,8 +3,11 @@
 import re
 from decimal import ROUND_HALF_UP, Decimal
 
+from sqlalchemy import or_, select
+from sqlalchemy.orm import Session, selectinload
+
 from invoice_sorting.common.constants import AttachmentKind
-from invoice_sorting.db.models import Expense
+from invoice_sorting.db.models import Attachment, Expense
 
 MIN_QUANTITY = 1
 MAX_QUANTITY = 100
@@ -40,15 +43,73 @@ def pricing_texts(expense: Expense) -> list[str]:
     return [*orders, *invoices, expense.item_name or "", expense.summary or ""]
 
 
+def inferred_item_name(expense: Expense) -> str:
+    """名称统一优先级：人工/已有名称 → 订单 → 发票 → 摘要 → 商家。"""
+    if expense.item_name.strip():
+        return expense.item_name.strip()
+    orders: list[str] = []
+    invoices: list[str] = []
+    for attachment in sorted(expense.attachments, key=lambda item: item.id):
+        if attachment.kind == AttachmentKind.ORDER and attachment.evidence_data is not None:
+            orders.append(attachment.evidence_data.item_name or "")
+        if attachment.kind == AttachmentKind.INVOICE and attachment.invoice_data is not None:
+            invoices.append(attachment.invoice_data.item_summary or "")
+    return next(
+        (
+            text.strip()
+            for text in [*orders, *invoices, expense.summary, expense.merchant]
+            if text.strip()
+        ),
+        "",
+    )
+
+
+def _unit_price(amount_cents: int, quantity: int) -> int:
+    return int(
+        (Decimal(amount_cents) / Decimal(quantity)).quantize(
+            Decimal("1"), rounding=ROUND_HALF_UP
+        )
+    )
+
+
 def apply_default_pricing(expense: Expense) -> None:
     """未人工设置时填数量与单价；分不能整除时按人民币分四舍五入。"""
     if expense.pricing_manual:
         return
     quantity = infer_quantity(pricing_texts(expense))
-    unit = int(
-        (Decimal(expense.amount_cents) / Decimal(quantity)).quantize(
-            Decimal("1"), rounding=ROUND_HALF_UP
+    expense.quantity = quantity
+    expense.unit_price_cents = _unit_price(expense.amount_cents, quantity)
+
+
+def backfill_expense_display_fields(session: Session) -> int:
+    """升级时只补历史空值；已有名称、数量或单价绝不覆盖。"""
+    rows = session.scalars(
+        select(Expense)
+        .where(
+            Expense.deleted.is_(False),
+            or_(
+                Expense.item_name == "",
+                Expense.quantity.is_(None),
+                Expense.unit_price_cents.is_(None),
+            ),
+        )
+        .options(
+            selectinload(Expense.attachments).selectinload(Attachment.invoice_data),
+            selectinload(Expense.attachments).selectinload(Attachment.evidence_data),
         )
     )
-    expense.quantity = quantity
-    expense.unit_price_cents = unit
+    changed = 0
+    for expense in rows:
+        touched = False
+        if not expense.item_name.strip():
+            expense.item_name = inferred_item_name(expense)
+            touched = bool(expense.item_name)
+        if expense.quantity is None:
+            expense.quantity = infer_quantity(pricing_texts(expense))
+            touched = True
+        if expense.unit_price_cents is None:
+            expense.unit_price_cents = _unit_price(expense.amount_cents, expense.quantity or 1)
+            touched = True
+        changed += int(touched)
+    session.commit()
+    return changed

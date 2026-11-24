@@ -17,6 +17,7 @@ from invoice_sorting.db.seed import (
     sync_platform_category_flags,
 )
 from invoice_sorting.db.session import create_db_engine, init_db, make_session_factory
+from invoice_sorting.expenses.pricing import backfill_expense_display_fields
 from invoice_sorting.importer.travel_scope import backfill_travel_scopes
 from invoice_sorting.settings.service import region_policy
 
@@ -43,6 +44,7 @@ def _seed(session: Session, settings: Settings) -> None:
     sync_platform_category_flags(session)
     reset_polluted_memory(session)
     backfill_file_keys(session)
+    backfill_expense_display_fields(session)
     backfill_travel_scopes(session, region_policy(session).local_region)
     # SaaS 租户的成员由控制面开通，业务库不预置 admin 镜像
     migrate_users(session, create_admin=not settings.is_saas)

@@ -1,10 +1,16 @@
 """订单/发票数量识别与默认单价。"""
 
+from datetime import date
 from types import SimpleNamespace
 
 import pytest
 
-from invoice_sorting.expenses.pricing import apply_default_pricing, infer_quantity
+from invoice_sorting.db.models import Attachment, EvidenceData, Expense
+from invoice_sorting.expenses.pricing import (
+    apply_default_pricing,
+    backfill_expense_display_fields,
+    infer_quantity,
+)
 
 
 @pytest.mark.parametrize(
@@ -76,3 +82,35 @@ def test_default_is_one_and_manual_pricing_is_preserved():
     manual.quantity, manual.unit_price_cents = 2, 4400
     apply_default_pricing(manual)
     assert (manual.quantity, manual.unit_price_cents) == (2, 4400)
+
+
+def test_backfill_only_fills_missing_historical_fields(session):
+    missing = Expense(
+        spent_on=date(2026, 1, 2), amount_cents=12000, merchant="办公商城", summary=""
+    )
+    order = Attachment(
+        kind="order", file_path="order.png", original_name="订单.png", sha256="q" * 64
+    )
+    order.evidence_data = EvidenceData(item_name="签字笔×4")
+    missing.attachments.append(order)
+    existing = Expense(
+        spent_on=date(2026, 1, 3),
+        amount_cents=9999,
+        merchant="已有数据",
+        summary="不应覆盖",
+        item_name="人工名称",
+        quantity=3,
+        unit_price_cents=3333,
+    )
+    session.add_all([missing, existing])
+    session.commit()
+
+    assert backfill_expense_display_fields(session) == 1
+    session.refresh(missing)
+    session.refresh(existing)
+    assert (missing.item_name, missing.quantity, missing.unit_price_cents) == ("签字笔×4", 4, 3000)
+    assert (existing.item_name, existing.quantity, existing.unit_price_cents) == (
+        "人工名称",
+        3,
+        3333,
+    )

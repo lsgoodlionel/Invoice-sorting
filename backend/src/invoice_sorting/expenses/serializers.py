@@ -19,6 +19,7 @@ from invoice_sorting.common.constants import (
     TravelScope,
 )
 from invoice_sorting.db.models import ChecklistItem, Expense, StatusEvent
+from invoice_sorting.expenses.pricing import inferred_item_name
 from invoice_sorting.importer.items import item_from_attachment
 from invoice_sorting.importer.lodging import merge_stays
 from invoice_sorting.settings.service import buyer_identity, region_policy
@@ -55,15 +56,7 @@ def first_invoice_issued_on(expense: Expense) -> str | None:
 
 
 def display_item_name(expense: Expense) -> str:
-    if expense.item_name.strip():
-        return expense.item_name.strip()
-    if expense.summary.strip():
-        return expense.summary.strip()
-    for attachment in sorted(expense.attachments, key=lambda item: item.id):
-        invoice = attachment.invoice_data
-        if invoice is not None and invoice.item_summary.strip():
-            return invoice.item_summary.strip()
-    return expense.merchant.strip()
+    return inferred_item_name(expense)
 
 
 def _policy_for(expense: Expense) -> RegionPolicy:

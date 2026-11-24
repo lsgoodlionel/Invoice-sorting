@@ -4,6 +4,7 @@ import { useState, type PointerEvent as ReactPointerEvent, type ReactNode } from
 import type { DateBasis, ExpenseSortBy, ExpenseSummary, SortOrder } from '../../api/types';
 import { DEFAULT_EXPENSE_COLUMNS, DEFAULT_EXPENSE_COLUMN_WIDTHS, type ExpenseColumnKey } from '../../lib/expenseColumns';
 import { ExpenseRow } from './ExpenseRow';
+import { SyncedHorizontalScroll } from '../SyncedHorizontalScroll';
 
 interface ExpenseTableProps {
   items: readonly ExpenseSummary[];
@@ -76,9 +77,10 @@ function headerFor(column: ExpenseColumnKey, sortBy: ExpenseSortBy, sortOrder: S
 export function ExpenseTable({ items, selectedIds, onToggle, onToggleAll, onOpen, onDropFiles, columns = DEFAULT_EXPENSE_COLUMNS, widths = DEFAULT_EXPENSE_COLUMN_WIDTHS, onWidthChange = () => undefined, sortBy = 'date', sortOrder = 'desc', dateBasis = 'spent', onSort = () => undefined }: ExpenseTableProps) {
   const selectedCount = items.filter((item) => selectedIds.includes(item.id)).length;
   const isAllSelected = items.length > 0 && selectedCount === items.length;
+  const tableWidth = Math.max(860, 44 + columns.reduce((total, key) => total + widths[key], 0));
   return (
-    <div className="table-scroll">
-      <Table className="ledger-table resizable-ledger-table" miw={860} style={{ width: Math.max(860, 44 + columns.reduce((total, key) => total + widths[key], 0)), tableLayout: 'fixed' }}>
+    <SyncedHorizontalScroll contentWidth={tableWidth}>
+      <Table className="ledger-table resizable-ledger-table" miw={860} style={{ width: tableWidth, tableLayout: 'fixed' }}>
         <Table.Thead>
           <Table.Tr>
             <Table.Th>
@@ -108,6 +110,6 @@ export function ExpenseTable({ items, selectedIds, onToggle, onToggleAll, onOpen
           ))}
         </Table.Tbody>
       </Table>
-    </div>
+    </SyncedHorizontalScroll>
   );
 }

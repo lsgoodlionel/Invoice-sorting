@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { useExpenseList } from '../api/hooks/expenses';
 import { EmptyHint } from '../components/EmptyHint';
+import { ListPagination } from '../components/ListPagination';
 import { ExpenseDrawer } from '../components/ExpenseDrawer/ExpenseDrawer';
 import { useCurrentUser } from '../components/auth/CurrentUserContext';
 import { AddToBatchModal } from '../components/expenses/AddToBatchModal';
@@ -20,6 +21,7 @@ import { useQuickAdd } from '../components/QuickAddContext';
 import { filtersToQuery, parseOpenExpenseId } from '../lib/expenseFilters';
 import { readExpenseTablePreferences, saveExpenseTablePreferences, type ExpenseTablePreferences } from '../lib/expenseColumns';
 import { formatCents, sumCents } from '../lib/money';
+import { pageCount } from '../lib/pagination';
 import { DEFAULT_VISIBLE_STATUSES, toggleStatus } from '../lib/status';
 
 function toggleId(ids: readonly number[], id: number): number[] {
@@ -48,6 +50,10 @@ export function ExpensesPage() {
   usePreventFileDrop();
 
   const items = data?.items ?? [];
+  const pages = pageCount(data?.total ?? 0, filters.pageSize);
+  useEffect(() => {
+    if (filters.page > pages) setFilters({ page: pages });
+  }, [filters.page, pages, setFilters]);
   const selectedItems = items.filter((item) => selectedIds.includes(item.id));
   const visibleSelectedIds = selectedItems.map((item) => item.id);
 
@@ -91,8 +97,9 @@ export function ExpensesPage() {
         />
       )}
       {items.length > 0 && (
-        <ExpenseTable
-          items={items}
+        <>
+          <ExpenseTable
+            items={items}
           selectedIds={selectedIds}
           onToggle={(id) => setSelectedIds((ids) => toggleId(ids, id))}
           onToggleAll={(checked) => setSelectedIds(checked ? items.map((item) => item.id) : [])}
@@ -113,7 +120,15 @@ export function ExpensesPage() {
               sortOrder: same ? (filters.sortOrder === 'asc' ? 'desc' : 'asc') : defaultOrder,
             });
           }}
-        />
+          />
+          <ListPagination
+            total={data?.total ?? 0}
+            page={filters.page}
+            pageSize={filters.pageSize}
+            onPageChange={(page) => setFilters({ page })}
+            onPageSizeChange={(pageSize) => setFilters({ pageSize, page: 1 })}
+          />
+        </>
       )}
       {visibleSelectedIds.length > 0 && (
         <SelectionBar

@@ -8,7 +8,11 @@ export function useExpenseFilters(): [ExpenseFilters, (patch: Partial<ExpenseFil
   const filters = useMemo(() => decodeExpenseFilters(params), [params]);
   const update = useCallback(
     (patch: Partial<ExpenseFilters>) => {
-      setParams((current) => encodeExpenseFilters({ ...decodeExpenseFilters(current), ...patch }), { replace: true });
+      setParams((current) => {
+        const existing = decodeExpenseFilters(current);
+        const onlyPage = Object.keys(patch).every((key) => key === 'page');
+        return encodeExpenseFilters({ ...existing, ...patch, ...(!onlyPage && patch.page === undefined ? { page: 1 } : {}) });
+      }, { replace: true });
     },
     [setParams],
   );

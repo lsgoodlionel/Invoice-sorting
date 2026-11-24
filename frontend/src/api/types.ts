@@ -291,6 +291,7 @@ export interface ExpenseQuery {
   sort_order?: SortOrder;
   page?: number;
   page_size?: number;
+  all?: boolean;
 }
 
 export interface ExpenseCreate {

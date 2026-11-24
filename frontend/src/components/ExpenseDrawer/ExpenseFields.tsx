@@ -22,7 +22,7 @@ export function ExpenseFields({ expense }: { expense: ExpenseDetail }) {
   const save = (patch: ExpensePatch) => update.mutate(patch);
   const commitText = (field: TextField) => {
     const value = field === 'note' ? texts[field] : texts[field].trim();
-    const original = field === 'item_name' ? (expense.item_name_manual ?? '') : expense[field];
+    const original = field === 'item_name' ? (expense.item_name ?? '') : expense[field];
     if (value !== original) save({ [field]: value });
   };
   const textProps = (field: TextField) => ({
@@ -50,7 +50,7 @@ export function ExpenseFields({ expense }: { expense: ExpenseDetail }) {
       />
       <TextInput label="商家" {...textProps('merchant')} />
       <TextInput label="摘要" {...textProps('summary')} />
-      <TextInput label="名称" description="用于清单和导出；留空时自动取摘要或发票商品名称" {...textProps('item_name')} />
+      <TextInput label="名称" description="与清单显示一致；留空时按订单、发票、摘要和商家自动补全" {...textProps('item_name')} />
       <MoneyInput
         label="单价（元）"
         cents={expense.unit_price_cents ?? null}
@@ -101,5 +101,5 @@ export function ExpenseFields({ expense }: { expense: ExpenseDetail }) {
 }
 
 function pickTexts(expense: ExpenseDetail): Record<TextField, string> {
-  return { merchant: expense.merchant, summary: expense.summary, item_name: expense.item_name_manual ?? '', pay_method: expense.pay_method, note: expense.note };
+  return { merchant: expense.merchant, summary: expense.summary, item_name: expense.item_name ?? '', pay_method: expense.pay_method, note: expense.note };
 }

@@ -369,6 +369,7 @@ def test_list_status_counts_ignore_status_filter(client, listing):
 
 def test_list_pagination(client, listing):
     assert list_ids(client, "?page=2&page_size=1") == [listing["b"]]
+    assert len(client.get("/api/expenses?page_size=1&all=true").json()["data"]["items"]) == 3
     assert client.get("/api/expenses?page_size=501").status_code == 422
     assert client.get("/api/expenses?page=0").status_code == 422
     assert client.get("/api/expenses?status=unknown").status_code == 422

@@ -46,16 +46,17 @@ def _status_counts(session: Session, filters: ExpenseFilter) -> dict[str, dict[s
 
 
 def list_expenses(
-    session: Session, filters: ExpenseFilter, page: int, page_size: int
+    session: Session, filters: ExpenseFilter, page: int, page_size: int | None
 ) -> dict[str, Any]:
     query = build_expense_query(filters)
     subquery = query.order_by(None).subquery()
     total, total_cents = session.execute(
         select(func.count(), func.coalesce(func.sum(subquery.c.amount_cents), 0))
     ).one()
-    rows = session.scalars(
-        query.options(*SUMMARY_LOAD_OPTIONS).offset((page - 1) * page_size).limit(page_size)
-    )
+    rows_query = query.options(*SUMMARY_LOAD_OPTIONS)
+    if page_size is not None:
+        rows_query = rows_query.offset((page - 1) * page_size).limit(page_size)
+    rows = session.scalars(rows_query)
     policy = region_policy(session)
     return {
         "items": [serialize_expense_summary(expense, policy) for expense in rows],
