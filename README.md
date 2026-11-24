@@ -150,10 +150,10 @@ curl -fsSL https://raw.githubusercontent.com/lsgoodlionel/Invoice-sorting/main/d
 
 ### 按版本安装与回滚
 
-脚本默认走 `release` 通道：从 GitHub Releases 下载**固定版本**的发布包并逐个校验 SHA-256，任何时候装到的都是同一份通过了完整 CI 的产物，而不是「当时的 main」。当前最新正式版为 **v0.5.1**；上一正式版的安装与校验文件见 [v0.5.0 发布说明](https://github.com/lsgoodlionel/Invoice-sorting/releases/tag/v0.5.0)。
+脚本默认走 `release` 通道：从 GitHub Releases 下载**固定版本**的发布包并逐个校验 SHA-256，任何时候装到的都是同一份通过了完整 CI 的产物，而不是「当时的 main」。当前正式版 **v0.5.2** 修复了 macOS 收件箱监听启停时可能导致应用退出的问题。[v0.5.2 发布说明](https://github.com/lsgoodlionel/Invoice-sorting/releases/tag/v0.5.2) · [上一版 v0.5.1](https://github.com/lsgoodlionel/Invoice-sorting/releases/tag/v0.5.1)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/lsgoodlionel/Invoice-sorting/main/deploy/install.sh | sudo VERSION=v0.5.1 bash
+curl -fsSL https://raw.githubusercontent.com/lsgoodlionel/Invoice-sorting/main/deploy/install.sh | sudo VERSION=v0.5.2 bash
 ```
 
 把 `VERSION` 换成旧版本号重跑一次就是回滚。查看当前版本：
