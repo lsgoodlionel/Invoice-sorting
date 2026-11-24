@@ -348,7 +348,7 @@ def test_confirm_validation_errors(client, tmp_path):
     assert attach.json()["error"] == "文件“digital_same_line.pdf”：挂到已有记录时需要选择记录"
     assert unknown.json()["error"] == "附件 #9999 不存在或已处理"
     assert merchant.json()["error"] == "文件“digital_same_line.pdf”：请填写商家"
-    assert no_date.json()["error"] == "文件“digital_same_line.pdf”：请填写支出日期"
+    assert no_date.json()["error"] == "文件“digital_same_line.pdf”：请填写业务发生日期"
     assert twice.json()["error"] == "文件“digital_same_line.pdf”：不能同时出现在多个组"
 
 
