@@ -25,6 +25,7 @@ describe('ExportSection', () => {
     mockFetch({});
     renderWithProviders(<ExportSection batch={makeBatch({ item_count: 1, expenses: [makeExpense()] })} />);
     expect(screen.getByText(/一笔支出的材料放在一个文件夹/)).toBeInTheDocument();
+    expect(screen.getByText(/按清单“名称”合并的项目名称打印版/)).toBeInTheDocument();
     await user.click(screen.getByRole('radio', { name: '按材料类型分组' }));
     expect(screen.getByText(/同类材料放在一起/)).toBeInTheDocument();
   });
