@@ -150,10 +150,10 @@ curl -fsSL https://raw.githubusercontent.com/lsgoodlionel/Invoice-sorting/main/d
 
 ### 按版本安装与回滚
 
-脚本默认走 `release` 通道：从 GitHub Releases 下载**固定版本**的发布包并逐个校验 SHA-256，任何时候装到的都是同一份通过了完整 CI 的产物，而不是「当时的 main」。当前正式版 **v0.5.3**：设置页新增“关于系统”，内置完整系统说明书 PDF 在线预览和下载。[v0.5.3 发布说明](https://github.com/lsgoodlionel/Invoice-sorting/releases/tag/v0.5.3) · [上一版 v0.5.2](https://github.com/lsgoodlionel/Invoice-sorting/releases/tag/v0.5.2)
+脚本默认走 `release` 通道：从 GitHub Releases 下载**固定版本**的发布包并逐个校验 SHA-256，任何时候装到的都是同一份通过了完整 CI 的产物，而不是「当时的 main」。当前正式版 **v0.5.4**：内置 33 页图文系统说明书，包含 26 张隔离演示账本的真实页面截图及逐步操作说明。[v0.5.4 发布说明](https://github.com/lsgoodlionel/Invoice-sorting/releases/tag/v0.5.4) · [上一版 v0.5.3](https://github.com/lsgoodlionel/Invoice-sorting/releases/tag/v0.5.3)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/lsgoodlionel/Invoice-sorting/main/deploy/install.sh | sudo VERSION=v0.5.3 bash
+curl -fsSL https://raw.githubusercontent.com/lsgoodlionel/Invoice-sorting/main/deploy/install.sh | sudo VERSION=v0.5.4 bash
 ```
 
 把 `VERSION` 换成旧版本号重跑一次就是回滚。查看当前版本：
@@ -260,7 +260,7 @@ Gmail 打印的 `Your purchases from Apple` 多页 PDF 会按 `Order ID` 拆成�
 | 登录与安全 | 修改自己的密码、退出登录；单账套部署还显示数据目录与备份入口 |
 | 关于系统 | 显示当前后端安装版本与部署形态，在线预览和下载随发布包提供的《系统操作说明书》PDF（普通用户也可访问） |
 
-完整用户、管理员与部署卸载步骤见 [系统操作说明书](docs/系统操作说明书.md)。PDF 由 `backend/.venv/bin/python scripts/build_manual_pdf.py` 生成，前端构建时随 `frontend/public/system-manual.pdf` 一起打包。
+完整用户、管理员与部署卸载步骤见 [系统操作说明书](docs/系统操作说明书.md)。图文版使用隔离演示账本的截图，覆盖单账套主要网页操作；上传识别确认页、SaaS 平台和各部署方式的终端界面因状态不同以详细文字说明为准。PDF 由 `backend/.venv/bin/python scripts/build_manual_pdf.py` 从 Markdown 与 `docs/manual-images/` 生成，前端构建时随 `frontend/public/system-manual.pdf` 一起打包。
 
 **用户与权限**：管理员可以做全部操作；普通用户能收集凭证、处理记录、打包批次、看统计、新建经费项目、改自己的密码，
 但看不到用户管理，系统设置只读。系统始终保留至少一名启用中的管理员，管理员不能停用自己或取消自己的管理员身份。

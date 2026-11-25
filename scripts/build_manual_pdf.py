@@ -1,15 +1,17 @@
 """从 docs/系统操作说明书.md 生成随前端发布的中文 PDF。"""
 
+import re
 from html import escape
 from pathlib import Path
 
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
-from reportlab.lib.pagesizes import A4
+from reportlab.lib.pagesizes import A3, landscape
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.cidfonts import UnicodeCIDFont
 from reportlab.platypus import (
+    Image,
     PageBreak,
     Paragraph,
     SimpleDocTemplate,
@@ -19,18 +21,19 @@ from reportlab.platypus import (
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "docs" / "系统操作说明书.md"
 OUTPUT = ROOT / "frontend" / "public" / "system-manual.pdf"
+PAGE_SIZE = landscape(A3)
+IMAGE_LINE = re.compile(r"^!\[([^]]+)\]\((manual-images/[^)]+)\)$")
 FONT = "STSong-Light"
 pdfmetrics.registerFont(UnicodeCIDFont(FONT))
 
 
 def style(name: str, size: int, leading: int, **kwargs: object) -> ParagraphStyle:
-    options = {"spaceAfter": 10, **kwargs}
+    options = {"spaceAfter": 10, "textColor": colors.HexColor("#1f2420"), **kwargs}
     return ParagraphStyle(
         name,
         fontName=FONT,
         fontSize=size,
         leading=leading,
-        textColor=colors.HexColor("#1f2420"),
         wordWrap="CJK",
         **options,
     )
@@ -39,12 +42,14 @@ def style(name: str, size: int, leading: int, **kwargs: object) -> ParagraphStyl
 TITLE = style("Title", 25, 34, alignment=TA_CENTER, spaceAfter=22)
 SUBTITLE = style("Subtitle", 10, 18, alignment=TA_CENTER, spaceAfter=16)
 HEADING = style("Heading", 16, 25, spaceBefore=18, spaceAfter=10, keepWithNext=True)
+STEP_HEADING = style("StepHeading", 14, 22, spaceBefore=8, spaceAfter=8, keepWithNext=True)
 BODY = style("Body", 10.5, 20, alignment=TA_LEFT)
+CAPTION = style("Caption", 9, 15, alignment=TA_CENTER, textColor=colors.HexColor("#506057"))
 
 
 def page_footer(canvas, doc) -> None:
     canvas.saveState()
-    width, _ = A4
+    width, _ = PAGE_SIZE
     canvas.setStrokeColor(colors.HexColor("#d8d2c3"))
     canvas.line(44, 43, width - 44, 43)
     canvas.setFont(FONT, 8)
@@ -71,16 +76,35 @@ def main() -> None:
     story.extend(Paragraph(escape(heading), BODY) for heading in headings)
     story.append(PageBreak())
 
+    first_step_in_chapter = False
     for line in lines[4:]:
         if line.startswith("## "):
+            first_step_in_chapter = line.startswith(("## 18.", "## 19.", "## 20."))
+            if first_step_in_chapter:
+                story.append(PageBreak())
             story.append(Paragraph(escape(line[3:]), HEADING))
+        elif line.startswith("### "):
+            if not first_step_in_chapter:
+                story.append(PageBreak())
+            story.append(Paragraph(escape(line[4:]), STEP_HEADING))
+            first_step_in_chapter = False
+        elif match := IMAGE_LINE.match(line):
+            caption, relative_path = match.groups()
+            image_path = SOURCE.parent / relative_path
+            if not image_path.is_file():
+                raise FileNotFoundError(image_path)
+            screenshot = Image(str(image_path))
+            scale = min(1, 1080 / screenshot.imageWidth, 480 / screenshot.imageHeight)
+            screenshot.drawWidth *= scale
+            screenshot.drawHeight *= scale
+            story.extend([Spacer(1, 8), screenshot, Spacer(1, 7), Paragraph(escape(caption), CAPTION)])
         elif line.strip():
             story.append(Paragraph(escape(line).replace("`", ""), BODY))
 
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     doc = SimpleDocTemplate(
         str(OUTPUT),
-        pagesize=A4,
+        pagesize=PAGE_SIZE,
         rightMargin=48,
         leftMargin=48,
         topMargin=52,
