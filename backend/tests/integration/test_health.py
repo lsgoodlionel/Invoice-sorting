@@ -1,12 +1,24 @@
 from sqlalchemy import func, select
 
 from invoice_sorting.db.models import Category, ChecklistRule
+from invoice_sorting.main import app_version
 
 
 def test_health_returns_envelope(client):
     response = client.get("/api/health")
     assert response.status_code == 200
     assert response.json() == {"ok": True, "data": {"status": "up"}, "error": None}
+
+
+def test_about_reports_installed_version(client):
+    response = client.get("/api/system/about")
+    assert response.status_code == 200
+    assert response.json()["data"] == {
+        "name": "发票账本",
+        "version": app_version(),
+        "deployment": "单账套",
+        "manual_url": "/system-manual.pdf",
+    }
 
 
 def test_default_categories_and_rules_are_seeded_once(app, session):

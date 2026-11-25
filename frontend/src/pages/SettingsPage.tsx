@@ -15,6 +15,7 @@ import { RuleManager } from '../components/settings/RuleManager';
 import { SecuritySettings } from '../components/settings/SecuritySettings';
 import { SettingsSelectNav, SettingsSideNav } from '../components/settings/SettingsNav';
 import { UserManager } from '../components/settings/users/UserManager';
+import { AboutSystem } from '../components/settings/AboutSystem';
 import {
   resolveSection,
   visibleSections,
@@ -36,6 +37,7 @@ function renderSection(key: SettingsSectionKey, isReadOnly: boolean): ReactNode 
     case 'security': return <SecuritySettings />;
     case 'backup': return <LedgerTransferSection />;
     case 'diagnostics': return <DiagnosticsSection />;
+    case 'about': return <AboutSystem />;
   }
 }
 

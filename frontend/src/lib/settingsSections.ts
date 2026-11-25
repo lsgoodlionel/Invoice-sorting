@@ -10,7 +10,8 @@ export type SettingsSectionKey =
   | 'referral'
   | 'security'
   | 'backup'
-  | 'diagnostics';
+  | 'diagnostics'
+  | 'about';
 
 export interface SettingsAccess {
   isAdmin: boolean;
@@ -51,6 +52,8 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
     description: '一键备份并下载完整包（服务器保留最近 10 份），以及从备份包导入。' },
   { key: 'diagnostics', label: '运行日志与诊断', group: '数据与维护', isVisible: ADMIN_ONLY,
     description: '服务出问题时生成脱敏诊断包交给开发。' },
+  { key: 'about', label: '关于系统', group: '帮助', isVisible: EVERYONE,
+    description: '查看系统版本与完整操作说明书。' },
 ];
 
 export function visibleSections(access: SettingsAccess): SettingsSectionDef[] {

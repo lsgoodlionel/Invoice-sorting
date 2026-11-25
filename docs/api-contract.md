@@ -4,6 +4,7 @@
 - 统一响应信封：`{ "ok": true, "data": <payload>, "error": null }`；失败 `{ "ok": false, "data": null, "error": "中文错误说明" }`，HTTP 状态码 400/404/409/422。
 - 金额一律以 **分（整数）** 传输，字段名以 `_cents` 结尾；前端负责格式化为 `¥1,234.00`。
 - 日期 `YYYY-MM-DD`；时间 ISO 8601 带时区。
+- `GET /api/system/about` 需登录（关闭认证时可直接访问），返回 `{ name: "发票账本", version: string, deployment: "单账套" | "多账套", manual_url: "/system-manual.pdf" }`；版本取当前源码或安装包。`GET /system-manual.pdf` 作为前端静态 PDF 提供内嵌预览与下载，响应类型为 `application/pdf` 且不长期缓存。
 - 枚举值见 `backend/src/invoice_sorting/common/constants.py`：
   - ExpenseStatus：`spent` 已支出 / `invoiced` 已开票 / `complete` 凭证齐全 / `sent` 已外发 / `reimbursed` 已报销 / `void` 不报销/作废
   - AttachmentKind：`invoice` 发票 / `order` 订单明细 / `payment` 支付记录 / `acceptance` 验收单 / `contract` 合同 / `application` 申购单 / `itinerary` 行程单 / `meal_form` 工作餐单 / `meeting` 会议材料 / `software_form` 软件服务报账单 / `statement` 情况说明 / `transport` 往来交通凭证 / `other` 其他
