@@ -2,9 +2,11 @@
 
 import argparse
 import logging
+import tomllib
 import webbrowser
 from collections.abc import Sequence
 from contextlib import asynccontextmanager
+from importlib.metadata import version
 from pathlib import Path
 
 import uvicorn
@@ -71,6 +73,17 @@ from invoice_sorting.users.sync import sync_tenant_mirror
 logger = logging.getLogger("invoice_sorting")
 
 DEFAULT_FRONTEND_DIST = Path(__file__).resolve().parents[3] / "frontend" / "dist"
+
+
+def app_version() -> str:
+    """源码运行时以当前项目版本为准；安装包运行时使用发行元数据。"""
+    pyproject = Path(__file__).resolve().parents[2] / "pyproject.toml"
+    if pyproject.is_file():
+        with pyproject.open("rb") as file:
+            project = tomllib.load(file).get("project", {})
+        if project.get("name") == "invoice-sorting":
+            return str(project["version"])
+    return version("invoice-sorting")
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -147,6 +160,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/health")
     def health() -> dict:
         return ok({"status": "up"})
+
+    @app.get("/api/system/about")
+    def about() -> dict:
+        return ok({
+            "name": "发票账本",
+            "version": app_version(),
+            "deployment": "多账套" if settings.is_saas else "单账套",
+            "manual_url": "/system-manual.pdf",
+        })
 
     _mount_frontend(app, settings.frontend_dist or DEFAULT_FRONTEND_DIST)
     return app

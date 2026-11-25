@@ -69,7 +69,7 @@ describe('SettingsPage 分区导航', () => {
     renderWithProviders(<SettingsPage />, { route: '/settings' });
 
     await sectionTitle('基本');
-    for (const name of ['基本', '分类', '经费项目', '凭证清单规则', '分类整理', '用户管理', '登录与安全', '备份与搬迁', '运行日志与诊断']) {
+    for (const name of ['基本', '分类', '经费项目', '凭证清单规则', '分类整理', '用户管理', '登录与安全', '备份与搬迁', '运行日志与诊断', '关于系统']) {
       expect(navButton(name)).toBeInTheDocument();
     }
   });
@@ -115,6 +115,18 @@ describe('SettingsPage permissions', () => {
 
     expect(await screen.findByText('差旅')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '新增分类' })).not.toBeInTheDocument();
+  });
+
+  test('成员可在线预览和下载完整说明书', async () => {
+    routes(AUTHENTICATED_MEMBER, {
+      'GET /api/system/about': { name: '发票账本', version: '0.5.3', deployment: '单账套', manual_url: '/system-manual.pdf' },
+    });
+    renderWithProviders(<SettingsPage />, { route: '/settings?section=about', currentUser: MEMBER_CONTEXT });
+
+    expect(await sectionTitle('关于系统')).toBeInTheDocument();
+    expect(await screen.findByText('部署形态：单账套 · 当前安装版本：v0.5.3')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '下载 PDF' })).toHaveAttribute('href', '/system-manual.pdf');
+    expect(screen.getByTitle('系统操作说明书在线预览')).toHaveAttribute('src', '/system-manual.pdf#toolbar=1');
   });
 });
 

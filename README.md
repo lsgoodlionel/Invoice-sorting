@@ -7,7 +7,7 @@
 
 设计与运维文档：[部署与运维](docs/部署与运维.md) · [多租户与私有化](docs/多租户与私有化_设计.md) · [日志与故障上报](docs/日志与故障上报_设计.md) ·
 [凭证识别与自动归并](docs/凭证识别与自动归并_设计_v2.1.md) · [差旅住宿凭证](docs/差旅住宿凭证_设计.md) · [账本搬迁](docs/账本搬迁_设计.md) ·
-[开发蓝图](docs/个人发票报销管理工具_开发蓝图_v2.0.md) · [API 契约](docs/api-contract.md)
+[开发蓝图](docs/个人发票报销管理工具_开发蓝图_v2.0.md) · [API 契约](docs/api-contract.md) · [完整系统操作说明书](docs/系统操作说明书.md)
 
 ---
 
@@ -150,10 +150,10 @@ curl -fsSL https://raw.githubusercontent.com/lsgoodlionel/Invoice-sorting/main/d
 
 ### 按版本安装与回滚
 
-脚本默认走 `release` 通道：从 GitHub Releases 下载**固定版本**的发布包并逐个校验 SHA-256，任何时候装到的都是同一份通过了完整 CI 的产物，而不是「当时的 main」。当前正式版 **v0.5.2** 修复了 macOS 收件箱监听启停时可能导致应用退出的问题。[v0.5.2 发布说明](https://github.com/lsgoodlionel/Invoice-sorting/releases/tag/v0.5.2) · [上一版 v0.5.1](https://github.com/lsgoodlionel/Invoice-sorting/releases/tag/v0.5.1)
+脚本默认走 `release` 通道：从 GitHub Releases 下载**固定版本**的发布包并逐个校验 SHA-256，任何时候装到的都是同一份通过了完整 CI 的产物，而不是「当时的 main」。当前正式版 **v0.5.3**：设置页新增“关于系统”，内置完整系统说明书 PDF 在线预览和下载。[v0.5.3 发布说明](https://github.com/lsgoodlionel/Invoice-sorting/releases/tag/v0.5.3) · [上一版 v0.5.2](https://github.com/lsgoodlionel/Invoice-sorting/releases/tag/v0.5.2)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/lsgoodlionel/Invoice-sorting/main/deploy/install.sh | sudo VERSION=v0.5.2 bash
+curl -fsSL https://raw.githubusercontent.com/lsgoodlionel/Invoice-sorting/main/deploy/install.sh | sudo VERSION=v0.5.3 bash
 ```
 
 把 `VERSION` 换成旧版本号重跑一次就是回滚。查看当前版本：
@@ -258,6 +258,9 @@ Gmail 打印的 `Your purchases from Apple` 多页 PDF 会按 `Order ID` 拆成�
 | 分类整理 | 按当前规则重算旧记录的分类，列出建议并批量改正（仅管理员） |
 | 用户管理 / 运行日志与诊断 | 添加用户、重置密码、改姓名与角色、停用启用、删除；生成脱敏诊断包（都仅管理员） |
 | 登录与安全 | 修改自己的密码、退出登录；单账套部署还显示数据目录与备份入口 |
+| 关于系统 | 显示当前后端安装版本与部署形态，在线预览和下载随发布包提供的《系统操作说明书》PDF（普通用户也可访问） |
+
+完整用户、管理员与部署卸载步骤见 [系统操作说明书](docs/系统操作说明书.md)。PDF 由 `backend/.venv/bin/python scripts/build_manual_pdf.py` 生成，前端构建时随 `frontend/public/system-manual.pdf` 一起打包。
 
 **用户与权限**：管理员可以做全部操作；普通用户能收集凭证、处理记录、打包批次、看统计、新建经费项目、改自己的密码，
 但看不到用户管理，系统设置只读。系统始终保留至少一名启用中的管理员，管理员不能停用自己或取消自己的管理员身份。

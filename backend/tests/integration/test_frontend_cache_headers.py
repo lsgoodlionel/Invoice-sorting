@@ -11,6 +11,7 @@ def build_dist(tmp_path):
     (dist / "assets").mkdir(parents=True)
     (dist / "index.html").write_text('<script src="/assets/index-abc123.js"></script>', "utf-8")
     (dist / "assets" / "index-abc123.js").write_text("console.log(1)", "utf-8")
+    (dist / "system-manual.pdf").write_bytes(b"%PDF-1.4\nmanual fixture")
     return dist
 
 
@@ -42,3 +43,12 @@ def test_missing_asset_is_not_served_as_index(tmp_path):
     client = make_client(tmp_path)
 
     assert client.get("/assets/index-old999.js").status_code == 404
+
+
+def test_manual_is_served_inline_as_pdf(tmp_path):
+    client = make_client(tmp_path)
+    response = client.get("/system-manual.pdf")
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/pdf"
+    assert response.content.startswith(b"%PDF")
+    assert response.headers["cache-control"] == INDEX_CACHE_CONTROL

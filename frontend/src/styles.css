@@ -103,6 +103,16 @@ body {
   letter-spacing: 0.04em;
 }
 
+.system-manual-preview {
+  display: block;
+  width: 100%;
+  height: min(72vh, 900px);
+  min-height: 420px;
+  border: 1px solid var(--paper-line);
+  border-radius: 6px;
+  background: white;
+}
+
 @media (max-width: 767px) {
   .settings-layout {
     grid-template-columns: minmax(0, 1fr);
