@@ -56,21 +56,29 @@ def update_attachment(
     target = previous
     if change_expense:
         target = get_expense_or_404(session, expense_id) if expense_id is not None else None
+    prior = {
+        expense.id: expense_document_total(session, expense)
+        for expense in (previous, target)
+        if expense is not None
+    }
     if kind is not None:
         attachment.kind = str(kind)
     if change_expense and target is not previous:
-        previous_total = expense_document_total(session, target) if target is not None else 0
         assign_attachment(session, settings, attachment, target)
-        if target is not None:
-            merge_invoice_amounts(session, target, previous_total)
     else:
         relocate_attachment(session, settings, attachment)
+    for expense in (previous, target):
+        if expense is not None and expense.id in prior:
+            merge_invoice_amounts(session, expense, prior.pop(expense.id))
     _refresh_all(session, settings, [previous, target])
     return attachment
 
 
 def delete_attachment(session: Session, settings: Settings, attachment: Attachment) -> None:
     expense = attachment.expense
+    previous_total = expense_document_total(session, expense) if expense is not None else 0
     remove_thumbnail(settings, attachment)
     trash_attachment(session, settings, attachment)
+    if expense is not None:
+        merge_invoice_amounts(session, expense, previous_total)
     _refresh_all(session, settings, [expense])

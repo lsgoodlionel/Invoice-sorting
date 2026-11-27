@@ -240,6 +240,21 @@ export interface ExpenseSummary {
   stay_check_in: string | null;
   stay_check_out: string | null;
   travel_dates_missing: boolean;
+  trip?: {
+    destination: string;
+    start: string | null;
+    end: string | null;
+    outbound_attachment_ids: number[];
+    return_attachment_ids: number[];
+    outbound_legs: number;
+    return_legs: number;
+    lodging_nights: number;
+    expected_nights: number | null;
+    lodging_records: number;
+    expected_records: number | null;
+    warnings: string[];
+    cost_lines: { kind: 'lodging' | 'outbound' | 'return' | 'transport'; label: string; amount_cents: number | null; attachment_ids: number[] }[];
+  } | null;
 }
 
 export interface ExpenseDetail extends ExpenseSummary {

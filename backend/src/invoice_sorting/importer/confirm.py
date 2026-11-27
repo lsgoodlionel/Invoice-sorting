@@ -114,12 +114,12 @@ def _apply_kinds(ctx: ConfirmContext, attachments: list[Attachment], group: Conf
 
 
 def _require_single_invoice(attachments: list[Attachment]) -> None:
-    """每组最多一张发票；住宿组可以是一张住宿发票 + 若干交通票发票。"""
+    """多段实际住宿与交通票可共组；缺少实际住宿日期的多发票仍需人工判断。"""
     if invoices_compatible([item_from_attachment(attachment) for attachment in attachments]):
         return
     invoices = [item for item in attachments if item.kind == AttachmentKind.INVOICE]
     names = "、".join(f"“{item.original_name}”" for item in invoices)
-    raise AppError(f"每组最多一张发票（住宿可附多张交通票发票）：{names}")
+    raise AppError(f"每组最多一张发票；多段住宿须各有不同的实际住宿日期：{names}")
 
 
 def _assign(ctx: ConfirmContext, attachment: Attachment, expense: Expense) -> None:
@@ -180,7 +180,12 @@ def _create(ctx: ConfirmContext, attachments: list[Attachment], group: ConfirmGr
         amount_cents=group.amount_cents,
         merchant=group.merchant,
         summary=group.summary or "",
-        item_name=group.summary or "",
+        item_name=""
+        if any(
+            item_from_attachment(a).is_transport or item_from_attachment(a).stay
+            for a in attachments
+        )
+        else group.summary or "",
         category_id=group.category_id,
         project_id=group.project_id,
         is_online=bool(group.is_online),

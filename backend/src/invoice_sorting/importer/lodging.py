@@ -11,12 +11,13 @@ from collections.abc import Sequence
 from dataclasses import replace
 from datetime import date, timedelta
 
-from invoice_sorting.importer.cities import COMMON_CITIES, place_in_city
+from invoice_sorting.importer.cities import COMMON_CITIES, find_city, place_in_city
 from invoice_sorting.importer.items import EvidenceItem, Stay
 from invoice_sorting.importer.merchants import longest_common_substring
 
 STAY_MARGIN = timedelta(days=1)  # 交通日期可在入住前 1 天、离店后 1 天
 INVOICE_AFTER_CHECKOUT = timedelta(days=30)  # 酒店发票可在离店后 30 天内开具
+INVOICE_REVIEW_WINDOW = timedelta(days=180)  # 更晚开票仅作为人工核对候选
 MIN_COMMON_HOTEL_CHARS = 2
 GENERIC_HOTEL_WORDS = re.compile(
     "|".join(
@@ -67,7 +68,28 @@ def invoice_matches_order(invoice: EvidenceItem, order: EvidenceItem) -> bool:
         return False
     if not hotel_names_match(invoice.merchant, order.hotel_name):
         return False
-    return _issued_in_window(invoice.occurred_on, order.stay)
+    invoice_stay = invoice.detail("check_in")
+    order_stay = order.detail("check_in")
+    if invoice_stay and order_stay and invoice_stay != order_stay:
+        return False
+    return _issued_in_window(invoice.issued_on or invoice.occurred_on, order.stay)
+
+
+def invoice_order_review_candidate(invoice: EvidenceItem, order: EvidenceItem) -> bool:
+    """金额与酒店主体一致时，即使开票日偏晚也提示人工核对实际住宿段。"""
+    if not (invoice.is_lodging_invoice and order.is_hotel_order):
+        return False
+    if invoice.cny_cents is None or invoice.cny_cents != order.cny_cents:
+        return False
+    stay = order.stay
+    issued = invoice.issued_on or invoice.occurred_on
+    if stay is None or stay.check_in is None or issued is None:
+        return False
+    if invoice.detail("check_in") and order.detail("check_in"):
+        if invoice.detail("check_in") != order.detail("check_in"):
+            return False
+    latest = (stay.check_out or stay.check_in) + INVOICE_REVIEW_WINDOW
+    return stay.check_in <= issued <= latest
 
 
 def merge_stays(items: Sequence[EvidenceItem]) -> Stay | None:
@@ -114,15 +136,30 @@ def transport_fits(item: EvidenceItem, stay: Stay | None) -> bool:
 
 
 def invoices_compatible(items: Sequence[EvidenceItem]) -> bool:
-    """每组最多一张发票；住宿组（有住宿发票或酒店订单）可再有任意张交通票发票。"""
+    """差旅组允许多段已定日住宿发票及交通票；无日期的多张住宿发票仍待人工判断。"""
     invoices = [item for item in items if item.is_invoice]
     if len(invoices) <= 1:
         return True
     lodging = [item for item in invoices if item.is_lodging_invoice]
     if len(lodging) > 1:
-        return False
+        # 只有开票日或相同入住区间不足以证明是不同住宿段。
+        periods = [(invoice.detail("check_in"), invoice.detail("check_out")) for invoice in lodging]
+        if any(not start for start, _end in periods) or len(set(periods)) != len(periods):
+            return False
     has_lodging = bool(lodging) or any(item.is_hotel_order for item in items)
     others = [item for item in invoices if not item.is_lodging_invoice]
+    if not has_lodging and len(invoices) == 2 and all(item.is_transport for item in invoices):
+        first, second = invoices
+        first_route = tuple(find_city(place) for place in first.route)
+        second_route = tuple(find_city(place) for place in second.route)
+        return (
+            bool(first_route[0] and first_route[1])
+            and first_route == second_route[::-1]
+            and first_route[0] != first_route[1]
+            and first.travel_date is not None
+            and second.travel_date is not None
+            and abs((first.travel_date - second.travel_date).days) <= 30
+        )
     return has_lodging and all(item.is_transport for item in others)
 
 

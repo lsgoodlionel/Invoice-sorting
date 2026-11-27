@@ -57,6 +57,7 @@ class EvidenceItem:
     currency: str = CNY
     cny_cents: int | None = None  # 人民币金额
     occurred_on: date | None = None
+    issued_on: date | None = None
     date_is_issued: bool = False  # True 表示 occurred_on 只是开票日期兜底，不可当作业务日期自动匹配
     merchant: str = ""
     item_name: str = ""
@@ -108,7 +109,8 @@ class EvidenceItem:
             # 普通住宿发票只有开票日时不能冒充入住日；后续由酒店订单或付款/记录日期补齐。
             check_in = parse_day(self.detail("check_in")) or self.association_date
             check_out = parse_day(self.detail("check_out")) or check_in
-            city = normalize_city(self.detail("city")) or find_city(self.merchant)
+            # 发票销售方所在地可能与实际酒店所在地不同；只有发票明示的住宿城市可作地点证据。
+            city = normalize_city(self.detail("city"))
             return Stay(check_in, check_out, city)
         return None
 
@@ -178,6 +180,7 @@ def _invoice_fields(invoice: InvoiceData | ParsedInvoice, occurred_on: date | No
         "amount_cents": invoice.total_cents,
         "cny_cents": invoice.total_cents,
         "occurred_on": effective_date,
+        "issued_on": invoice.issued_on,
         "date_is_issued": business_date is None and effective_date is not None,
         "merchant": invoice.seller_name or "",
         "item_name": invoice.item_summary or "",

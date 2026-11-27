@@ -3,11 +3,15 @@
 from datetime import date
 
 from invoice_sorting.db.models import Category, Expense
+from invoice_sorting.expenses.serializers import serialize_expense_detail
 from invoice_sorting.expenses.service import create_expense, refresh_expense
 from invoice_sorting.importer.auto_confirm import auto_confirm_entries
+from invoice_sorting.importer.confirm import confirm_groups
 from invoice_sorting.importer.groups import build_groups
 from invoice_sorting.importer.items import item_from_attachment
+from invoice_sorting.importer.lodging_scoring import REASON_REVIEW
 from invoice_sorting.importer.matching import find_candidates
+from invoice_sorting.importer.schemas import ConfirmGroup
 from tests import lodging_factory as lf
 from tests.conftest import FIXTURES_DIR
 
@@ -139,6 +143,146 @@ def test_order_only_then_invoice_then_return_ticket(client, session, settings, t
     assert expense.status == "complete"
 
 
+def test_transport_first_then_hotel_then_return_joins_one_trip(client, session, settings, tmp_path):
+    outbound = lf.train_invoice(session, settings, tmp_path)
+    session.commit()
+    created = create_via_api(client, outbound)["created"]
+    assert len(created) == 1
+    expense_id = created[0]
+    order = lf.hotel_order(session, settings, tmp_path)
+    session.commit()
+    assert create_via_api(client, order)["attached"] == [expense_id]
+    invoice = lf.hotel_invoice(session, settings, tmp_path)
+    session.commit()
+    assert create_via_api(client, invoice)["attached"] == [expense_id]
+    returning = lf.train_invoice(session, settings, tmp_path, returning=True)
+    session.commit()
+    assert create_via_api(client, returning)["attached"] == [expense_id]
+    session.expire_all()
+    expense = session.get(Expense, expense_id)
+    data = serialize_expense_detail(session, expense)
+    assert expense.amount_cents == 72000
+    assert data["item_name"] == "2026年08月15日-2026年08月16日苏州差旅"
+    assert any("住宿凭证不足" in warning for warning in data["trip"]["warnings"])
+    assert sum(line["amount_cents"] for line in data["trip"]["cost_lines"]) == 72000
+
+
+def test_return_first_then_hotel_and_outbound_joins_one_trip(client, session, settings, tmp_path):
+    returning = lf.train_invoice(session, settings, tmp_path, returning=True)
+    session.commit()
+    created = create_via_api(client, returning)["created"]
+    assert len(created) == 1
+    expense_id = created[0]
+    order = lf.hotel_order(session, settings, tmp_path)
+    session.commit()
+    assert create_via_api(client, order)["attached"] == [expense_id]
+    outbound = lf.train_invoice(session, settings, tmp_path)
+    session.commit()
+    assert create_via_api(client, outbound)["attached"] == [expense_id]
+    detail = client.get(f"/api/expenses/{expense_id}").json()["data"]
+    assert detail["item_name"] == "2026年08月15日-2026年08月16日苏州差旅"
+    assert detail["amount_cents"] == 72000
+    assert detail["trip"]["outbound_legs"] == detail["trip"]["return_legs"] == 1
+
+
+def test_return_first_then_outbound_without_hotel_joins_one_trip(
+    client, session, settings, tmp_path
+):
+    returning = lf.train_invoice(session, settings, tmp_path, returning=True)
+    session.commit()
+    expense_id = create_via_api(client, returning)["created"][0]
+    outbound = lf.train_invoice(session, settings, tmp_path)
+    session.commit()
+    assert create_via_api(client, outbound)["attached"] == [expense_id]
+    detail = client.get(f"/api/expenses/{expense_id}").json()["data"]
+    assert detail["amount_cents"] == lf.OUTBOUND_CENTS + lf.RETURN_CENTS
+    assert detail["item_name"] == "2026年08月15日-2026年08月16日苏州差旅"
+    assert any("住宿记录不足" in warning for warning in detail["trip"]["warnings"])
+
+
+def test_hotel_only_trip_prompts_for_transport(session, settings, tmp_path):
+    order = lf.hotel_order(session, settings, tmp_path)
+    result = auto_confirm_entries(session, settings, entries(order))
+    expense = session.get(Expense, result.created[0])
+    data = serialize_expense_detail(session, expense)
+    assert data["item_name"] == "2026年08月15日-2026年08月16日苏州差旅"
+    assert "待补充往返交通凭证" in data["trip"]["warnings"]
+
+
+def test_late_invoice_with_different_issuer_suggests_trip_but_waits_for_review(
+    session, settings, tmp_path
+):
+    order = lf.hotel_order(session, settings, tmp_path)
+    created = auto_confirm_entries(session, settings, entries(order))
+    expense_id = created.created[0]
+    invoice = lf.hotel_invoice(
+        session,
+        settings,
+        tmp_path,
+        issued_on=date(2026, 9, 20),
+        seller_name="上海代开发票服务有限公司",
+    )
+    session.flush()
+    preview = build_groups(session, entries(invoice))[0]
+    assert preview.match is not None and preview.match.expense.id == expense_id
+    assert preview.suggested_action == "attach"
+    assert REASON_REVIEW in preview.warnings
+    result = auto_confirm_entries(session, settings, entries(invoice))
+    assert result.created == result.attached == []
+    assert result.skipped[0]["reason"] == REASON_REVIEW
+    assert invoice.expense_id is None
+    confirm_groups(
+        session,
+        settings,
+        None,
+        [
+            ConfirmGroup(
+                group_id="late-lodging",
+                attachment_ids=[invoice.id],
+                action="attach",
+                expense_id=expense_id,
+            )
+        ],
+    )
+    session.expire_all()
+    expense = session.get(Expense, expense_id)
+    assert expense.amount_cents == lf.ROOM_CENTS
+    detail = serialize_expense_detail(session, expense)
+    assert len(detail["trip"]["cost_lines"]) == 1
+    assert detail["trip"]["destination"] == "苏州"
+
+
+def test_late_invoice_with_two_equal_hotel_orders_is_not_auto_created(session, settings, tmp_path):
+    first = auto_confirm_entries(
+        session, settings, entries(lf.hotel_order(session, settings, tmp_path))
+    )
+    assert len(first.created) == 1
+    second = create_expense(
+        session,
+        settings,
+        spent_on=lf.AUG_15,
+        amount_cents=lf.ROOM_CENTS,
+        merchant=lf.HOTEL,
+        category_id=lf.travel_category(session),
+    )
+    lf.hotel_order(session, settings, tmp_path, expense=second)
+    refresh_expense(session, settings, second)
+    invoice = lf.hotel_invoice(
+        session,
+        settings,
+        tmp_path,
+        issued_on=date(2026, 9, 20),
+        seller_name="上海代开发票服务有限公司",
+    )
+    preview = build_groups(session, entries(invoice))[0]
+    assert preview.match is None
+    assert preview.suggested_action == "skip"
+    assert len(preview.candidates) == 2
+    outcome = auto_confirm_entries(session, settings, entries(invoice))
+    assert outcome.created == outcome.attached == []
+    assert outcome.skipped[0]["reason"] == REASON_REVIEW
+
+
 def lodging_expense(session, settings, tmp_path, amount=lf.ROOM_CENTS):
     """已建好的住宿记录：酒店订单 + 住宿发票，金额 500。"""
     result = auto_confirm_entries(
@@ -166,9 +310,7 @@ def test_return_ticket_scores_by_date_and_city(session, settings, tmp_path):
     assert not any(reason.startswith("已有") for reason in match.reasons)
 
 
-def test_ticket_with_two_equal_lodging_candidates_is_not_auto_attached(
-    session, settings, tmp_path
-):
+def test_ticket_with_two_equal_lodging_candidates_is_not_auto_attached(session, settings, tmp_path):
     first = lodging_expense(session, settings, tmp_path)
     second = create_expense(
         session,
@@ -293,9 +435,7 @@ def test_later_transport_itineraries_accumulate_into_expense_and_stats(
         },
     ).json()["data"]
     assert stats["totals"]["spent_cents"] == 72000
-    assert [(row["key"], row["total_cents"]) for row in stats["rows"]] == [
-        ("nonlocal", 72000)
-    ]
+    assert [(row["key"], row["total_cents"]) for row in stats["rows"]] == [("nonlocal", 72000)]
 
 
 def test_manual_amount_is_kept_when_ticket_attached(session, settings, tmp_path):

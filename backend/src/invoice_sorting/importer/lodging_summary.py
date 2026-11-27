@@ -9,7 +9,11 @@ from sqlalchemy.orm import Session
 
 from invoice_sorting.db.models import Category
 from invoice_sorting.importer.items import EvidenceItem
-from invoice_sorting.importer.lodging import merge_stays
+from invoice_sorting.importer.lodging import (
+    invoice_matches_order,
+    invoice_order_review_candidate,
+    merge_stays,
+)
 
 TRAVEL_CATEGORY = "差旅交通"
 
@@ -51,27 +55,95 @@ def transport_total(items: Sequence[EvidenceItem]) -> int:
     return total
 
 
+def travel_cost_lines(items: Sequence[EvidenceItem]) -> list[dict]:
+    """列出每笔交通和住宿净额，配对的订单与发票只记一笔。"""
+    lines: list[dict] = []
+    invoices = [item for item in items if item.is_lodging_invoice]
+    orders = [item for item in items if item.is_hotel_order]
+    paired_by_invoice = lodging_pairs(items)
+    claimed = {order.attachment_id for order in paired_by_invoice.values()}
+    for invoice in invoices:
+        paired = paired_by_invoice.get(invoice.attachment_id)
+        stay = paired.stay if paired else invoice.stay
+        hotel = paired.hotel_name if paired else invoice.hotel_name
+        dates = (
+            f" {stay.check_in:%m-%d} 至 {stay.check_out:%m-%d}"
+            if stay and stay.check_in and stay.check_out
+            else ""
+        )
+        lines.append(
+            {
+                "kind": "lodging",
+                "label": f"住宿 {hotel or '酒店'}{dates}",
+                "amount_cents": invoice.cny_cents
+                if invoice.cny_cents is not None
+                else (paired.cny_cents if paired else None),
+                "attachment_ids": [
+                    invoice.attachment_id,
+                    *([paired.attachment_id] if paired else []),
+                ],
+            }
+        )
+    for order in orders:
+        if order.attachment_id in claimed:
+            continue
+        stay = order.stay
+        dates = (
+            f" {stay.check_in:%m-%d} 至 {stay.check_out:%m-%d}"
+            if stay and stay.check_in and stay.check_out
+            else ""
+        )
+        lines.append(
+            {
+                "kind": "lodging",
+                "label": f"住宿 {order.hotel_name or '酒店'}{dates}",
+                "amount_cents": order.cny_cents,
+                "attachment_ids": [order.attachment_id],
+            }
+        )
+    grouped: dict[tuple | int, list[EvidenceItem]] = {}
+    for item in items:
+        if item.is_transport:
+            grouped.setdefault(_transport_key(item), []).append(item)
+    for matches in grouped.values():
+        preferred = next(
+            (item for item in matches if item.is_invoice and item.cny_cents is not None),
+            next((item for item in matches if item.cny_cents is not None), matches[0]),
+        )
+        lines.append(
+            {
+                "kind": "transport",
+                "label": "交通 " + " → ".join(part for part in preferred.route if part),
+                "amount_cents": preferred.cny_cents,
+                "attachment_ids": [item.attachment_id for item in matches],
+            }
+        )
+    return lines
+
+
+def lodging_pairs(items: Sequence[EvidenceItem]) -> dict[int, EvidenceItem]:
+    """只配对清单中唯一可对应的住宿发票和订单/水单。"""
+    invoices = [item for item in items if item.is_lodging_invoice]
+    orders = [item for item in items if item.is_hotel_order]
+    paired_by_invoice: dict[int, EvidenceItem] = {}
+    claimed: set[int] = set()
+    for invoice in invoices:
+        strict = [order for order in orders if invoice_matches_order(invoice, order)]
+        candidates = strict or [
+            order for order in orders if invoice_order_review_candidate(invoice, order)
+        ]
+        available = [order for order in candidates if order.attachment_id not in claimed]
+        if len(available) == 1:
+            paired_by_invoice[invoice.attachment_id] = available[0]
+            claimed.add(available[0].attachment_id)
+    return paired_by_invoice
+
+
 def travel_package_total(items: Sequence[EvidenceItem]) -> int | None:
     """住宿服务 + 去返程/市内交通的净额；订单与其对应发票不重复累计。"""
-    if merge_stays(items) is None:
+    if merge_stays(items) is None and not any(item.is_transport for item in items):
         return None
-    lodging_invoices = [
-        item.cny_cents
-        for item in items
-        if item.is_lodging_invoice and item.cny_cents is not None
-    ]
-    if lodging_invoices:
-        lodging = sum(lodging_invoices)
-    else:
-        lodging = next(
-            (
-                item.cny_cents
-                for item in items
-                if item.is_hotel_order and item.cny_cents is not None
-            ),
-            0,
-        )
-    total = lodging + transport_total(items)
+    total = sum(line["amount_cents"] or 0 for line in travel_cost_lines(items))
     return total if total > 0 else None
 
 
@@ -127,19 +199,23 @@ def lodging_summary(session: Session, items: Sequence[EvidenceItem]) -> LodgingS
     if stay is None:
         return None
     hotel = _hotel(items)
-    fallback_day = next(
-        (
-            item.association_date
-            for item in items
-            if not item.is_invoice and item.association_date is not None
-        ),
-        None,
-    ) or next(
-        (item.association_date for item in items if item.association_date is not None),
-        None,
-    ) or next(
-        (item.occurred_on for item in items if item.is_lodging_invoice and item.occurred_on),
-        None,
+    fallback_day = (
+        next(
+            (
+                item.association_date
+                for item in items
+                if not item.is_invoice and item.association_date is not None
+            ),
+            None,
+        )
+        or next(
+            (item.association_date for item in items if item.association_date is not None),
+            None,
+        )
+        or next(
+            (item.occurred_on for item in items if item.is_lodging_invoice and item.occurred_on),
+            None,
+        )
     )
     return LodgingSummary(
         spent_on=stay.check_in or fallback_day,

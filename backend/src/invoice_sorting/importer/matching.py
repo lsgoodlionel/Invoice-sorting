@@ -12,7 +12,11 @@ from sqlalchemy.orm import Session
 from invoice_sorting.common.constants import BatchStatus, ExpenseStatus
 from invoice_sorting.db.models import Attachment, Batch, EvidenceData, Expense, InvoiceData
 from invoice_sorting.importer.items import EvidenceItem, item_from_attachment
-from invoice_sorting.importer.lodging_scoring import REASON_LODGING_INVOICE, transport_window
+from invoice_sorting.importer.lodging_scoring import (
+    REASON_LODGING_INVOICE,
+    REASON_REVIEW,
+    transport_window,
+)
 from invoice_sorting.importer.merchants import merchant_similarity
 from invoice_sorting.importer.scoring import (
     DATE_NEAR_DAYS,
@@ -87,12 +91,32 @@ def _score_pool(session: Session, profile: GroupProfile) -> list[Expense]:
         options.append(Expense.amount_cents == profile.amount_cents)
     if profile.original_amount_cents is not None:
         options.append(Expense.original_amount_cents == profile.original_amount_cents)
+    lodging_amounts = {
+        item.cny_cents
+        for item in profile.items
+        if item.is_lodging_invoice and item.cny_cents is not None
+    }
+    if lodging_amounts:
+        hotel_order_ids = (
+            select(Attachment.expense_id)
+            .join(EvidenceData, EvidenceData.attachment_id == Attachment.id)
+            .where(EvidenceData.cny_cents.in_(lodging_amounts), Attachment.expense_id.is_not(None))
+        )
+        options.append(Expense.id.in_(hotel_order_ids))
     if profile.occurred_on is not None:
         window = timedelta(days=DATE_NEAR_DAYS)
         start, end = profile.occurred_on - window, profile.occurred_on + window
         options.append(Expense.spent_on.between(start, end))
     if (window := transport_window(profile.items)) is not None:
         options.append(Expense.spent_on.between(*window))
+    if any(item.is_hotel_order or item.is_lodging_invoice for item in profile.items):
+        days = [item.stay.check_in for item in profile.items if item.stay and item.stay.check_in]
+        if days:
+            options.append(
+                Expense.spent_on.between(
+                    min(days) - timedelta(days=30), max(days) + timedelta(days=1)
+                )
+            )
     if not options:
         return []
     query = select(Expense).where(eligible_condition(), or_(*options)).order_by(Expense.id)
@@ -149,7 +173,9 @@ def find_candidates(
         return None, (strong + scored)[:MAX_CANDIDATES]
     # 没有明确业务发生日期时，金额/商家相符只作为人工候选；订单号、文件名强匹配已在上方处理。
     # 酒店发票与订单另有明确的酒店名、金额和开票窗口专用规则，仍允许自动关联。
-    has_lodging_rule = any(REASON_LODGING_INVOICE in item.reasons for item in scored)
+    has_lodging_rule = any(
+        REASON_LODGING_INVOICE in item.reasons or REASON_REVIEW in item.reasons for item in scored
+    )
     match = pick_match(scored) if profile.occurred_on is not None or has_lodging_rule else None
     others = [candidate for candidate in scored if candidate is not match]
     return match, others[:MAX_CANDIDATES]

@@ -3,7 +3,7 @@ import { describe, expect, test } from 'vitest';
 import { TRAIN_DETAILS, makeAttachment, makeHotelEvidence, makeInvoice, makeLodgingInvoice, makeTransportInvoice } from '../../test/fixtures';
 import { makeDetail } from '../../test/fixtures';
 import { renderWithProviders } from '../../test/render';
-import { AmountComposition, LodgingBanner, TravelDateNotice } from './TravelInfo';
+import { AmountComposition, LodgingBanner, TravelDateNotice, TripNotice } from './TravelInfo';
 
 const lodging = makeAttachment({ id: 1, invoice: makeLodgingInvoice() });
 const order = makeAttachment({ id: 2, kind: 'order', evidence: makeHotelEvidence() });
@@ -52,4 +52,42 @@ describe('AmountComposition', () => {
     renderWithProviders(<AmountComposition amountCents={72000} attachments={[lodging, order]} />);
     expect(screen.queryByTestId('amount-composition')).not.toBeInTheDocument();
   });
+});
+
+test('trip detail shows each leg and lodging cost with a recalculation warning', () => {
+  renderWithProviders(<TripNotice expense={makeDetail({
+    amount_cents: 70000,
+    trip: {
+      destination: '苏州', start: '2026-08-15', end: '2026-08-16',
+      outbound_attachment_ids: [1], return_attachment_ids: [2],
+      outbound_legs: 1, return_legs: 1,
+      lodging_nights: 1, expected_nights: 1, lodging_records: 1, expected_records: 2, warnings: [],
+      cost_lines: [
+        { kind: 'outbound', label: '去程交通 上海 → 苏州', amount_cents: 10000, attachment_ids: [1] },
+        { kind: 'return', label: '返程交通 苏州 → 上海', amount_cents: 12000, attachment_ids: [2] },
+        { kind: 'lodging', label: '住宿 苏州酒店', amount_cents: 50000, attachment_ids: [3, 4] },
+      ],
+    },
+  })} />);
+  const notice = screen.getByTestId('trip-notice');
+  expect(notice).toHaveTextContent('去程交通 上海 → 苏州');
+  expect(notice).toHaveTextContent('返程交通 苏州 → 上海');
+  expect(notice).toHaveTextContent('住宿 苏州酒店');
+  expect(notice).toHaveTextContent('费用合计¥720.00');
+  expect(notice).toHaveTextContent('清单总价与凭证费用合计不同');
+});
+
+test('trip detail keeps vouchers without recognized amounts visible', () => {
+  renderWithProviders(<TripNotice expense={makeDetail({
+    trip: {
+      destination: '苏州', start: '2026-08-15', end: '2026-08-16',
+      outbound_attachment_ids: [1], return_attachment_ids: [],
+      outbound_legs: 1, return_legs: 0,
+      lodging_nights: 1, expected_nights: 1, lodging_records: 0, expected_records: 2, warnings: ['待补充返程交通凭证'],
+      cost_lines: [{ kind: 'outbound', label: '去程交通 上海 → 苏州', amount_cents: null, attachment_ids: [1] }],
+    },
+  })} />);
+  const notice = screen.getByTestId('trip-notice');
+  expect(notice).toHaveTextContent('去程交通 上海 → 苏州金额待补');
+  expect(notice).toHaveTextContent('待补充返程交通凭证');
 });

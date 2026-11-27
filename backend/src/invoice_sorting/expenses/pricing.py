@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from invoice_sorting.common.constants import AttachmentKind
 from invoice_sorting.db.models import Attachment, Expense
+from invoice_sorting.importer.items import item_from_attachment
 
 MIN_QUANTITY = 1
 MAX_QUANTITY = 100
@@ -47,6 +48,16 @@ def inferred_item_name(expense: Expense) -> str:
     """名称统一优先级：人工/已有名称 → 订单 → 发票 → 摘要 → 商家。"""
     if expense.item_name.strip():
         return expense.item_name.strip()
+    from sqlalchemy.orm import object_session
+
+    from invoice_sorting.importer.trip import trip_from_items
+    from invoice_sorting.settings.service import region_policy
+
+    session = object_session(expense)
+    local = region_policy(session).local_region if session is not None else ""
+    trip = trip_from_items([item_from_attachment(a) for a in expense.attachments], local)
+    if trip and trip.name:
+        return trip.name
     orders: list[str] = []
     invoices: list[str] = []
     for attachment in sorted(expense.attachments, key=lambda item: item.id):
@@ -66,9 +77,7 @@ def inferred_item_name(expense: Expense) -> str:
 
 def _unit_price(amount_cents: int, quantity: int) -> int:
     return int(
-        (Decimal(amount_cents) / Decimal(quantity)).quantize(
-            Decimal("1"), rounding=ROUND_HALF_UP
-        )
+        (Decimal(amount_cents) / Decimal(quantity)).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
     )
 
 
@@ -102,8 +111,13 @@ def backfill_expense_display_fields(session: Session) -> int:
     for expense in rows:
         touched = False
         if not expense.item_name.strip():
-            expense.item_name = inferred_item_name(expense)
-            touched = bool(expense.item_name)
+            # 差旅名称按新增凭证动态推导，不能将当时的缺件名称固化为人工名称。
+            if not any(
+                item_from_attachment(a).is_transport or item_from_attachment(a).stay
+                for a in expense.attachments
+            ):
+                expense.item_name = inferred_item_name(expense)
+                touched = bool(expense.item_name)
         if expense.quantity is None:
             expense.quantity = infer_quantity(pricing_texts(expense))
             touched = True

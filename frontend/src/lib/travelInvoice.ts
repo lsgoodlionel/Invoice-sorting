@@ -4,7 +4,7 @@ import { formatCents } from './money';
 
 export type InvoiceClass = 'lodging' | 'transport' | 'other';
 
-/** 多发票组的问题：lodging=多张住宿发票；multiple=除一张住宿发票外还有非交通票发票（或没有住宿发票）。 */
+/** 多发票组的问题：lodging=多张无法区分实际入住区间的住宿发票。 */
 export type InvoiceMixProblem = 'lodging' | 'multiple';
 
 const TRANSPORT_KEYWORDS = ['旅客运输', '客运', '铁路', '航空', '机票', '船票', '汽车票'];
@@ -31,13 +31,26 @@ export function classifyInvoice(invoice: InvoiceData | null): InvoiceClass {
   return isLodgingInvoice(invoice) ? 'lodging' : 'other';
 }
 
-/** 一组内允许：至多一张发票，或一张住宿发票 + 若干交通票发票。 */
+/** 多段住宿须有各不相同的实际入住区间；开票日期不能代替入住日期。 */
 export function invoiceMixProblem(invoices: readonly (InvoiceData | null)[]): InvoiceMixProblem | null {
   if (invoices.length <= 1) return null;
   const classes = invoices.map(classifyInvoice);
   const lodgingCount = classes.filter((item) => item === 'lodging').length;
-  if (lodgingCount > 1) return 'lodging';
-  const isLodgingWithTransport = lodgingCount === 1 && classes.every((item) => item !== 'other');
+  if (lodgingCount === 0 && invoices.length === 2 && classes.every((item) => item === 'transport')) {
+    const [first, second] = invoices;
+    const a = first?.details;
+    const b = second?.details;
+    const city = (place?: string) => (place ?? '').trim().slice(0, 2);
+    const gap = a?.date && b?.date ? Math.abs(Date.parse(a.date) - Date.parse(b.date)) / 86400000 : Infinity;
+    if (a?.from && a.to && b?.from && b.to && city(a.from) === city(b.to)
+      && city(a.to) === city(b.from) && city(a.from) !== city(a.to) && gap <= 30) return null;
+  }
+  if (lodgingCount > 1) {
+    const periods = invoices.filter((invoice) => classifyInvoice(invoice) === 'lodging')
+      .map((invoice) => `${invoice?.details?.check_in ?? ''}|${invoice?.details?.check_out ?? ''}`);
+    if (periods.some((period) => period.startsWith('|')) || new Set(periods).size !== periods.length) return 'lodging';
+  }
+  const isLodgingWithTransport = lodgingCount >= 1 && classes.every((item) => item !== 'other');
   return isLodgingWithTransport ? null : 'multiple';
 }
 

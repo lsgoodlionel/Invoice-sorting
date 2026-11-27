@@ -61,7 +61,7 @@ function ExpenseCell({ expense, column, width, isOver }: { expense: ExpenseSumma
       <Group gap={6} wrap="nowrap"><Text size="sm" fw={500} truncate>{expense.merchant}</Text><MerchantBadges expense={expense} /></Group>
       {isOver ? <Text size="xs" className="drop-hint">松开上传到此记录</Text> : <SummaryLine expense={expense} />}
     </Table.Td>;
-    case 'item_name': return <Table.Td style={style}><Text size="sm" truncate>{expense.item_name ?? expense.summary}</Text></Table.Td>;
+    case 'item_name': return <Table.Td style={style}><Group gap={4} wrap="nowrap"><Text size="sm" truncate>{expense.item_name ?? expense.summary}</Text>{Boolean(expense.trip?.warnings.length) && <Badge size="xs" color="orange" variant="light" title={expense.trip?.warnings.join('；')}>待补凭证</Badge>}</Group></Table.Td>;
     case 'category': return <Table.Td style={style}><CategoryDot color={expense.category_color} name={expense.category_name} /></Table.Td>;
     case 'lab_platform': return <Table.Td style={style}><Badge size="xs" color={expense.requires_lab_platform ? 'orange' : 'gray'} variant="light">{expense.requires_lab_platform === null ? '未判定' : expense.requires_lab_platform ? '需要' : '无需'}</Badge></Table.Td>;
     case 'unit_price': return <Table.Td ta="right" className="num" style={style}>{expense.unit_price_cents === null ? '—' : formatCents(expense.unit_price_cents)}</Table.Td>;
