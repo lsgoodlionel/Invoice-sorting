@@ -6,8 +6,8 @@ from datetime import date
 
 from invoice_sorting.importer.cities import find_city, normalize_city
 from invoice_sorting.importer.items import EvidenceItem
-from invoice_sorting.importer.lodging import invoice_matches_order, merge_stays
-from invoice_sorting.importer.lodging_summary import lodging_pairs
+from invoice_sorting.importer.lodging import merge_stays
+from invoice_sorting.importer.lodging_summary import lodging_night_dates, lodging_pairs
 
 
 def route_city(place: str) -> str:
@@ -86,31 +86,21 @@ def trip_from_items(items: Sequence[EvidenceItem], local_region: str = "") -> Tr
         end = start
     if start is None:
         start = end
-    orders = [item for item in items if item.is_hotel_order and item.stay]
     invoices = [item for item in items if item.is_lodging_invoice]
     all_orders = [item for item in items if item.is_hotel_order]
     pairs = lodging_pairs(items)
-    nights: set[date] = set()
-    for order in orders:
-        period = order.stay
-        if period and period.check_in and period.check_out:
-            nights.update(
-                date.fromordinal(day)
-                for day in range(period.check_in.toordinal(), period.check_out.toordinal())
-            )
-    # 无订单但发票明确写了入住日期时，才把该发票算作住宿天数。
-    for invoice in invoices:
-        if any(invoice_matches_order(invoice, order) for order in orders):
-            continue
-        period = invoice.stay
-        if period and period.check_in and period.check_out:
-            nights.update(
-                date.fromordinal(day)
-                for day in range(period.check_in.toordinal(), period.check_out.toordinal())
-            )
+    nights = lodging_night_dates(items)
     expected = max(0, (end - start).days) if start and end else None
-    expected_records = expected + 1 if expected is not None else None
+    # 住宿段数由订单/水单与发票的唯一配对决定；一段可覆盖多晚，没有固定的预期张数。
+    expected_records = None
     lodging_records = len(invoices) + len(all_orders) - len(pairs)
+    expected_dates = (
+        {date.fromordinal(day) for day in range(start.toordinal(), end.toordinal())}
+        if start and end
+        else set()
+    )
+    missing_nights = expected_dates - nights
+    extra_nights = nights - expected_dates
     warnings: list[str] = []
     if not destination:
         warnings.append("住宿地点待确认：请补充酒店订单或水单")
@@ -125,20 +115,15 @@ def trip_from_items(items: Sequence[EvidenceItem], local_region: str = "") -> Tr
         warnings.append(f"去程交通识别到 {outbound_legs} 段，请核对是否属于同一次差旅")
     if return_legs > 1:
         warnings.append(f"返程交通识别到 {return_legs} 段，请核对是否属于同一次差旅")
-    if expected is not None and len(nights) < expected:
-        warnings.append(f"住宿记录不足：预计 {expected} 晚，已识别 {len(nights)} 晚")
-    if expected is not None and len(nights) > expected:
-        warnings.append(f"住宿记录多于行程：预计 {expected} 晚，已识别 {len(nights)} 晚，请核对")
-    if expected_records is not None and lodging_records < expected_records:
+    if missing_nights:
+        days = "、".join(f"{day:%Y-%m-%d}" for day in sorted(missing_nights)[:5])
         warnings.append(
-            f"住宿凭证不足：按出差自然日预计 {expected_records} 条，"
-            f"已识别 {lodging_records} 条；请核对每天的住宿材料"
+            f"住宿记录不足：行程预计 {expected} 晚，已覆盖 {len(expected_dates & nights)} 晚；"
+            f"待核对入住夜晚 {days}"
         )
-    if expected_records is not None and lodging_records > expected_records:
-        warnings.append(
-            f"住宿凭证多于行程：按出差自然日预计 {expected_records} 条，"
-            f"已识别 {lodging_records} 条；请核对"
-        )
+    if extra_nights:
+        days = "、".join(f"{day:%Y-%m-%d}" for day in sorted(extra_nights)[:5])
+        warnings.append(f"住宿日期超出行程：请核对 {days} 的入住记录")
     if stay and stay.check_in is None:
         warnings.append("住宿时间待完善：请补充酒店订单或水单")
     paired_orders = {order.attachment_id for order in pairs.values()}

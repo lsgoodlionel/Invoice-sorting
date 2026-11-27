@@ -2,6 +2,7 @@
 
 from datetime import date
 
+from invoice_sorting.common.constants import AttachmentKind
 from invoice_sorting.db.models import Category, Expense
 from invoice_sorting.expenses.serializers import serialize_expense_detail
 from invoice_sorting.expenses.service import create_expense, refresh_expense
@@ -9,7 +10,7 @@ from invoice_sorting.importer.auto_confirm import auto_confirm_entries
 from invoice_sorting.importer.confirm import confirm_groups
 from invoice_sorting.importer.groups import build_groups
 from invoice_sorting.importer.items import item_from_attachment
-from invoice_sorting.importer.lodging_scoring import REASON_REVIEW
+from invoice_sorting.importer.lodging_scoring import REASON_REVIEW, lodging_score
 from invoice_sorting.importer.matching import find_candidates
 from invoice_sorting.importer.schemas import ConfirmGroup
 from tests import lodging_factory as lf
@@ -97,6 +98,21 @@ def test_hotel_invoice_without_stay_date_is_created_with_completion_warning(
     assert item_from_attachment(invoice).association_date is None
 
 
+def test_undated_hotel_order_does_not_use_order_day_as_check_in(session, settings, tmp_path):
+    order = lf.hotel_order(session, settings, tmp_path)
+    order.evidence_data.details = {
+        **order.evidence_data.details,
+        "check_in": "",
+        "check_out": "",
+    }
+    session.commit()
+    created = auto_confirm_entries(session, settings, entries(order))
+    expense = session.get(Expense, created.created[0])
+    ticket = lf.train_invoice(session, settings, tmp_path)
+    score = lodging_score([item_from_attachment(ticket)], expense)
+    assert score.parts == () and not score.joins_transport
+
+
 def test_nights_from_dates_and_category_fallback_when_travel_archived(session, settings, tmp_path):
     session.get(Category, lf.travel_category(session)).archived = True
     order = lf.hotel_order(session, settings, tmp_path)
@@ -163,7 +179,7 @@ def test_transport_first_then_hotel_then_return_joins_one_trip(client, session, 
     data = serialize_expense_detail(session, expense)
     assert expense.amount_cents == 72000
     assert data["item_name"] == "2026年08月15日-2026年08月16日苏州差旅"
-    assert any("住宿凭证不足" in warning for warning in data["trip"]["warnings"])
+    assert not any("住宿记录不足" in warning for warning in data["trip"]["warnings"])
     assert sum(line["amount_cents"] for line in data["trip"]["cost_lines"]) == 72000
 
 
@@ -198,6 +214,49 @@ def test_return_first_then_outbound_without_hotel_joins_one_trip(
     assert detail["amount_cents"] == lf.OUTBOUND_CENTS + lf.RETURN_CENTS
     assert detail["item_name"] == "2026年08月15日-2026年08月16日苏州差旅"
     assert any("住宿记录不足" in warning for warning in detail["trip"]["warnings"])
+
+
+def test_hotel_relay_uploaded_in_separate_batches_covers_trip_nights(
+    client, session, settings, tmp_path
+):
+    outbound = lf.train_invoice(session, settings, tmp_path, date="2026-11-01")
+    returning = lf.train_invoice(session, settings, tmp_path, returning=True, date="2026-11-04")
+    session.commit()
+    expense_id = create_via_api(client, outbound, returning)["created"][0]
+    for name, hotel, check_in, check_out, amount in (
+        ("甲酒店水单.png", "苏州甲酒店", "2026-11-01", "2026-11-02", 30000),
+        ("乙酒店水单.png", "苏州乙酒店", "2026-11-02", "2026-11-04", 60000),
+    ):
+        order = lf.evidence(
+            session,
+            settings,
+            tmp_path,
+            name,
+            AttachmentKind.ORDER,
+            doc_type="order",
+            recognizer="hotel_booking",
+            amount_cents=amount,
+            cny_cents=amount,
+            occurred_on=date.fromisoformat(check_out),
+            merchant=hotel,
+            item_name=hotel,
+            order_no=name,
+            details={
+                "city": "苏州",
+                "hotel": hotel,
+                "check_in": check_in,
+                "check_out": check_out,
+            },
+        )
+        session.commit()
+        assert create_via_api(client, order)["attached"] == [expense_id]
+    detail = client.get(f"/api/expenses/{expense_id}").json()["data"]
+    assert detail["item_name"] == "2026年11月01日-2026年11月04日苏州差旅"
+    assert detail["trip"]["lodging_nights"] == detail["trip"]["expected_nights"] == 3
+    assert detail["trip"]["lodging_records"] == 2
+    assert detail["trip"]["expected_records"] is None
+    assert not any("住宿记录不足" in warning for warning in detail["trip"]["warnings"])
+    assert detail["amount_cents"] == 112000
 
 
 def test_hotel_only_trip_prompts_for_transport(session, settings, tmp_path):

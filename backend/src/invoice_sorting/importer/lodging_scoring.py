@@ -18,7 +18,6 @@ from invoice_sorting.importer.lodging import (
     merge_stays,
     stay_label,
     transport_fits,
-    with_fallback_day,
 )
 from invoice_sorting.importer.trip import trip_from_items
 from invoice_sorting.settings.service import region_policy
@@ -47,15 +46,6 @@ def lodging_score(items: Sequence[EvidenceItem], expense: Expense) -> LodgingSco
     stay = merge_stays(existing)
     if stay is None:
         return _trip_score(items, expense, existing)
-    fallback = next(
-        (
-            item.association_date
-            for item in existing
-            if not item.is_invoice and item.association_date is not None
-        ),
-        None,
-    )
-    stay = with_fallback_day(stay, fallback)
     parts: list[tuple[int, str]] = []
     joins = any(transport_fits(item, stay) for item in items)
     if joins:

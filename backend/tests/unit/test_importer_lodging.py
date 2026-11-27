@@ -1,5 +1,6 @@
 """差旅住宿凭证：凭证项派生属性、城市词表、L6/L7 分组与多发票组约束（纯函数）。"""
 
+from dataclasses import replace
 from datetime import date
 
 import pytest
@@ -14,7 +15,6 @@ from invoice_sorting.importer.lodging import (
     merge_stays,
     stay_label,
     transport_fits,
-    with_fallback_day,
 )
 from invoice_sorting.importer.lodging_summary import (
     transport_count,
@@ -89,9 +89,10 @@ def test_derived_flags_for_lodging_transport_and_order():
 
 def test_stay_from_order_but_invoice_seller_city_is_not_actual_stay_city():
     assert hotel_order().stay == Stay(AUG_15, AUG_16, "苏州")
+    assert hotel_order().association_date == AUG_15
     assert hotel_invoice().stay == Stay(AUG_16, AUG_16, "")
     no_city = hotel_order(details={"city": "", "hotel": "", "check_out": ""}, merchant="全季酒店")
-    assert no_city.stay == Stay(AUG_15, AUG_15, "")
+    assert no_city.stay == Stay(AUG_15, AUG_16, "")
     assert train(4).stay is None
     assert train(4, day="bad").travel_date == date(2026, 8, 20)
     issued_only = hotel_invoice(date_is_issued=True)
@@ -187,8 +188,8 @@ def test_trip_name_and_actual_hotel_city_over_invoice_issuer():
     assert trip.destination == "苏州"
     assert trip.name == "2026年08月15日-2026年08月16日苏州差旅"
     assert trip.outbound == (3,) and trip.returning == (4,)
-    assert trip.lodging_records == 1 and trip.expected_records == 2
-    assert any("住宿凭证不足" in warning for warning in trip.warnings)
+    assert trip.lodging_records == 1 and trip.expected_records is None
+    assert trip.warnings == ()
 
 
 def test_trip_warns_for_incomplete_stay_documents_and_unknown_transport_amount():
@@ -237,6 +238,62 @@ def test_multiple_dated_lodging_segments_and_amounts():
     assert travel_package_total(groups[0].items) == 130000
     trip = trip_from_items(groups[0].items, "上海")
     assert trip is not None and trip.lodging_nights == trip.expected_nights == 2
+
+
+def test_one_hotel_order_can_cover_three_overnight_cycles_without_missing_vouchers():
+    order = hotel_order(
+        1,
+        details={"check_in": "2026-11-01", "check_out": "2026-11-04", "nights": "3"},
+    )
+    outbound = train(2, day="2026-11-01")
+    returning = train(3, day="2026-11-04", origin="苏州园区", to="上海虹桥")
+    trip = trip_from_items([order, outbound, returning], "上海")
+    assert trip is not None
+    assert (trip.lodging_nights, trip.expected_nights, trip.lodging_records) == (3, 3, 1)
+    assert trip.expected_records is None
+    assert not any("住宿记录不足" in warning for warning in trip.warnings)
+
+
+def test_two_hotels_can_cover_consecutive_nights_and_gap_is_reported():
+    first = hotel_order(
+        1,
+        details={
+            "hotel": "苏州甲酒店",
+            "check_in": "2026-11-01",
+            "check_out": "2026-11-02",
+        },
+        occurred_on=date(2026, 11, 2),
+    )
+    second = replace(
+        hotel_order(
+            2,
+            details={
+                "hotel": "苏州乙酒店",
+                "check_in": "2026-11-02",
+                "check_out": "2026-11-04",
+            },
+            occurred_on=date(2026, 11, 4),
+            cny_cents=60000,
+            amount_cents=60000,
+        ),
+        order_no="2232548283006095",
+        original_name="乙酒店订单.png",
+    )
+    outbound = train(3, day="2026-11-01")
+    returning = train(4, day="2026-11-04", origin="苏州园区", to="上海虹桥")
+    trip = trip_from_items([first, second, outbound, returning], "上海")
+    assert trip is not None
+    assert (trip.lodging_nights, trip.expected_nights, trip.lodging_records) == (3, 3, 2)
+    assert not any("住宿记录不足" in warning for warning in trip.warnings)
+    assert ids(group_items([first, second, outbound, returning])) == [[1, 2, 3, 4]]
+    gap = hotel_order(
+        5,
+        details={"check_in": "2026-11-03", "check_out": "2026-11-04"},
+    )
+    partial = trip_from_items([first, gap, outbound, returning], "上海")
+    assert partial is not None
+    assert partial.lodging_nights == 2
+    assert any("2026-11-02" in warning for warning in partial.warnings)
 
 
 def test_two_trips_to_same_city_in_one_month_stay_separate():
@@ -297,7 +354,6 @@ def test_merge_stays_and_labels():
     assert merge_stays([train(3)]) is None
     undated = merge_stays([hotel_order(1, details={"check_in": "", "check_out": ""})])
     assert undated == Stay(None, None, "苏州")
-    assert with_fallback_day(undated, AUG_15) == Stay(AUG_15, AUG_15, "苏州")
     assert stay_label(undated) == "往返 苏州 的交通凭证"
     assert stay_label(stays) == "往返 苏州 的交通凭证（入住 08-15、离店 08-18）"
     assert not transport_fits(train(3), undated)

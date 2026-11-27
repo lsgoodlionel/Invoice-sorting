@@ -1,7 +1,7 @@
 """酒店订单确认单（携程/美团/飞猪/同程/Booking.com/Agoda 等）：入住离店、酒店、城市、金额。"""
 
 import re
-from datetime import date
+from datetime import date, timedelta
 
 from invoice_sorting.evidence.base import DOC_ORDER, RecognizedEvidence
 from invoice_sorting.evidence.lines import EvidenceText
@@ -44,14 +44,14 @@ PLATFORMS = (
 )
 FEATURES = Features(
     groups=(
-        ("入住日期", "入住时间", "check-in", "checkin", "入住"),
+        ("入住日期", "入住时间", "住宿日期", "check-in", "checkin", "入住"),
         ("离店日期", "离店时间", "退房", "check-out", "checkout", "离店"),
         ("订单号", "订单编号", "预订号", "确认号", "bookingnumber", "bookingid"),
         ("confirmationnumber", "reservationnumber", "itinerarynumber"),
-        ("房型", "房间数量", "间数", "床房", "room"),
+        ("房型", "房号", "房间数量", "间数", "床房", "room"),
         ("入住人", "住客", "guest"),
         ("酒店", "宾馆", "客栈", "民宿", "hotel", "resort", "inn"),
-        ("订单确认", "预订确认", "确认单", "预订成功", "confirmation"),
+        ("订单确认", "预订确认", "确认单", "预订成功", "水单", "住宿账单", "confirmation"),
         ("晚", "night"),
         ("订单金额", "总价", "在线支付", "实付", "房费", "total"),
         tuple(
@@ -61,7 +61,7 @@ FEATURES = Features(
         ),
     ),
     needed=5,
-    anchors=("入住", "离店", "退房", "check-in", "check-out", "checkin", "checkout"),
+    anchors=("入住", "住宿日期", "离店", "退房", "check-in", "check-out", "checkin", "checkout"),
 )
 ORDER_LABELS = (
     r"订单号|订单编号|预订单号|预订号",
@@ -72,7 +72,7 @@ AMOUNT_LABELS = (
     r"订单金额|订单总额|房费总额|总金额|总价|应付金额|实付金额|实付款|实付|在线支付|支付金额",
     r"total\s*(?:price|amount|charge|cost)|amount\s*paid|grand\s*total|total",
 )
-CHECK_IN_LABEL = r"入住日期|入住时间|入住(?!人)|check[\s-]*in"
+CHECK_IN_LABEL = r"入住日期|入住时间|住宿日期|入住(?!人)|check[\s-]*in"
 CHECK_OUT_LABEL = r"离店日期|离店时间|退房日期|退房时间|离店|退房|check[\s-]*out"
 GUEST_LABELS = (r"入住人(?!数)|住客姓名|入住客人|住客", r"guest\s*name|lead\s*guest|guest")
 ROOMS_LABELS = (r"房间数量|房间数|number\s*of\s*rooms",)
@@ -103,6 +103,11 @@ def _stay(doc: EvidenceText) -> tuple[date | None, date | None]:
     year = year_hint(doc)
     check_in = labeled_date(doc, CHECK_IN_LABEL, year)
     check_out = labeled_date(doc, CHECK_OUT_LABEL, year)
+    if check_in and check_out is None:
+        nights = NIGHTS_RE.search(doc.text)
+        count = int(nights.group(1)) if nights else 1
+        if 1 <= count <= 365:
+            check_out = check_in + timedelta(days=count)
     return check_in, after(check_out, check_in)
 
 
@@ -155,7 +160,7 @@ def recognize(doc: EvidenceText) -> RecognizedEvidence | None:
         NAME,
         DOC_ORDER,
         score,
-        occurred_on=check_out or check_in,
+        occurred_on=check_in or check_out,
         merchant=details.get("hotel", ""),
         item_name=_item_name(details, check_in, check_out),
         order_no=_order_no(doc),

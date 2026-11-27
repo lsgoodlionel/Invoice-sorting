@@ -172,5 +172,6 @@ def test_travel_text_helpers() -> None:
     assert find_date("3月5日", 2026) == date(2026, 3, 5)
     assert after(date(2024, 2, 29), date(2024, 3, 1)) == date(2024, 2, 29)
     assert after(date(2026, 1, 2), date(2026, 12, 30)) == date(2027, 1, 2)
+    assert after(date(2026, 11, 1), date(2026, 11, 1)) == date(2026, 11, 1)
     assert person_name("  ") == ""
     assert labeled_date(lines_from_text("出发 某地"), "出发", 2026) is None
