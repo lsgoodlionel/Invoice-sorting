@@ -139,6 +139,24 @@ def lodging_pairs(items: Sequence[EvidenceItem]) -> dict[int, EvidenceItem]:
     return paired_by_invoice
 
 
+def lodging_night_dates(items: Sequence[EvidenceItem]) -> set[date]:
+    """按入住日计夜晚；一份连续入住订单可覆盖多晚，换酒店接力取并集。"""
+    pairs = lodging_pairs(items)
+    nights: set[date] = set()
+    for item in items:
+        if not item.is_hotel_order and not (
+            item.is_lodging_invoice and item.attachment_id not in pairs
+        ):
+            continue
+        stay = item.stay
+        if stay and stay.check_in and stay.check_out:
+            nights.update(
+                date.fromordinal(day)
+                for day in range(stay.check_in.toordinal(), stay.check_out.toordinal())
+            )
+    return nights
+
+
 def travel_package_total(items: Sequence[EvidenceItem]) -> int | None:
     """住宿服务 + 去返程/市内交通的净额；订单与其对应发票不重复累计。"""
     if merge_stays(items) is None and not any(item.is_transport for item in items):
@@ -154,16 +172,8 @@ def _hotel(items: Sequence[EvidenceItem]) -> str:
 
 
 def _nights(items: Sequence[EvidenceItem]) -> int | None:
-    for item in items:
-        if not item.is_hotel_order:
-            continue
-        nights = item.detail("nights")
-        if nights.isdigit() and int(nights) > 0:
-            return int(nights)
-        stay = item.stay
-        if stay is not None and stay.check_in and stay.check_out > stay.check_in:
-            return (stay.check_out - stay.check_in).days
-    return None
+    nights = lodging_night_dates(items)
+    return len(nights) if nights else None
 
 
 def transport_count(items: Sequence[EvidenceItem]) -> int:

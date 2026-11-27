@@ -61,7 +61,7 @@ test('trip detail shows each leg and lodging cost with a recalculation warning',
       destination: '苏州', start: '2026-08-15', end: '2026-08-16',
       outbound_attachment_ids: [1], return_attachment_ids: [2],
       outbound_legs: 1, return_legs: 1,
-      lodging_nights: 1, expected_nights: 1, lodging_records: 1, expected_records: 2, warnings: [],
+      lodging_nights: 1, expected_nights: 1, lodging_records: 1, expected_records: null, warnings: [],
       cost_lines: [
         { kind: 'outbound', label: '去程交通 上海 → 苏州', amount_cents: 10000, attachment_ids: [1] },
         { kind: 'return', label: '返程交通 苏州 → 上海', amount_cents: 12000, attachment_ids: [2] },
@@ -73,6 +73,8 @@ test('trip detail shows each leg and lodging cost with a recalculation warning',
   expect(notice).toHaveTextContent('去程交通 上海 → 苏州');
   expect(notice).toHaveTextContent('返程交通 苏州 → 上海');
   expect(notice).toHaveTextContent('住宿 苏州酒店');
+  expect(notice).toHaveTextContent('已覆盖住宿 1 晚 / 行程预计 1 晚 · 住宿 1 段');
+  expect(notice).not.toHaveTextContent('住宿凭证不足');
   expect(notice).toHaveTextContent('费用合计¥720.00');
   expect(notice).toHaveTextContent('清单总价与凭证费用合计不同');
 });
@@ -83,7 +85,7 @@ test('trip detail keeps vouchers without recognized amounts visible', () => {
       destination: '苏州', start: '2026-08-15', end: '2026-08-16',
       outbound_attachment_ids: [1], return_attachment_ids: [],
       outbound_legs: 1, return_legs: 0,
-      lodging_nights: 1, expected_nights: 1, lodging_records: 0, expected_records: 2, warnings: ['待补充返程交通凭证'],
+      lodging_nights: 1, expected_nights: 1, lodging_records: 0, expected_records: null, warnings: ['待补充返程交通凭证'],
       cost_lines: [{ kind: 'outbound', label: '去程交通 上海 → 苏州', amount_cents: null, attachment_ids: [1] }],
     },
   })} />);

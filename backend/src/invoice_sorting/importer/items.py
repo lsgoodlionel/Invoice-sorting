@@ -2,7 +2,7 @@
 
 import re
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 
 from invoice_sorting.common.constants import AttachmentKind
 from invoice_sorting.db.models import Attachment, EvidenceData, InvoiceData
@@ -28,7 +28,7 @@ TRAVEL_KEYS = ("date", "from", "to", "vehicle", "number", "passenger")
 
 @dataclass(frozen=True)
 class Stay:
-    """住宿区间与城市；只有发票时入住、离店都取开票日期。"""
+    """住宿区间与实际城市；只有开票日期不能推断入住时间。"""
 
     check_in: date | None
     check_out: date | None
@@ -101,14 +101,23 @@ class EvidenceItem:
 
     @property
     def stay(self) -> Stay | None:
+        def departure(check_in: date | None) -> date | None:
+            explicit = parse_day(self.detail("check_out"))
+            if explicit is not None or check_in is None:
+                return explicit
+            nights = self.detail("nights")
+            count = int(nights) if nights.isdigit() and 1 <= int(nights) <= 365 else 1
+            return check_in + timedelta(days=count)
+
         if self.is_hotel_order:
             city = normalize_city(self.detail("city")) or find_city(self.hotel_name)
             check_in = parse_day(self.detail("check_in"))
-            return Stay(check_in, parse_day(self.detail("check_out")) or check_in, city)
+            return Stay(check_in, departure(check_in), city)
         if self.is_lodging_invoice:
             # 普通住宿发票只有开票日时不能冒充入住日；后续由酒店订单或付款/记录日期补齐。
-            check_in = parse_day(self.detail("check_in")) or self.association_date
-            check_out = parse_day(self.detail("check_out")) or check_in
+            explicit_check_in = parse_day(self.detail("check_in"))
+            check_in = explicit_check_in or self.association_date
+            check_out = departure(check_in) if explicit_check_in else check_in
             # 发票销售方所在地可能与实际酒店所在地不同；只有发票明示的住宿城市可作地点证据。
             city = normalize_city(self.detail("city"))
             return Stay(check_in, check_out, city)
@@ -121,6 +130,10 @@ class EvidenceItem:
     @property
     def association_date(self) -> date | None:
         """用于自动归组/匹配的实际业务日期；开票日期兜底不参与自动确认。"""
+        if (self.is_hotel_order or self.is_lodging_invoice) and (
+            check_in := parse_day(self.detail("check_in"))
+        ):
+            return check_in
         return None if self.is_invoice and self.date_is_issued else self.occurred_on
 
     @property

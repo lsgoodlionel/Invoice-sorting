@@ -31,7 +31,7 @@ def test_ctrip_text_fields() -> None:
     assert (result.doc_type, result.recognizer) == ("order", "hotel_booking")
     assert result.order_no == "1100000000000009"
     assert (result.amount_cents, result.currency, result.cny_cents) == (72000, "CNY", 72000)
-    assert result.occurred_on == date(2026, 8, 16)
+    assert result.occurred_on == date(2026, 8, 15)
     assert result.merchant == "苏州示例湖畔酒店"
     assert result.item_name == "苏州示例湖畔酒店 08-15至08-16 1晚 1间"
     assert result.details == {
@@ -52,7 +52,7 @@ def test_ctrip_pdf_fixture() -> None:
     assert result.recognizer == "hotel_booking"
     assert result.order_no == "1100000000000001"
     assert result.amount_cents == 131600
-    assert result.occurred_on == date(2026, 9, 3)
+    assert result.occurred_on == date(2026, 9, 1)
     assert result.details["city"] == "杭州"
     assert result.details["hotel"] == "杭州西湖示例假日酒店"
     assert (result.details["nights"], result.details["rooms"]) == ("2", "2")
@@ -67,7 +67,7 @@ def test_booking_com_pdf_fixture() -> None:
     assert (result.amount_cents, result.currency, result.cny_cents) == (36000, "EUR", None)
     assert result.is_foreign is True
     assert result.merchant == "Example Canal Hotel"
-    assert result.occurred_on == date(2026, 9, 6)
+    assert result.occurred_on == date(2026, 9, 4)
     assert result.details["check_in"] == "2026-09-04"
     assert result.details["nights"] == "2"
     assert result.details["rooms"] == "1"
@@ -96,7 +96,7 @@ def test_meituan_rows_without_year() -> None:
     assert result.merchant == "上海示例假日酒店"
     assert result.amount_cents == 61600
     assert result.order_no == "2600000000000123"
-    assert result.occurred_on == date(2026, 9, 12)
+    assert result.occurred_on == date(2026, 9, 10)
     assert result.details == {
         "city": "上海",
         "hotel": "上海示例假日酒店",
@@ -227,5 +227,25 @@ def test_nights_from_text_and_city_label() -> None:
     assert result.details["city"] == "成都"
     assert result.details["nights"] == "3"
     assert result.occurred_on == date(2026, 4, 1)
+    assert result.details["check_out"] == "2026-04-04"
     assert result.order_no == "A-778899"
-    assert result.item_name == "示例公寓 3晚"
+    assert result.item_name == "示例公寓 04-01至04-04 3晚"
+
+
+def test_hotel_folio_stay_date_defaults_to_one_overnight_cycle() -> None:
+    text = """苏州湖畔示例酒店
+住宿水单
+住宿日期2026年11月1日
+住客 张示例
+房号 801
+房费 ¥300.00
+总金额 ¥300.00
+酒店地址 江苏省苏州市工业园区示例街1号
+"""
+    result = hotel_booking.recognize(lines_from_text(text))
+    assert result is not None
+    assert result.recognizer == "hotel_booking"
+    assert result.details["check_in"] == "2026-11-01"
+    assert result.details["check_out"] == "2026-11-02"
+    assert result.details["nights"] == "1"
+    assert result.occurred_on == date(2026, 11, 1)

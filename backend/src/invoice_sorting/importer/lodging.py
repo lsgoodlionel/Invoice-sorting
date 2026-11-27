@@ -8,7 +8,6 @@
 
 import re
 from collections.abc import Sequence
-from dataclasses import replace
 from datetime import date, timedelta
 
 from invoice_sorting.importer.cities import COMMON_CITIES, find_city, place_in_city
@@ -93,7 +92,7 @@ def invoice_order_review_candidate(invoice: EvidenceItem, order: EvidenceItem) -
 
 
 def merge_stays(items: Sequence[EvidenceItem]) -> Stay | None:
-    """订单的入住/离店优先（多张订单取最早入住、最晚离店），无订单日期时取住宿发票开票日期。"""
+    """订单/水单的实际入住和离店优先；无订单日期时仅取发票明示的住宿日期。"""
     orders = [item.stay for item in items if item.is_hotel_order]
     invoices = [item.stay for item in items if item.is_lodging_invoice]
     stays = [stay for stay in orders + invoices if stay is not None]
@@ -106,13 +105,6 @@ def merge_stays(items: Sequence[EvidenceItem]) -> Stay | None:
     if not check_ins:
         return Stay(None, None, city)
     return Stay(min(check_ins), max(check_outs), city)
-
-
-def with_fallback_day(stay: Stay, fallback: date | None) -> Stay:
-    """没有任何日期时用记录的支出日期作入住/离店日期。"""
-    if stay.check_in is not None or fallback is None:
-        return stay
-    return replace(stay, check_in=fallback, check_out=fallback)
 
 
 def transport_fits(item: EvidenceItem, stay: Stay | None) -> bool:

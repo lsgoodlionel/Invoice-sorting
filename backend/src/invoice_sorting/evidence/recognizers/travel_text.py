@@ -73,7 +73,7 @@ def labeled_date(doc: EvidenceText, label: str, year: int) -> date | None:
 
 def after(later: date | None, earlier: date | None) -> date | None:
     """缺年份导致“离店早于入住”（跨年）时顺延一年。"""
-    if later is None or earlier is None or later > earlier:
+    if later is None or earlier is None or later >= earlier:
         return later
     try:
         return later.replace(year=later.year + 1)

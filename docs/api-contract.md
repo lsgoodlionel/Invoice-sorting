@@ -185,6 +185,7 @@ type ExpenseSummary = {               // 列表行
     outbound_legs: number; return_legs: number;
     lodging_nights: number; expected_nights: number | null;
     lodging_records: number; expected_records: number | null; warnings: string[];
+    // lodging_records 为住宿段数；expected_records 保留兼容旧客户端，现恒为 null。
     cost_lines: { kind: "lodging" | "outbound" | "return" | "transport";
       label: string; amount_cents: number | null; attachment_ids: number[] }[];
   }; // 从交通/住宿附件推导，实际地点优先用订单；发票开票日期另存
