@@ -180,6 +180,13 @@ type ExpenseSummary = {               // 列表行
   currency: string; original_amount_cents: number | null    // 原币（CNY 时 original 为 null）
   travel_scope: "" | "local" | "nonlocal"; travel_scope_label: string; travel_scope_manual: boolean;
   stay_check_in: string | null; stay_check_out: string | null; travel_dates_missing: boolean;
+  trip: null | { destination: string; start: string | null; end: string | null;
+    outbound_attachment_ids: number[]; return_attachment_ids: number[];
+    outbound_legs: number; return_legs: number;
+    lodging_nights: number; expected_nights: number | null; warnings: string[];
+    cost_lines: { kind: "lodging" | "outbound" | "return" | "transport";
+      label: string; amount_cents: number; attachment_ids: number[] }[];
+  }; // 从交通/住宿附件推导，实际地点优先用订单；发票开票日期另存
 }
 
 type ExpenseDetail = ExpenseSummary & {

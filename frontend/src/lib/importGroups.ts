@@ -61,7 +61,7 @@ export type ImportGroupsAction =
   | { type: 'splitAttachment'; attachmentId: number };
 
 export const MULTI_INVOICE_PROBLEM = '一组最多一张发票，请把多余的发票移到其他组或拆为单独一组';
-export const MULTI_LODGING_PROBLEM = '一组最多一张住宿发票（可另带交通票发票），请把多余的住宿发票移到其他组';
+export const MULTI_LODGING_PROBLEM = '多张住宿发票须分别识别出不同的实际入住区间；请补充订单/水单或拆分后人工确认';
 
 function initialOperation(group: ImportGroup): OperationChoice {
   if (group.suggested_action === 'skip') return { type: 'skip' };

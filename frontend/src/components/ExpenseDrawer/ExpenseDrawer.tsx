@@ -12,7 +12,7 @@ import { InvoiceMeta } from './InvoiceMeta';
 import { RouteHint } from './RouteHint';
 import { StatusSection } from './StatusSection';
 import { TimelineSection } from './TimelineSection';
-import { AmountComposition, LodgingBanner, TravelDateNotice } from './TravelInfo';
+import { AmountComposition, LodgingBanner, TravelDateNotice, TripNotice } from './TravelInfo';
 
 interface ExpenseDrawerProps {
   expenseId: number | null;
@@ -39,7 +39,7 @@ function DrawerTitle({ expense }: { expense: ExpenseDetail }) {
       </Text>
       <Stack gap={0} align="flex-end" style={{ flexShrink: 0 }}>
         <Text fw={700} size="lg" className="num">{formatCents(expense.amount_cents)}</Text>
-        <AmountComposition amountCents={expense.amount_cents} attachments={expense.attachments} />
+        <AmountComposition amountCents={expense.amount_cents} attachments={expense.attachments} costLines={expense.trip?.cost_lines} />
       </Stack>
     </Group>
   );
@@ -52,6 +52,7 @@ function DrawerBody({ expense, onClose }: { expense: ExpenseDetail; onClose: () 
     <Stack gap="lg" pb="xl">
       <LodgingBanner attachments={expense.attachments} />
       <TravelDateNotice expense={expense} />
+      <TripNotice expense={expense} />
       <StatusSection expense={expense} />
       <ExpenseFields expense={expense} />
       <InvoiceMeta expense={expense} />

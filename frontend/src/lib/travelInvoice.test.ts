@@ -48,10 +48,24 @@ describe('invoiceMixProblem', () => {
     expect(invoiceMixProblem([makeLodgingInvoice(), makeLodgingInvoice(), makeTransportInvoice()])).toBe('lodging');
   });
 
+  test('distinct actual lodging periods can share one trip', () => {
+    const first = makeLodgingInvoice({ details: { check_in: '2026-08-15', check_out: '2026-08-16' } });
+    const second = makeLodgingInvoice({ details: { check_in: '2026-08-16', check_out: '2026-08-17' } });
+    expect(invoiceMixProblem([first, second, makeTransportInvoice()])).toBeNull();
+  });
+
   test('several invoices without lodging are rejected', () => {
     expect(invoiceMixProblem([makeTransportInvoice(), makeTransportInvoice()])).toBe('multiple');
     expect(invoiceMixProblem([makeLodgingInvoice(), makeInvoice()])).toBe('multiple');
     expect(invoiceMixProblem([makeLodgingInvoice(), null])).toBe('multiple');
+  });
+
+  test('reciprocal transport invoices form one trip without a hotel yet', () => {
+    const outbound = makeTransportInvoice({ details: { ...TRAIN_DETAILS, date: '2026-08-15' } });
+    const returning = makeTransportInvoice({ details: {
+      ...TRAIN_DETAILS, date: '2026-08-16', from: '苏州园区', to: '上海南', number: 'G7124',
+    } });
+    expect(invoiceMixProblem([outbound, returning])).toBeNull();
   });
 });
 
