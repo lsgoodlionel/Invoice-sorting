@@ -16,6 +16,8 @@ from invoice_sorting.importer.lodging_summary import travel_package_total
 
 MERGED_NOTE = "并入{label} ¥{added}，金额更新为 ¥{total}"
 NOT_ADJUSTED_NOTE = "并入{label} ¥{added}，金额未自动调整（已手动修改过）"
+REMOVED_NOTE = "移除{label} ¥{added}，金额更新为 ¥{total}"
+REMOVED_NOT_ADJUSTED_NOTE = "移除{label} ¥{added}，金额未自动调整（已手动修改过）"
 TRANSPORT_LABEL = "交通票"
 INVOICE_LABEL = "发票"
 
@@ -59,10 +61,12 @@ def merge_invoice_amounts(session: Session, expense: Expense, previous_invoice_t
     if previous_invoice_total <= 0 or added == 0 or expense.amount_cents == total:
         return False
     session.refresh(expense, attribute_names=["attachments"])
-    values = {"label": _label(expense), "added": cents_to_yuan(added)}
+    values = {"label": _label(expense), "added": cents_to_yuan(abs(added))}
     if expense.amount_cents != previous_invoice_total:
-        _note(session, expense, NOT_ADJUSTED_NOTE.format(**values))
+        template = NOT_ADJUSTED_NOTE if added > 0 else REMOVED_NOT_ADJUSTED_NOTE
+        _note(session, expense, template.format(**values))
         return False
     expense.amount_cents = total
-    _note(session, expense, MERGED_NOTE.format(total=cents_to_yuan(total), **values))
+    template = MERGED_NOTE if added > 0 else REMOVED_NOTE
+    _note(session, expense, template.format(total=cents_to_yuan(total), **values))
     return True

@@ -21,9 +21,14 @@ from invoice_sorting.common.constants import AttachmentKind
 from invoice_sorting.db.models import Category
 from invoice_sorting.importer.classify import suggest_category
 from invoice_sorting.importer.items import CNY, ORDER_LIKE_KINDS, EvidenceItem
-from invoice_sorting.importer.lodging_summary import LodgingSummary, lodging_summary
+from invoice_sorting.importer.lodging_summary import (
+    LodgingSummary,
+    lodging_summary,
+    travel_package_total,
+)
 from invoice_sorting.importer.suggestions import ONLINE_PLATFORM_KEYWORDS
 from invoice_sorting.importer.travel_scope import infer_travel_scope
+from invoice_sorting.importer.trip import trip_from_items
 from invoice_sorting.settings.service import region_policy
 
 # 文件名首段分类词 → 默认分类名（找不到同名未归档分类时走分类建议逻辑）
@@ -146,15 +151,29 @@ def build_summary(session: Session, items: tuple[EvidenceItem, ...]) -> GroupSum
     by_amount, by_name = _ordered(items)
     merchant = _first(by_name, lambda item: item.merchant) or ""
     summary = _first(by_name, lambda item: item.item_name) or ""
+    trip = trip_from_items(items, region_policy(session).local_region)
+    if trip and trip.name and any(item.is_transport for item in items):
+        summary = trip.name
     currency, original = _original_amount(items)
+    spent_on = (
+        trip.start if trip and trip.start else _first(by_amount, lambda item: item.occurred_on)
+    )
+    amount = travel_package_total(items) if trip else _first(by_amount, lambda item: item.cny_cents)
+    travel_category = (
+        session.scalar(
+            select(Category.id).where(Category.name == "差旅交通", Category.archived.is_(False))
+        )
+        if trip
+        else None
+    )
     return GroupSummary(
-        spent_on=_first(by_amount, lambda item: item.occurred_on),
-        amount_cents=_first(by_amount, lambda item: item.cny_cents),
+        spent_on=spent_on,
+        amount_cents=amount,
         currency=currency,
         original_amount_cents=original,
         merchant=merchant,
         summary=summary,
-        category_id=suggest_group_category(session, items, merchant, summary),
+        category_id=travel_category or suggest_group_category(session, items, merchant, summary),
         is_online=_is_online(items, merchant),
         invoice_exempt=is_exempt(items),
         travel_scope=infer_travel_scope(items, region_policy(session).local_region),

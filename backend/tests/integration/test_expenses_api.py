@@ -49,7 +49,7 @@ DETAIL_KEYS = {
     "travel_scope", "travel_scope_label", "travel_scope_manual",
     "stay_check_in", "stay_check_out", "travel_dates_missing",
     "issued_on", "created_on", "item_name", "item_name_manual", "unit_price_cents",
-    "quantity", "requires_lab_platform",
+    "quantity", "requires_lab_platform", "trip",
 }  # fmt: skip
 
 
@@ -59,6 +59,7 @@ def test_create_returns_detail_shape(client):
     assert detail["region_name"] == "" and detail["is_nonlocal"] is False
     assert detail["travel_scope"] == "" and detail["travel_scope_label"] == "未识别"
     assert detail["stay_check_in"] is None and detail["travel_dates_missing"] is False
+    assert detail["trip"] is None
     assert detail["status"] == "spent"
     assert detail["status_label"] == "已支出"
     assert detail["category_name"] == "易耗品"

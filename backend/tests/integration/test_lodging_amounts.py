@@ -59,6 +59,67 @@ def test_bulk_assign_merges_ticket_amount(client, session, settings, tmp_path):
     assert lf.checklist_states(expense)["transport"] == ("required", "present")
 
 
+def test_removing_trip_cost_attachment_recalculates_total_and_lines(
+    client, session, settings, tmp_path
+):
+    expense = lodging_expense(session, settings, tmp_path)
+    outbound = lf.train_invoice(session, settings, tmp_path)
+    returning = lf.train_invoice(session, settings, tmp_path, returning=True)
+    session.commit()
+    response = client.post(
+        "/api/attachments/bulk-assign",
+        json={
+            "ids": [outbound.id, returning.id],
+            "expense_id": expense.id,
+        },
+    )
+    assert response.status_code == 200, response.text
+    detail = client.get(f"/api/expenses/{expense.id}").json()["data"]
+    assert detail["amount_cents"] == 72000
+    assert [line["kind"] for line in detail["trip"]["cost_lines"]] == [
+        "lodging",
+        "outbound",
+        "return",
+    ]
+    response = client.delete(f"/api/attachments/{returning.id}")
+    assert response.status_code == 200, response.text
+    detail = client.get(f"/api/expenses/{expense.id}").json()["data"]
+    assert detail["amount_cents"] == 60000
+    assert [line["kind"] for line in detail["trip"]["cost_lines"]] == [
+        "lodging",
+        "outbound",
+    ]
+    assert "待补充返程交通凭证" in detail["trip"]["warnings"]
+
+
+def test_unassigning_lodging_order_recalculates_trip_total(client, session, settings, tmp_path):
+    expense = lodging_expense(session, settings, tmp_path)
+    order = next(a for a in expense.attachments if a.kind == "order")
+    invoice = next(a for a in expense.attachments if a.kind == "invoice")
+    session.commit()
+    response = client.post(
+        "/api/attachments/bulk-assign",
+        json={
+            "ids": [invoice.id],
+            "expense_id": None,
+        },
+    )
+    assert response.status_code == 200, response.text
+    detail = client.get(f"/api/expenses/{expense.id}").json()["data"]
+    assert detail["amount_cents"] == lf.ROOM_CENTS
+    response = client.post(
+        "/api/attachments/bulk-assign",
+        json={
+            "ids": [order.id],
+            "expense_id": None,
+        },
+    )
+    assert response.status_code == 200, response.text
+    detail = client.get(f"/api/expenses/{expense.id}").json()["data"]
+    assert detail["amount_cents"] == 0
+    assert detail["trip"] is None
+
+
 def test_bulk_assign_keeps_manual_amount(client, session, settings, tmp_path):
     expense = lodging_expense(session, settings, tmp_path, amount=48000)
     ticket = lf.train_invoice(session, settings, tmp_path)
@@ -69,6 +130,11 @@ def test_bulk_assign_keeps_manual_amount(client, session, settings, tmp_path):
     expense = reload(session, expense.id)
     assert expense.amount_cents == 48000
     assert "并入交通票 ¥100.00，金额未自动调整（已手动修改过）" in lf.timeline_notes(expense)
+    response = client.delete(f"/api/attachments/{ticket.id}")
+    assert response.status_code == 200, response.text
+    detail = client.get(f"/api/expenses/{expense.id}").json()["data"]
+    assert detail["amount_cents"] == 48000
+    assert sum(line["amount_cents"] for line in detail["trip"]["cost_lines"]) == 50000
 
 
 def test_patch_attachment_expense_merges_amount(client, session, settings, tmp_path):

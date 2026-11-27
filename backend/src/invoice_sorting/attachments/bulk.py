@@ -95,10 +95,15 @@ def bulk_assign(
     attachments = load_attachments(session, ids)
     target = get_expense_or_404(session, expense_id) if expense_id is not None else None
     affected: list[Expense | None] = [item.expense for item in attachments]
-    previous_total = expense_document_total(session, target) if target is not None else 0
+    previous_totals = {
+        expense.id: expense_document_total(session, expense)
+        for expense in [*affected, target]
+        if expense is not None
+    }
     for attachment in attachments:
         _assign_one(session, settings, attachment, target, kind)
-    if target is not None:
-        merge_invoice_amounts(session, target, previous_total)
+    for expense in [*affected, target]:
+        if expense is not None and expense.id in previous_totals:
+            merge_invoice_amounts(session, expense, previous_totals.pop(expense.id))
     refresh_expenses(session, settings, [*affected, target])
     return attachments

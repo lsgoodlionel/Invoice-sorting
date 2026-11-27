@@ -22,6 +22,8 @@ from invoice_sorting.db.models import ChecklistItem, Expense, StatusEvent
 from invoice_sorting.expenses.pricing import inferred_item_name
 from invoice_sorting.importer.items import item_from_attachment
 from invoice_sorting.importer.lodging import merge_stays
+from invoice_sorting.importer.lodging_summary import travel_cost_lines
+from invoice_sorting.importer.trip import trip_from_items
 from invoice_sorting.settings.service import buyer_identity, region_policy
 from invoice_sorting.users.refs import user_ref
 
@@ -75,6 +77,39 @@ def _stay_fields(expense: Expense) -> dict[str, Any]:
     }
 
 
+def _trip_fields(expense: Expense, policy: RegionPolicy) -> dict[str, Any]:
+    items = [item_from_attachment(a) for a in expense.attachments]
+    trip = trip_from_items(items, policy.local_region)
+    if trip is None:
+        return {"trip": None}
+    costs = travel_cost_lines(items)
+    outbound = set(trip.outbound)
+    returning = set(trip.returning)
+    for line in costs:
+        ids = set(line["attachment_ids"])
+        if line["kind"] == "transport" and ids & outbound:
+            line["kind"] = "outbound"
+            line["label"] = line["label"].replace("交通 ", "去程交通 ", 1)
+        elif line["kind"] == "transport" and ids & returning:
+            line["kind"] = "return"
+            line["label"] = line["label"].replace("交通 ", "返程交通 ", 1)
+    return {
+        "trip": {
+            "destination": trip.destination,
+            "start": iso_date(trip.start),
+            "end": iso_date(trip.end),
+            "outbound_attachment_ids": list(trip.outbound),
+            "return_attachment_ids": list(trip.returning),
+            "outbound_legs": trip.outbound_legs,
+            "return_legs": trip.return_legs,
+            "lodging_nights": trip.lodging_nights,
+            "expected_nights": trip.expected_nights,
+            "warnings": list(trip.warnings),
+            "cost_lines": costs,
+        }
+    }
+
+
 def serialize_expense_summary(
     expense: Expense, policy: RegionPolicy | None = None
 ) -> dict[str, Any]:
@@ -119,6 +154,7 @@ def serialize_expense_summary(
         ),
         "travel_scope_manual": bool(expense.travel_scope_manual),
         **_stay_fields(expense),
+        **_trip_fields(expense, policy),
     }
 
 

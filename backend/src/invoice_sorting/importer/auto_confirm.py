@@ -21,6 +21,7 @@ from invoice_sorting.importer.duplicates import DUPLICATE_PREFIX
 from invoice_sorting.importer.grouping import ItemGroup, group_items
 from invoice_sorting.importer.groups import ImportGroup, build_group
 from invoice_sorting.importer.items import EvidenceItem
+from invoice_sorting.importer.lodging_scoring import REASON_REVIEW
 from invoice_sorting.importer.schemas import ConfirmGroup
 
 logger = logging.getLogger(__name__)
@@ -60,6 +61,8 @@ def auto_confirm_request(group: ImportGroup) -> ConfirmGroup | None:
     summary = group.summary
     if any(warning.startswith(DUPLICATE_PREFIX) for warning in group.warnings):
         return None
+    if REASON_REVIEW in group.warnings:
+        return None
     common = {
         "group_id": group.group_id,
         "attachment_ids": [attachment.id for attachment in group.attachments],
@@ -84,6 +87,8 @@ def skip_reason(group: ImportGroup) -> str:
     duplicate = next((w for w in group.warnings if w.startswith(DUPLICATE_PREFIX)), None)
     if duplicate is not None:
         return duplicate
+    if REASON_REVIEW in group.warnings:
+        return REASON_REVIEW
     if group.summary.amount_cents is None:
         lacks_invoice_data = group.has_invoice and not any(item.has_data for item in group.items)
         return NO_INVOICE_DATA_REASON if lacks_invoice_data else MISSING_AMOUNT_REASON

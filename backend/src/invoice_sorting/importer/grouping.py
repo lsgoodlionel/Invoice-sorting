@@ -30,6 +30,7 @@ REASON_FOREIGN_CNY = "境外订单与人民币付款日期及平台一致"
 REASON_CARD = "卡号末四位一致"
 REASON_HOTEL = "酒店发票与订单一致"
 REASON_TRANSPORT = "往返酒店所在地的交通凭证"
+REASON_TRIP = "同一出差目的地与行程日期"
 
 Link = tuple[int, int, tuple[str, ...]]
 
@@ -55,15 +56,17 @@ class _UnionFind:
     def members(self, root: int) -> list[EvidenceItem]:
         return [item for index, item in enumerate(self._items) if self.find(index) == root]
 
-    def _conflicts(self, first: int, second: int) -> bool:
+    def _conflicts(self, first: int, second: int, trip_link: bool = False) -> bool:
         merged = self.members(first) + self.members(second)
         if not invoices_compatible(merged):
             return True
-        return _order_keys_disjoint(self.members(first), self.members(second))
+        return not trip_link and _order_keys_disjoint(self.members(first), self.members(second))
 
     def union(self, first: int, second: int, reasons: tuple[str, ...]) -> bool:
         left, right = self.find(first), self.find(second)
-        if left == right or self._conflicts(left, right):
+        if left == right or self._conflicts(
+            left, right, REASON_TRIP in reasons or REASON_TRANSPORT in reasons
+        ):
             return False
         root, child = min(left, right), max(left, right)
         self._parent[child] = root
@@ -218,6 +221,41 @@ def _link_transport(finder: _UnionFind, items: Sequence[EvidenceItem]) -> None:
                 finder.union(root, index, (REASON_TRANSPORT,))
 
 
+def _link_trip(finder: _UnionFind, items: Sequence[EvidenceItem]) -> None:
+    """先连逆向往返，再连同城、日期相邻的住宿段；不跨越第二次往返。"""
+    from invoice_sorting.importer.trip import route_city
+
+    candidates: list[tuple[int, int, int]] = []
+    for first, second in _pairs(items):
+        a, b = items[first], items[second]
+        if not (a.is_transport and b.is_transport and a.travel_date and b.travel_date):
+            continue
+        a_from, a_to = map(route_city, a.route)
+        b_from, b_to = map(route_city, b.route)
+        if (a_from, a_to) == (b_to, b_from) and a_from and a_to != a_from:
+            gap = abs((a.travel_date - b.travel_date).days)
+            if gap <= 30:
+                candidates.append((gap, first, second))
+    # 一张票只参与最近的一组反向线路，避免同一城市一个月内两次出差串单。
+    claimed: set[int] = set()
+    for _gap, first, second in sorted(candidates):
+        if first in claimed or second in claimed:
+            continue
+        if finder.find(first) == finder.find(second) or finder.union(first, second, (REASON_TRIP,)):
+            claimed.update((first, second))
+    for first, second in _pairs(items):
+        a, b = items[first], items[second]
+        left, right = a.stay, b.stay
+        if not (left and right and left.city and left.city == right.city):
+            continue
+        if not (left.check_in and left.check_out and right.check_in and right.check_out):
+            continue
+        gap = max((left.check_in - right.check_out).days, (right.check_in - left.check_out).days)
+        if gap <= 1 and gap >= -30:
+            finder.union(first, second, (REASON_TRIP,))
+    _link_transport(finder, items)
+
+
 def group_items(items: Sequence[EvidenceItem]) -> list[ItemGroup]:
     """按优先级依次尝试连接；返回的组按组内第一个凭证在输入中的顺序排列。"""
     finder = _UnionFind(items)
@@ -232,4 +270,5 @@ def group_items(items: Sequence[EvidenceItem]) -> list[ItemGroup]:
         for first, second, reasons in links:
             finder.union(first, second, reasons)
     _link_transport(finder, items)
+    _link_trip(finder, items)
     return finder.groups()

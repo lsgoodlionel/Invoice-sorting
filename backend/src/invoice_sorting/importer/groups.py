@@ -12,6 +12,7 @@ from invoice_sorting.importer.group_summary import GroupSummary, build_summary
 from invoice_sorting.importer.grouping import ItemGroup, group_items
 from invoice_sorting.importer.items import EvidenceItem
 from invoice_sorting.importer.lodging import merge_stays
+from invoice_sorting.importer.lodging_scoring import REASON_REVIEW
 from invoice_sorting.importer.matching import MatchCandidate, find_candidates
 
 ACTION_CREATE = "create"
@@ -45,6 +46,8 @@ def suggest_action(
         return ACTION_SKIP
     if match is not None:
         return ACTION_ATTACH
+    if REASON_REVIEW in warnings:
+        return ACTION_SKIP
     if has_invoice or (summary.amount_cents is not None and summary.spent_on is not None):
         return ACTION_CREATE
     return ACTION_SKIP
@@ -61,6 +64,10 @@ def build_group(
     summary = build_summary(session, items)
     match, candidates = find_candidates(session, items)
     warnings = [warning for item in items for warning in extra.get(item.attachment_id, ())]
+    if (match is not None and REASON_REVIEW in match.reasons) or any(
+        REASON_REVIEW in candidate.reasons for candidate in candidates
+    ):
+        warnings.append(REASON_REVIEW)
     warnings.extend(duplicate_warnings(session, items))
     stay = merge_stays(items)
     if (

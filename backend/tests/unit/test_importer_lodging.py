@@ -18,6 +18,7 @@ from invoice_sorting.importer.lodging import (
 )
 from invoice_sorting.importer.lodging_summary import transport_count, travel_package_total
 from invoice_sorting.importer.travel_scope import infer_travel_scope
+from invoice_sorting.importer.trip import trip_from_items
 from tests.evidence_factory import item
 from tests.invoice_factory import parsed_invoice
 
@@ -82,15 +83,15 @@ def test_derived_flags_for_lodging_transport_and_order():
     assert not item(8, "invoice", details={"check_in": "2026-08-15"}).is_hotel_order
 
 
-def test_stay_from_order_and_from_invoice_seller_city():
+def test_stay_from_order_but_invoice_seller_city_is_not_actual_stay_city():
     assert hotel_order().stay == Stay(AUG_15, AUG_16, "苏州")
-    assert hotel_invoice().stay == Stay(AUG_16, AUG_16, "苏州")
+    assert hotel_invoice().stay == Stay(AUG_16, AUG_16, "")
     no_city = hotel_order(details={"city": "", "hotel": "", "check_out": ""}, merchant="全季酒店")
     assert no_city.stay == Stay(AUG_15, AUG_15, "")
     assert train(4).stay is None
     assert train(4, day="bad").travel_date == date(2026, 8, 20)
     issued_only = hotel_invoice(date_is_issued=True)
-    assert issued_only.stay == Stay(None, None, "苏州")
+    assert issued_only.stay == Stay(None, None, "")
 
 
 def test_travel_details_from_parsed_invoice_and_stored_details():
@@ -152,7 +153,7 @@ def test_v_lodging_invoice_order_and_two_trains_in_one_group():
     assert groups[0].link_reasons == ("酒店发票与订单一致", "往返酒店所在地的交通凭证")
 
 
-def test_transport_other_city_or_out_of_window_not_joined():
+def test_transport_other_city_not_joined_and_late_return_shows_missing_stay():
     groups = group_items(
         [
             hotel_order(1),
@@ -162,7 +163,55 @@ def test_transport_other_city_or_out_of_window_not_joined():
         ]
     )
 
-    assert ids(groups) == [[1, 4], [2], [3]]
+    assert ids(groups) == [[1, 3, 4], [2]]
+    trip = trip_from_items(groups[0].items, "上海")
+    assert trip is not None and trip.expected_nights == 4
+    assert any("住宿记录不足" in warning for warning in trip.warnings)
+
+
+def test_trip_name_and_actual_hotel_city_over_invoice_issuer():
+    order = hotel_order(1, details={"check_in": "2026-08-15", "check_out": "2026-08-16"})
+    invoice = hotel_invoice(
+        2,
+        merchant="上海泰康万豪酒店管理有限公司",
+        details={"check_in": "2026-08-15", "check_out": "2026-08-16"},
+    )
+    outgoing = train(3)
+    returning = train(4, day="2026-08-16", origin="苏州园区", to="上海虹桥")
+    trip = trip_from_items([invoice, order, outgoing, returning], "上海")
+    assert trip is not None
+    assert trip.destination == "苏州"
+    assert trip.name == "2026年08月15日-2026年08月16日苏州差旅"
+    assert trip.outbound == (3,) and trip.returning == (4,)
+    assert trip.warnings == ()
+
+
+def test_multiple_dated_lodging_segments_and_amounts():
+    first = hotel_invoice(
+        1, details={"city": "苏州", "check_in": "2026-08-15", "check_out": "2026-08-16"}
+    )
+    second = hotel_invoice(
+        2,
+        cny_cents=60000,
+        details={"city": "苏州", "check_in": "2026-08-16", "check_out": "2026-08-17"},
+    )
+    outward = train(3)
+    returning = train(4, day="2026-08-17", origin="苏州园区", to="上海虹桥")
+    groups = group_items([first, second, outward, returning])
+    assert ids(groups) == [[1, 2, 3, 4]]
+    assert travel_package_total(groups[0].items) == 130000
+    trip = trip_from_items(groups[0].items, "上海")
+    assert trip is not None and trip.lodging_nights == trip.expected_nights == 2
+
+
+def test_two_trips_to_same_city_in_one_month_stay_separate():
+    vouchers = [
+        train(1, day="2026-08-15"),
+        train(2, day="2026-08-16", origin="苏州园区", to="上海虹桥"),
+        train(3, day="2026-08-22"),
+        train(4, day="2026-08-23", origin="苏州园区", to="上海虹桥"),
+    ]
+    assert ids(group_items(vouchers)) == [[1, 2], [3, 4]]
 
 
 def test_transport_direction_must_match_stay_boundary():
@@ -240,9 +289,12 @@ def test_travel_package_total_includes_non_invoice_transport_without_double_coun
         details={"number": "G2"},
     )
 
-    assert travel_package_total(
-        [hotel_order(), hotel_invoice(), outbound_invoice, outbound_order, returning]
-    ) == 72000
+    assert (
+        travel_package_total(
+            [hotel_order(), hotel_invoice(), outbound_invoice, outbound_order, returning]
+        )
+        == 72000
+    )
 
 
 def test_travel_scope_uses_configured_local_region():
