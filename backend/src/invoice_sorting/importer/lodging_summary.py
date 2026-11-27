@@ -58,19 +58,10 @@ def transport_total(items: Sequence[EvidenceItem]) -> int:
 def travel_cost_lines(items: Sequence[EvidenceItem]) -> list[dict]:
     """列出每笔交通和住宿净额，配对的订单与发票只记一笔。"""
     lines: list[dict] = []
-    invoices = [item for item in items if item.is_lodging_invoice and item.cny_cents is not None]
-    orders = [item for item in items if item.is_hotel_order and item.cny_cents is not None]
-    paired_by_invoice: dict[int, EvidenceItem] = {}
-    claimed: set[int] = set()
-    for invoice in invoices:
-        strict = [order for order in orders if invoice_matches_order(invoice, order)]
-        candidates = strict or [
-            order for order in orders if invoice_order_review_candidate(invoice, order)
-        ]
-        available = [order for order in candidates if order.attachment_id not in claimed]
-        if len(available) == 1:
-            paired_by_invoice[invoice.attachment_id] = available[0]
-            claimed.add(available[0].attachment_id)
+    invoices = [item for item in items if item.is_lodging_invoice]
+    orders = [item for item in items if item.is_hotel_order]
+    paired_by_invoice = lodging_pairs(items)
+    claimed = {order.attachment_id for order in paired_by_invoice.values()}
     for invoice in invoices:
         paired = paired_by_invoice.get(invoice.attachment_id)
         stay = paired.stay if paired else invoice.stay
@@ -84,7 +75,9 @@ def travel_cost_lines(items: Sequence[EvidenceItem]) -> list[dict]:
             {
                 "kind": "lodging",
                 "label": f"住宿 {hotel or '酒店'}{dates}",
-                "amount_cents": invoice.cny_cents,
+                "amount_cents": invoice.cny_cents
+                if invoice.cny_cents is not None
+                else (paired.cny_cents if paired else None),
                 "attachment_ids": [
                     invoice.attachment_id,
                     *([paired.attachment_id] if paired else []),
@@ -110,10 +103,13 @@ def travel_cost_lines(items: Sequence[EvidenceItem]) -> list[dict]:
         )
     grouped: dict[tuple | int, list[EvidenceItem]] = {}
     for item in items:
-        if item.is_transport and item.cny_cents is not None:
+        if item.is_transport:
             grouped.setdefault(_transport_key(item), []).append(item)
     for matches in grouped.values():
-        preferred = next((item for item in matches if item.is_invoice), matches[0])
+        preferred = next(
+            (item for item in matches if item.is_invoice and item.cny_cents is not None),
+            next((item for item in matches if item.cny_cents is not None), matches[0]),
+        )
         lines.append(
             {
                 "kind": "transport",
@@ -125,11 +121,29 @@ def travel_cost_lines(items: Sequence[EvidenceItem]) -> list[dict]:
     return lines
 
 
+def lodging_pairs(items: Sequence[EvidenceItem]) -> dict[int, EvidenceItem]:
+    """只配对清单中唯一可对应的住宿发票和订单/水单。"""
+    invoices = [item for item in items if item.is_lodging_invoice]
+    orders = [item for item in items if item.is_hotel_order]
+    paired_by_invoice: dict[int, EvidenceItem] = {}
+    claimed: set[int] = set()
+    for invoice in invoices:
+        strict = [order for order in orders if invoice_matches_order(invoice, order)]
+        candidates = strict or [
+            order for order in orders if invoice_order_review_candidate(invoice, order)
+        ]
+        available = [order for order in candidates if order.attachment_id not in claimed]
+        if len(available) == 1:
+            paired_by_invoice[invoice.attachment_id] = available[0]
+            claimed.add(available[0].attachment_id)
+    return paired_by_invoice
+
+
 def travel_package_total(items: Sequence[EvidenceItem]) -> int | None:
     """住宿服务 + 去返程/市内交通的净额；订单与其对应发票不重复累计。"""
     if merge_stays(items) is None and not any(item.is_transport for item in items):
         return None
-    total = sum(line["amount_cents"] for line in travel_cost_lines(items))
+    total = sum(line["amount_cents"] or 0 for line in travel_cost_lines(items))
     return total if total > 0 else None
 
 

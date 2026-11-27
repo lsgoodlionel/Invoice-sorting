@@ -7,6 +7,7 @@ from datetime import date
 from invoice_sorting.importer.cities import find_city, normalize_city
 from invoice_sorting.importer.items import EvidenceItem
 from invoice_sorting.importer.lodging import invoice_matches_order, merge_stays
+from invoice_sorting.importer.lodging_summary import lodging_pairs
 
 
 def route_city(place: str) -> str:
@@ -24,6 +25,8 @@ class Trip:
     return_legs: int
     lodging_nights: int
     expected_nights: int | None
+    lodging_records: int
+    expected_records: int | None
     warnings: tuple[str, ...]
 
     @property
@@ -85,6 +88,8 @@ def trip_from_items(items: Sequence[EvidenceItem], local_region: str = "") -> Tr
         start = end
     orders = [item for item in items if item.is_hotel_order and item.stay]
     invoices = [item for item in items if item.is_lodging_invoice]
+    all_orders = [item for item in items if item.is_hotel_order]
+    pairs = lodging_pairs(items)
     nights: set[date] = set()
     for order in orders:
         period = order.stay
@@ -104,6 +109,8 @@ def trip_from_items(items: Sequence[EvidenceItem], local_region: str = "") -> Tr
                 for day in range(period.check_in.toordinal(), period.check_out.toordinal())
             )
     expected = max(0, (end - start).days) if start and end else None
+    expected_records = expected + 1 if expected is not None else None
+    lodging_records = len(invoices) + len(all_orders) - len(pairs)
     warnings: list[str] = []
     if not destination:
         warnings.append("住宿地点待确认：请补充酒店订单或水单")
@@ -122,8 +129,23 @@ def trip_from_items(items: Sequence[EvidenceItem], local_region: str = "") -> Tr
         warnings.append(f"住宿记录不足：预计 {expected} 晚，已识别 {len(nights)} 晚")
     if expected is not None and len(nights) > expected:
         warnings.append(f"住宿记录多于行程：预计 {expected} 晚，已识别 {len(nights)} 晚，请核对")
+    if expected_records is not None and lodging_records < expected_records:
+        warnings.append(
+            f"住宿凭证不足：按出差自然日预计 {expected_records} 条，"
+            f"已识别 {lodging_records} 条；请核对每天的住宿材料"
+        )
+    if expected_records is not None and lodging_records > expected_records:
+        warnings.append(
+            f"住宿凭证多于行程：按出差自然日预计 {expected_records} 条，"
+            f"已识别 {lodging_records} 条；请核对"
+        )
     if stay and stay.check_in is None:
         warnings.append("住宿时间待完善：请补充酒店订单或水单")
+    paired_orders = {order.attachment_id for order in pairs.values()}
+    if any(invoice.attachment_id not in pairs for invoice in invoices):
+        warnings.append("部分住宿发票缺少对应订单或水单，请补充并核对实际入住地点与时间")
+    if any(order.attachment_id not in paired_orders for order in all_orders):
+        warnings.append("部分住宿订单或水单缺少对应发票，请补充住宿发票")
     return Trip(
         destination,
         start,
@@ -134,5 +156,7 @@ def trip_from_items(items: Sequence[EvidenceItem], local_region: str = "") -> Tr
         return_legs,
         len(nights),
         expected,
+        lodging_records,
+        expected_records,
         tuple(warnings),
     )

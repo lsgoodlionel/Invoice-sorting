@@ -163,8 +163,41 @@ def test_transport_first_then_hotel_then_return_joins_one_trip(client, session, 
     data = serialize_expense_detail(session, expense)
     assert expense.amount_cents == 72000
     assert data["item_name"] == "2026年08月15日-2026年08月16日苏州差旅"
-    assert data["trip"]["warnings"] == []
+    assert any("住宿凭证不足" in warning for warning in data["trip"]["warnings"])
     assert sum(line["amount_cents"] for line in data["trip"]["cost_lines"]) == 72000
+
+
+def test_return_first_then_hotel_and_outbound_joins_one_trip(client, session, settings, tmp_path):
+    returning = lf.train_invoice(session, settings, tmp_path, returning=True)
+    session.commit()
+    created = create_via_api(client, returning)["created"]
+    assert len(created) == 1
+    expense_id = created[0]
+    order = lf.hotel_order(session, settings, tmp_path)
+    session.commit()
+    assert create_via_api(client, order)["attached"] == [expense_id]
+    outbound = lf.train_invoice(session, settings, tmp_path)
+    session.commit()
+    assert create_via_api(client, outbound)["attached"] == [expense_id]
+    detail = client.get(f"/api/expenses/{expense_id}").json()["data"]
+    assert detail["item_name"] == "2026年08月15日-2026年08月16日苏州差旅"
+    assert detail["amount_cents"] == 72000
+    assert detail["trip"]["outbound_legs"] == detail["trip"]["return_legs"] == 1
+
+
+def test_return_first_then_outbound_without_hotel_joins_one_trip(
+    client, session, settings, tmp_path
+):
+    returning = lf.train_invoice(session, settings, tmp_path, returning=True)
+    session.commit()
+    expense_id = create_via_api(client, returning)["created"][0]
+    outbound = lf.train_invoice(session, settings, tmp_path)
+    session.commit()
+    assert create_via_api(client, outbound)["attached"] == [expense_id]
+    detail = client.get(f"/api/expenses/{expense_id}").json()["data"]
+    assert detail["amount_cents"] == lf.OUTBOUND_CENTS + lf.RETURN_CENTS
+    assert detail["item_name"] == "2026年08月15日-2026年08月16日苏州差旅"
+    assert any("住宿记录不足" in warning for warning in detail["trip"]["warnings"])
 
 
 def test_hotel_only_trip_prompts_for_transport(session, settings, tmp_path):

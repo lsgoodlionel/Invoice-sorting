@@ -16,7 +16,11 @@ from invoice_sorting.importer.lodging import (
     transport_fits,
     with_fallback_day,
 )
-from invoice_sorting.importer.lodging_summary import transport_count, travel_package_total
+from invoice_sorting.importer.lodging_summary import (
+    transport_count,
+    travel_cost_lines,
+    travel_package_total,
+)
 from invoice_sorting.importer.travel_scope import infer_travel_scope
 from invoice_sorting.importer.trip import trip_from_items
 from tests.evidence_factory import item
@@ -183,7 +187,38 @@ def test_trip_name_and_actual_hotel_city_over_invoice_issuer():
     assert trip.destination == "苏州"
     assert trip.name == "2026年08月15日-2026年08月16日苏州差旅"
     assert trip.outbound == (3,) and trip.returning == (4,)
-    assert trip.warnings == ()
+    assert trip.lodging_records == 1 and trip.expected_records == 2
+    assert any("住宿凭证不足" in warning for warning in trip.warnings)
+
+
+def test_trip_warns_for_incomplete_stay_documents_and_unknown_transport_amount():
+    order = hotel_order(1)
+    outbound = train(2, cny_cents=None)
+    returning = train(3, day="2026-08-16", origin="苏州园区", to="上海虹桥")
+    trip = trip_from_items([order, outbound, returning], "上海")
+    assert trip is not None
+    assert any("缺少对应发票" in warning for warning in trip.warnings)
+    costs = travel_cost_lines([order, outbound, returning])
+    assert len(costs) == 3
+    assert next(line for line in costs if line["attachment_ids"] == [2])["amount_cents"] is None
+    assert travel_package_total([order, outbound, returning]) == 60000
+
+
+def test_late_invoice_from_other_issuer_pairs_to_actual_hotel_order_once():
+    order = hotel_order(1)
+    invoice = hotel_invoice(
+        2,
+        merchant="上海第三方票务有限公司",
+        occurred_on=date(2026, 9, 1),
+        date_is_issued=True,
+    )
+    lines = travel_cost_lines([order, invoice])
+    assert len(lines) == 1
+    assert lines[0]["attachment_ids"] == [2, 1]
+    assert lines[0]["amount_cents"] == 50000
+    trip = trip_from_items([order, invoice], "上海")
+    assert trip is not None and trip.destination == "苏州"
+    assert not any("缺少对应" in warning for warning in trip.warnings)
 
 
 def test_multiple_dated_lodging_segments_and_amounts():

@@ -90,12 +90,18 @@ def _trip_score(
     if incoming_stay and incoming_stay.city == trip.destination and incoming_stay.check_in:
         day = incoming_stay.check_in
         end = trip.end or trip.start
+        checkout = incoming_stay.check_out or day
         if trip.start <= day <= end and (incoming_stay.check_out or day) <= end:
             return LodgingScore(((85, "住宿地点与出差日期一致"),), True)
         if day in (end, end + timedelta(days=1)) and (
             incoming_stay.check_out or day
         ) <= end + timedelta(days=30):
             return LodgingScore(((85, "连续住宿地点一致"),), True)
+        if checkout == trip.start and day >= trip.start - timedelta(days=30):
+            return LodgingScore(((85, "连续住宿地点一致"),), True)
+        if trip.returning and not trip.outbound and trip.start - timedelta(days=30) <= day:
+            if trip.start - timedelta(days=1) <= checkout <= end + timedelta(days=1):
+                return LodgingScore(((85, "返程前的住宿地点与日期一致"),), True)
     # 去程先入库，返程随后上传；必须是同一目的地的反向线路。
     if trip.outbound and not trip.returning:
         from invoice_sorting.importer.cities import place_in_city
@@ -113,6 +119,22 @@ def _trip_score(
                 for previous in outbound
             ):
                 return LodgingScore(((85, "同一次差旅的返程线路"),), True)
+    if trip.returning and not trip.outbound:
+        from invoice_sorting.importer.cities import place_in_city
+
+        returning = [item for item in existing if item.attachment_id in trip.returning]
+        for incoming in items:
+            if not incoming.is_transport or not incoming.travel_date:
+                continue
+            if not (trip.start - timedelta(days=30) <= incoming.travel_date <= trip.start):
+                continue
+            if any(
+                place_in_city(incoming.route[0], local)
+                and place_in_city(incoming.route[1], trip.destination)
+                and place_in_city(previous.route[1], local)
+                for previous in returning
+            ):
+                return LodgingScore(((85, "同一次差旅的去程线路"),), True)
     return LodgingScore()
 
 

@@ -250,8 +250,10 @@ export interface ExpenseSummary {
     return_legs: number;
     lodging_nights: number;
     expected_nights: number | null;
+    lodging_records: number;
+    expected_records: number | null;
     warnings: string[];
-    cost_lines: { kind: 'lodging' | 'outbound' | 'return' | 'transport'; label: string; amount_cents: number; attachment_ids: number[] }[];
+    cost_lines: { kind: 'lodging' | 'outbound' | 'return' | 'transport'; label: string; amount_cents: number | null; attachment_ids: number[] }[];
   } | null;
 }
 

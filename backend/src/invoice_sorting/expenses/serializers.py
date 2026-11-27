@@ -104,6 +104,8 @@ def _trip_fields(expense: Expense, policy: RegionPolicy) -> dict[str, Any]:
             "return_legs": trip.return_legs,
             "lodging_nights": trip.lodging_nights,
             "expected_nights": trip.expected_nights,
+            "lodging_records": trip.lodging_records,
+            "expected_records": trip.expected_records,
             "warnings": list(trip.warnings),
             "cost_lines": costs,
         }
